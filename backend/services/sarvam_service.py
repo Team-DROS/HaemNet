@@ -2,7 +2,7 @@
 Sarvam AI voice service.
 
 Handles the low-latency, asynchronous streaming pipeline that
-connects Exotel's audio websocket to Sarvam AI's STT (Speech-to-Text)
+connects Twilio's audio websocket to Sarvam AI's STT (Speech-to-Text)
 and TTS (Text-to-Speech) models for multi-lingual conversations.
 """
 

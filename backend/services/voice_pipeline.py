@@ -1,8 +1,8 @@
 """
-Real-time voice pipeline: Exotel audio ↔ Sarvam AI.
+Real-time voice pipeline: Twilio audio ↔ Sarvam AI.
 
 Manages a per-call ``VoiceSession`` that:
-  1. Accumulates raw audio chunks from Exotel
+  1. Accumulates raw audio chunks from Twilio
   2. Sends buffered audio to Sarvam STT for transcription
   3. Extracts donor intent (accepted / declined / unknown)
   4. Generates a localised TTS response via Sarvam
@@ -76,7 +76,7 @@ class VoiceSession:
     Manages a single donor's AI voice conversation during a dispatch.
 
     Lifecycle:
-        1. Created when Exotel audio WebSocket connects
+        1. Created when Twilio audio WebSocket connects
         2. Receives audio chunks → transcribes → extracts intent
         3. Generates localised TTS responses
         4. Destroyed when call ends or intent is resolved
@@ -112,7 +112,7 @@ class VoiceSession:
         self, audio_bytes: bytes
     ) -> Tuple[Optional[bytes], Optional[str]]:
         """
-        Process an incoming audio chunk from Exotel.
+        Process an incoming audio chunk from Twilio.
 
         Returns
         -------

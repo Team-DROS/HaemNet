@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
-    # ── Twilio Telephony (Replaced Exotel) ──────────────────────
+    # ── Twilio Telephony ────────────────────────────────────────
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""

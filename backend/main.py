@@ -71,7 +71,7 @@ app = FastAPI(
     title="AI Blood Dispatch Network",
     description=(
         "Real-time, AI-orchestrated emergency blood dispatch system. "
-        "Queries a Neo4j graph database for eligible donors, orchestrates "
+        "Queries the donor database for eligible donors, orchestrates "
         "concurrent multilingual AI voice calls, and streams live status "
         "updates to hospital dashboards via WebSocket."
     ),

@@ -37,7 +37,7 @@ class DonorCallState(BaseModel):
     language: str = "english"
     status: CallStatus = CallStatus.RINGING
     eta_minutes: Optional[int] = None
-    exotel_call_sid: Optional[str] = None
+    twilio_call_sid: Optional[str] = None
 
 
 class DispatchState(BaseModel):
@@ -88,11 +88,11 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Fire concurrent outbound calls to all matched donors via Exotel.
+    Fire concurrent outbound calls to all matched donors via Twilio.
 
     1. Registers the dispatch in the in-memory store.
-    2. Calls each donor concurrently via Exotel.
-    3. Maps each Exotel call SID back to (dispatch_id, donor_id).
+    2. Calls each donor concurrently via Twilio.
+    3. Maps each Twilio call SID back to (dispatch_id, donor_id).
     4. Emits RINGING updates for the WebSocket dashboard.
     """
     from backend.config import settings
@@ -159,7 +159,7 @@ async def _initiate_single_call(
     callback_url: str,
 ) -> None:
     """
-    Initiate a single Exotel call and register the call SID in the store.
+    Initiate a single Twilio call and register the call SID in the store.
     Errors are logged but do not crash the dispatch.
     """
     from backend.dispatch_store import dispatch_store

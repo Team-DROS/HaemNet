@@ -212,7 +212,8 @@ export default function DonorApp() {
   };
 
   // Hardcoded to guarantee connection (bypasses any EAS env var issues)
-  const SERVER_BASE_URL = 'https://team-murburn.onrender.com';
+  // Configure EXPO_PUBLIC_API_URL per environment (EAS/local .env).
+  const SERVER_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
   const handleRegister = async () => {
     setRegError('');

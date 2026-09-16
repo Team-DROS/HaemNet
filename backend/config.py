@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from typing import List
+from pydantic import field_validator, model_validator
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -52,11 +53,38 @@ class Settings(BaseSettings):
 
     # pydantic-settings doesn't auto-parse JSON lists from env vars,
     # so we accept a raw string and coerce it ourselves.
+    @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors(cls, v: str | List[str]) -> List[str]:
         if isinstance(v, str):
-            return json.loads(v)
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError as exc:
+                raise ValueError("CORS_ORIGINS must be a JSON array") from exc
+            if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+                raise ValueError("CORS_ORIGINS must be a JSON array of strings")
+            return parsed
         return v
+
+    @model_validator(mode="after")
+    def validate_runtime_configuration(self) -> "Settings":
+        """Reject insecure placeholder configuration outside development."""
+        if self.app_env.lower() in {"production", "staging"}:
+            required = {
+                "JWT_SECRET": self.jwt_secret,
+                "NEO4J_PASSWORD": self.neo4j_password,
+                "TWILIO_ACCOUNT_SID": self.twilio_account_sid,
+                "TWILIO_AUTH_TOKEN": self.twilio_auth_token,
+                "SARVAM_API_KEY": self.sarvam_api_key,
+            }
+            missing = [name for name, value in required.items() if not value.strip()]
+            if missing:
+                raise ValueError(
+                    f"Missing required production configuration: {', '.join(missing)}"
+                )
+            if self.jwt_secret in {"change-me", "secret", "your-secret-key"}:
+                raise ValueError("JWT_SECRET must be changed from its placeholder value")
+        return self
 
 
 # Singleton instance — import this everywhere.

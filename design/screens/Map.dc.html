@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HaemNet — Dispatch Map</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',sans-serif;background:#F5F7FA;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:#CCDAFB;color:#0F1A2B}
+@keyframes hn-ping{0%{transform:scale(1);opacity:.45}70%{transform:scale(2.8);opacity:0}100%{opacity:0}}
+@keyframes hn-soft{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes hn-dash{to{stroke-dashoffset:-40}}
+.ping{position:absolute;inset:0;border-radius:50%;animation:hn-ping 2.1s cubic-bezier(0,0,.2,1) infinite}
+.soft{animation:hn-soft 1.8s ease-in-out infinite}
+.route{stroke-dasharray:8 6;animation:hn-dash 1.8s linear infinite}
+.mk{position:absolute;border:none;background:transparent;padding:0;cursor:pointer;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+</style>
+</helmet>
+<div style="width:1600px;height:1000px;box-sizing:border-box;display:flex;background:#F5F7FA;color:#0F1A2B;overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <div style="width:232px;flex-shrink:0;box-sizing:border-box;display:flex;flex-direction:column;background:#FFFFFF;border-right:1px solid #E4E8EF;">
+    <div style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 18px;">
+      <svg width="26" height="26" viewBox="0 0 24 24" style="color:#0F1A2B;flex-shrink:0;">
+        <path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 9.6L9.2 14.4M12 9.6l2.8 4.8M9.2 14.4h5.6" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+        <circle cx="12" cy="9.6" r="1.7" fill="#D92D20"/>
+        <circle cx="9.2" cy="14.4" r="1.3" fill="currentColor"/>
+        <circle cx="14.8" cy="14.4" r="1.3" fill="currentColor"/>
+      </svg>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;letter-spacing:-0.02em;">HaemNet</span>
+    </div>
+
+    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:1px;">
+      <div style="font-size:10.5px;font-weight:600;color:#8B95A7;letter-spacing:0.08em;padding:12px 10px 8px;">OPERATIONS</div>
+      <a href="Dashboard.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Command Center</span>
+        <span class="soft" style="width:6px;height:6px;border-radius:3px;background:#D92D20;"></span>
+      </a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Emergencies</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#B42318;background:#FEF3F2;padding:1px 7px;border-radius:5px;">2</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Donor Network</span>
+      </div>
+      <a href="Map.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;background:#EDF2F9;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2E5FEA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/></svg>
+        <span style="font-size:13.5px;font-weight:600;color:#0F1A2B;flex-grow:1;">Dispatch Map</span>
+      </a>
+      <a href="Analytics.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 4 5-8"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Network Intelligence</span>
+      </a>
+    </div>
+
+    <div style="flex-grow:1;"></div>
+
+    <div style="padding:14px 16px 16px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#F0FAF5;margin-bottom:12px;">
+        <span style="position:relative;width:6px;height:6px;flex-shrink:0;"><span class="ping" style="background:#0E9B6C;"></span><span style="position:absolute;inset:0;border-radius:3px;background:#0E9B6C;"></span></span>
+        <span style="font-size:11.5px;font-weight:600;color:#08734F;">Network operational</span>
+      </div>
+      <a href="Login.dc.html" style="display:flex;align-items:center;gap:10px;padding-top:12px;border-top:1px solid #EDF0F5;">
+        <div style="width:28px;height:28px;border-radius:14px;background:#EDF2F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#58637A;flex-shrink:0;">RS</div>
+        <div style="flex-grow:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;">Dr. R. Sundaram</div>
+          <div style="font-size:10.5px;color:#8B95A7;margin-top:1px;">Apollo · Blood Bank</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0;">
+
+    <div style="height:60px;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:#FFFFFF;border-bottom:1px solid #E4E8EF;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;letter-spacing:-0.015em;">Dispatch Map</span>
+        <span style="width:1px;height:18px;background:#E4E8EF;"></span>
+        <span style="font-size:12.5px;color:#58637A;">EM-2291 · O− · Apollo Hospital · 82 donors in view</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:2px;background:#F1F4F8;padding:2px;border-radius:7px;">
+        <span style="font-size:12px;font-weight:600;color:#0F1A2B;background:#FFFFFF;padding:6px 12px;border-radius:5px;box-shadow:0 1px 2px rgba(16,24,40,0.06);">Live positions</span>
+        <span style="font-size:12px;color:#58637A;padding:6px 12px;">Heatmap</span>
+        <span style="font-size:12px;color:#58637A;padding:6px 12px;">Traffic</span>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;display:flex;min-height:0;">
+
+      <!-- LEFT -->
+      <div style="width:262px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E4E8EF;display:flex;flex-direction:column;">
+        <div style="padding:14px 16px 12px;">
+          <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;margin-bottom:11px;">ACTIVE EMERGENCIES</div>
+          <div style="padding:12px 13px;border-radius:9px;background:#FFF9F8;border:1px solid #F4D9D6;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#D92D20;line-height:1;">O−</span>
+              <span style="display:flex;align-items:center;gap:6px;"><span class="soft" style="width:6px;height:6px;border-radius:3px;background:#D92D20;"></span><span style="font-size:10.5px;font-weight:700;color:#B42318;letter-spacing:0.06em;">CRITICAL</span></span>
+            </div>
+            <div style="font-size:13px;font-weight:600;margin-top:8px;">Apollo Hospital</div>
+            <div style="font-size:11.5px;color:#58637A;margin-top:3px;">3 units · elapsed 04:5{{s}}</div>
+            <div style="display:flex;gap:14px;margin-top:10px;font-size:11.5px;">
+              <span style="color:#1E46B8;font-weight:600;">34 calling</span><span style="color:#08734F;font-weight:600;">3 accepted</span>
+            </div>
+          </div>
+          <div style="padding:12px 13px;border-radius:9px;border:1px solid #E4E8EF;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#A96206;line-height:1;">B+</span>
+              <span style="font-size:10.5px;font-weight:700;color:#A96206;letter-spacing:0.06em;">URGENT</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;margin-top:8px;color:#58637A;">City General</div>
+            <div style="font-size:11.5px;color:#8B95A7;margin-top:3px;">2 units · elapsed 18:07</div>
+          </div>
+        </div>
+
+        <div style="padding:0 16px 14px;">
+          <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;margin-bottom:10px;">SEARCH RADIUS</div>
+          <div style="display:flex;gap:2px;background:#F1F4F8;padding:2px;border-radius:7px;">
+            <span style="flex-grow:1;text-align:center;font-size:12px;color:#58637A;padding:6px 0;">2 km</span>
+            <span style="flex-grow:1;text-align:center;font-size:12px;color:#58637A;padding:6px 0;">5 km</span>
+            <span style="flex-grow:1;text-align:center;font-size:12px;font-weight:600;color:#0F1A2B;background:#FFFFFF;padding:6px 0;border-radius:5px;box-shadow:0 1px 2px rgba(16,24,40,0.06);">10 km</span>
+          </div>
+        </div>
+
+        <div style="flex-grow:1;overflow-y:auto;border-top:1px solid #EDF0F5;">
+          <div style="padding:12px 16px 8px;font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;">DONORS IN RANGE · 82</div>
+          <sc-for list="{{donors}}" as="d" hint-placeholder-count="4">
+            <button type="button" onClick="{{d.pick}}" style="{{d.rowStyle}}">
+              <span style="{{d.rowDot}}"></span>
+              <span style="flex-grow:1;min-width:0;text-align:left;">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:#0F1A2B;">{{d.name}}</span>
+                <span style="display:block;font-size:11px;color:#8B95A7;margin-top:2px;">{{d.dist}} · {{d.short}}</span>
+              </span>
+              <span style="{{d.rowTag}}">{{d.tag}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- MAP -->
+      <div style="flex-grow:1;position:relative;background:#EDF0F4;overflow:hidden;min-width:0;">
+
+        <svg width="760" height="940" viewBox="0 0 760 940" style="position:absolute;top:0;left:0;">
+          <rect x="0" y="0" width="760" height="940" fill="#EDF0F4"/>
+          <path d="M-20 690 L280 640 L500 700 L790 655 L790 940 L-20 940 Z" fill="#E3EBF3"/>
+          <rect x="120" y="120" width="130" height="110" rx="6" fill="#E7EFE7"/>
+          <rect x="560" y="420" width="150" height="120" rx="6" fill="#E7EFE7"/>
+          <path d="M-20 240 L380 195 L790 290" stroke="#FFFFFF" stroke-width="16" fill="none"/>
+          <path d="M-20 540 L790 505" stroke="#FFFFFF" stroke-width="14" fill="none"/>
+          <path d="M60 -20 L110 400 L60 940" stroke="#FFFFFF" stroke-width="18" fill="none"/>
+          <path d="M330 -20 L358 940" stroke="#FFFFFF" stroke-width="16" fill="none"/>
+          <path d="M590 -20 L548 940" stroke="#FFFFFF" stroke-width="12" fill="none"/>
+          <path d="M-20 390 L790 415" stroke="#FFFFFF" stroke-width="8" fill="none"/>
+          <path d="M200 -20 L232 940" stroke="#FFFFFF" stroke-width="7" fill="none"/>
+          <path d="M460 -20 L452 940" stroke="#FFFFFF" stroke-width="7" fill="none"/>
+          <path d="M680 -20 L668 940" stroke="#FFFFFF" stroke-width="7" fill="none"/>
+          <path d="M-20 120 L790 92" stroke="#FFFFFF" stroke-width="7" fill="none"/>
+          <path d="M-20 800 L790 770" stroke="#FFFFFF" stroke-width="7" fill="none"/>
+
+          <text x="150" y="180" fill="#9BA6B5" font-size="11" font-family="IBM Plex Sans, sans-serif">Kilpauk</text>
+          <text x="600" y="480" fill="#9BA6B5" font-size="11" font-family="IBM Plex Sans, sans-serif">Adyar Park</text>
+          <text x="90" y="560" fill="#A4AFBD" font-size="11" font-family="IBM Plex Sans, sans-serif">Egmore</text>
+          <text x="630" y="200" fill="#A4AFBD" font-size="11" font-family="IBM Plex Sans, sans-serif">Purasawalkam</text>
+          <text x="420" y="860" fill="#A4AFBD" font-size="11" font-family="IBM Plex Sans, sans-serif">Marina</text>
+
+          <circle cx="380" cy="430" r="92" fill="rgba(217,45,32,0.028)" stroke="#E6B7B2" stroke-width="1" stroke-dasharray="4 6"/>
+          <circle cx="380" cy="430" r="192" fill="rgba(217,45,32,0.018)" stroke="#EAC6C2" stroke-width="1" stroke-dasharray="4 6"/>
+          <circle cx="380" cy="430" r="300" fill="none" stroke="#E3D0CE" stroke-width="1" stroke-dasharray="4 6"/>
+          <text x="380" y="326" text-anchor="middle" fill="#B9857F" font-size="10" font-family="IBM Plex Mono, monospace">2 KM</text>
+          <text x="380" y="226" text-anchor="middle" fill="#BE9A95" font-size="10" font-family="IBM Plex Mono, monospace">5 KM</text>
+          <text x="380" y="118" text-anchor="middle" fill="#C2A6A2" font-size="10" font-family="IBM Plex Mono, monospace">10 KM</text>
+
+          <path d="M318 368 Q 340 384 380 430" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path class="route" d="M318 368 Q 340 384 380 430" stroke="#0E9B6C" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M452 398 Q 418 404 380 430" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path class="route" d="M452 398 Q 418 404 380 430" stroke="#0E9B6C" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+
+          <g>
+            <rect x="358" y="408" width="44" height="44" rx="11" fill="#D92D20"/>
+            <path d="M380 421v18M371 430h18" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round"/>
+          </g>
+        </svg>
+
+        <div style="position:absolute;left:300px;top:460px;padding:5px 11px;border-radius:7px;background:#FFFFFF;box-shadow:0 2px 8px rgba(16,24,40,0.12);font-size:11.5px;font-weight:600;color:#0F1A2B;">Apollo Hospital</div>
+
+        <div style="position:absolute;left:246px;top:330px;padding:4px 9px;border-radius:6px;background:#FFFFFF;box-shadow:0 2px 6px rgba(16,24,40,0.12);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:#08734F;">ETA 11 min</div>
+        <div style="position:absolute;left:462px;top:352px;padding:4px 9px;border-radius:6px;background:#FFFFFF;box-shadow:0 2px 6px rgba(16,24,40,0.12);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:#08734F;">ETA 6 min</div>
+
+        <div style="position:absolute;left:140px;top:262px;width:46px;height:46px;border-radius:23px;background:#FFFFFF;border:1px solid #D7E0EE;box-shadow:0 2px 6px rgba(16,24,40,0.08);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#1E46B8;">18</div>
+        <div style="position:absolute;left:566px;top:596px;width:50px;height:50px;border-radius:25px;background:#FFFFFF;border:1px solid #D7E0EE;box-shadow:0 2px 6px rgba(16,24,40,0.08);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1E46B8;">27</div>
+        <div style="position:absolute;left:228px;top:690px;width:40px;height:40px;border-radius:20px;background:#FFFFFF;border:1px solid #E1E6EE;box-shadow:0 2px 6px rgba(16,24,40,0.06);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#8B95A7;">9</div>
+
+        <sc-for list="{{donors}}" as="d" hint-placeholder-count="4">
+          <button type="button" class="mk" onClick="{{d.pick}}" aria-label="{{d.aria}}" style="{{d.mkStyle}}">
+            <span class="{{d.ringCls}}" style="{{d.ringStyle}}"></span>
+            <span style="{{d.dotStyle}}"></span>
+          </button>
+        </sc-for>
+
+        <div style="position:absolute;top:16px;left:18px;right:18px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div style="display:flex;align-items:center;gap:9px;background:#FFFFFF;border:1px solid #E4E8EF;box-shadow:0 1px 3px rgba(16,24,40,0.07);border-radius:9px;padding:10px 13px;width:320px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <span style="font-size:12.5px;color:#8B95A7;">Search donors, hospitals, areas…</span>
+          </div>
+          <div style="display:flex;background:#FFFFFF;border:1px solid #E4E8EF;box-shadow:0 1px 3px rgba(16,24,40,0.07);border-radius:9px;overflow:hidden;">
+            <div style="padding:9px 15px;text-align:center;border-right:1px solid #EDF0F5;">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1E46B8;line-height:1;">34</div>
+              <div style="font-size:10.5px;color:#8B95A7;margin-top:4px;">Contacting</div>
+            </div>
+            <div style="padding:9px 15px;text-align:center;border-right:1px solid #EDF0F5;">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#08734F;line-height:1;">3</div>
+              <div style="font-size:10.5px;color:#8B95A7;margin-top:4px;">Accepted</div>
+            </div>
+            <div style="padding:9px 15px;text-align:center;">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;line-height:1;">82</div>
+              <div style="font-size:10.5px;color:#8B95A7;margin-top:4px;">In range</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute;bottom:18px;left:18px;background:#FFFFFF;border:1px solid #E4E8EF;box-shadow:0 1px 3px rgba(16,24,40,0.07);border-radius:9px;padding:12px 15px;">
+          <div style="font-size:10.5px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;margin-bottom:10px;">LEGEND</div>
+          <div style="display:flex;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:3px;background:#D92D20;"></span><span style="font-size:11.5px;color:#58637A;">Hospital</span></div>
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:5px;background:#2E5FEA;"></span><span style="font-size:11.5px;color:#58637A;">Contacting</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:5px;background:#0E9B6C;"></span><span style="font-size:11.5px;color:#58637A;">Accepted</span></div>
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:5px;background:#E49412;"></span><span style="font-size:11.5px;color:#58637A;">Ringing</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:5px;background:#94A3B5;"></span><span style="font-size:11.5px;color:#58637A;">Available</span></div>
+              <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:5px;background:#CDD4DF;"></span><span style="font-size:11.5px;color:#58637A;">Unavailable</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;background:#FFFFFF;border:1px solid #E4E8EF;box-shadow:0 1px 3px rgba(16,24,40,0.07);border-radius:8px;overflow:hidden;">
+            <div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #EDF0F5;color:#58637A;font-size:15px;">+</div>
+            <div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#58637A;font-size:15px;">−</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;background:#FFFFFF;border:1px solid #E4E8EF;border-radius:7px;padding:5px 9px;">
+            <div style="width:40px;height:2px;background:#8B95A7;"></div>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8B95A7;">2 km</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL PANEL -->
+      <div style="width:336px;flex-shrink:0;background:#FFFFFF;border-left:1px solid #E4E8EF;display:flex;flex-direction:column;">
+
+        <div style="padding:20px 20px 18px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;">SELECTED DONOR</div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:600;margin-top:7px;">{{d.name}}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:3px;">{{d.code}}</div>
+            </div>
+            <div style="{{d.badgeStyle}}">{{d.tag}}</div>
+          </div>
+
+          <div style="display:flex;align-items:flex-end;gap:26px;margin-top:20px;">
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:36px;font-weight:700;color:#D92D20;line-height:1;letter-spacing:-0.025em;">O−</div>
+              <div style="font-size:11px;color:#8B95A7;margin-top:6px;">Blood group</div>
+            </div>
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;line-height:1;">{{d.dist}}</div>
+              <div style="font-size:11px;color:#8B95A7;margin-top:6px;">Distance</div>
+            </div>
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;line-height:1;color:{{d.color}};">{{d.eta}}</div>
+              <div style="font-size:11px;color:#8B95A7;margin-top:6px;">ETA</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:14px 20px;background:#F8FAFC;border-top:1px solid #EDF0F5;border-bottom:1px solid #EDF0F5;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="{{d.stateDot}}"></span>
+            <div style="flex-grow:1;">
+              <div style="font-size:13px;font-weight:600;color:{{d.color}};">{{d.state}}</div>
+              <div style="font-size:11.5px;color:#8B95A7;margin-top:2px;">{{d.stateSub}}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:11px;border-bottom:1px solid #EDF0F5;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Last donation</span><span style="font-size:12.5px;font-weight:600;">{{d.last}}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Eligibility</span><span style="font-size:12.5px;font-weight:600;color:#08734F;">{{d.elig}}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Compatibility</span><span style="font-size:12.5px;font-weight:600;">{{d.score}} / 100</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Contact method</span><span style="font-size:12.5px;font-weight:600;">{{d.method}}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Language</span><span style="font-size:12.5px;font-weight:600;">{{d.lang}}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12.5px;color:#58637A;">Lifetime donations</span><span style="font-size:12.5px;font-weight:600;">{{d.lifetime}}</span></div>
+        </div>
+
+        <div style="flex-grow:1;padding:16px 20px;overflow-y:auto;">
+          <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.07em;margin-bottom:14px;">CALL HISTORY</div>
+          <sc-for list="{{d.history}}" as="h" hint-placeholder-count="3">
+            <div style="display:flex;gap:11px;">
+              <span style="width:40px;flex-shrink:0;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8B95A7;padding-top:1px;">{{h.t}}</span>
+              <span style="width:12px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;">
+                <span style="{{h.dot}}"></span>
+                <span style="flex-grow:1;width:1.5px;background:#EDF0F5;margin:4px 0;"></span>
+              </span>
+              <span style="flex-grow:1;min-width:0;padding-bottom:16px;">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:#0F1A2B;">{{h.text}}</span>
+                <span style="display:block;font-size:11.5px;color:#8B95A7;margin-top:2px;">{{h.sub}}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="flex-shrink:0;padding:14px 20px 18px;border-top:1px solid #EDF0F5;display:flex;gap:9px;">
+          <button type="button" style="flex-grow:1;background:#FFFFFF;border:1px solid #E4E8EF;color:#58637A;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;padding:11px;border-radius:8px;cursor:pointer;">Message</button>
+          <button type="button" style="flex-grow:1;display:flex;align-items:center;justify-content:center;gap:7px;background:#0F1A2B;border:none;color:#FFFFFF;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;padding:11px;border-radius:8px;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Re-dial
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'D-038', tick: 0 };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => { this.setState({ tick: this.state.tick + 1 }); }, 1000);
+  }
+  componentWillUnmount() { if (this.timer) clearInterval(this.timer); }
+  data() {
+    return [
+      { id: 'D-038', code: 'D-038', name: 'R. Kumar', x: 318, y: 368, color: '#0E9B6C', tag: 'ACCEPTED', short: 'accepted', state: 'Accepted · en route', stateSub: 'Confirmed verbally at 12:41, navigation sent', dist: '1.2 km', last: '94 days ago', elig: 'Eligible', method: 'AI voice call', lang: 'Tamil', lifetime: '7 donations', score: 98, eta: '11 min', pulse: false,
+        history: [
+          { t: '12:43', c: '#0E9B6C', text: 'Donor accepted request', sub: 'Routing shared with hospital' },
+          { t: '12:42', c: '#2E5FEA', text: 'Eligibility confirmed', sub: '94 days since last donation' },
+          { t: '12:42', c: '#2E5FEA', text: 'Call answered', sub: '4.2 sec pickup' },
+          { t: '12:41', c: '#6941F5', text: 'Sarvam AI placed the call', sub: 'Tamil · bulbul:v3' }
+        ] },
+      { id: 'D-112', code: 'D-112', name: 'A. Joseph', x: 452, y: 398, color: '#0E9B6C', tag: 'EN ROUTE', short: 'en route', state: 'En route · 2.1 km out', stateSub: 'Live position updated 14 sec ago', dist: '2.0 km', last: '63 days ago', elig: 'Eligible', method: 'App push', lang: 'English', lifetime: '4 donations', score: 96, eta: '6 min', pulse: false,
+        history: [
+          { t: '12:38', c: '#0E9B6C', text: 'Departed · navigation started', sub: 'ETA shared with hospital' },
+          { t: '12:38', c: '#0E9B6C', text: 'Donor accepted request', sub: 'One-tap accept in app' },
+          { t: '12:38', c: '#2E5FEA', text: 'Call answered', sub: '2.8 sec pickup' }
+        ] },
+      { id: 'D-207', code: 'D-207', name: 'S. Pillai', x: 288, y: 496, color: '#E49412', tag: 'RINGING', short: 'ringing', state: 'Ringing · 00:07', stateSub: 'Attempt 1 of 3 · line open', dist: '3.4 km', last: '71 days ago', elig: 'Eligible', method: 'AI voice call', lang: 'Tamil', lifetime: '2 donations', score: 91, eta: '—', pulse: true,
+        history: [
+          { t: '12:41', c: '#E49412', text: 'Ringing · no pickup yet', sub: 'Attempt 1 of 3' },
+          { t: '12:41', c: '#6941F5', text: 'Outbound call placed', sub: 'Tamil · bulbul:v3' }
+        ] },
+      { id: 'D-341', code: 'D-341', name: 'D. Varma', x: 486, y: 518, color: '#2E5FEA', tag: 'CALLING', short: 'calling', state: 'Calling · AI speaking', stateSub: 'Conversation turn 2 · Tamil', dist: '4.1 km', last: '88 days ago', elig: 'Eligible', method: 'AI voice call', lang: 'Tamil', lifetime: '5 donations', score: 89, eta: '—', pulse: true,
+        history: [
+          { t: '12:41', c: '#6941F5', text: 'AI conversation in progress', sub: 'Asking availability' },
+          { t: '12:41', c: '#2E5FEA', text: 'Call answered', sub: '5.1 sec pickup' }
+        ] },
+      { id: 'D-088', code: 'D-088', name: 'V. Menon', x: 336, y: 276, color: '#94A3B5', tag: 'QUEUED', short: 'queued', state: 'Queued · position 2', stateSub: 'Will dial when a line frees', dist: '4.8 km', last: '120 days ago', elig: 'Eligible', method: 'Not yet dialled', lang: 'Hindi', lifetime: '9 donations', score: 87, eta: '—', pulse: false,
+        history: [ { t: '12:40', c: '#6941F5', text: 'Matched by graph traversal', sub: 'Rank 5 of 82' } ] },
+      { id: 'D-076', code: 'D-076', name: 'K. Subramaniam', x: 540, y: 324, color: '#CDD4DF', tag: 'NO ANSWER', short: 'no answer', state: 'No answer · retry 12:46', stateSub: '6 rings · voicemail skipped', dist: '5.2 km', last: '59 days ago', elig: 'Eligible', method: 'AI voice call', lang: 'Tamil', lifetime: '3 donations', score: 84, eta: '—', pulse: false,
+        history: [
+          { t: '12:41', c: '#94A3B5', text: 'No answer after 6 rings', sub: 'Retry queued for 12:46' },
+          { t: '12:40', c: '#6941F5', text: 'Outbound call placed', sub: 'Tamil · bulbul:v3' }
+        ] },
+      { id: 'D-193', code: 'D-193', name: 'F. Rasheed', x: 238, y: 402, color: '#CDD4DF', tag: 'DECLINED', short: 'declined', state: 'Declined · reported unwell', stateSub: 'Auto-deferred for 14 days', dist: '5.9 km', last: '77 days ago', elig: 'Deferred', method: 'AI voice call', lang: 'English', lifetime: '6 donations', score: 82, eta: '—', pulse: false,
+        history: [
+          { t: '12:39', c: '#94A3B5', text: 'Declined · reported fever', sub: 'Auto-deferred 14 days' },
+          { t: '12:39', c: '#2E5FEA', text: 'Call answered', sub: '3.4 sec pickup' }
+        ] },
+      { id: 'D-401', code: 'D-401', name: 'P. Nadar', x: 458, y: 640, color: '#94A3B5', tag: 'AVAILABLE', short: 'available', state: 'Available · not yet called', stateSub: 'Reserve pool · rank 12', dist: '6.3 km', last: '141 days ago', elig: 'Eligible', method: 'Not yet dialled', lang: 'Tamil', lifetime: '1 donation', score: 80, eta: '—', pulse: false,
+        history: [ { t: '12:40', c: '#6941F5', text: 'Matched by graph traversal', sub: 'Rank 12 of 82' } ] }
+    ];
+  }
+  renderVals() {
+    const sel = this.state.sel;
+    const donors = this.data().map((d) => {
+      const on = d.id === sel;
+      const tagBg = d.color === '#0E9B6C' ? '#E7F6EF' : (d.color === '#2E5FEA' ? '#EEF3FF' : (d.color === '#E49412' ? '#FFF8EB' : '#F1F4F8'));
+      const tagText = d.color === '#0E9B6C' ? '#08734F' : (d.color === '#2E5FEA' ? '#1E46B8' : (d.color === '#E49412' ? '#A96206' : '#58637A'));
+      return Object.assign({}, d, {
+        aria: 'Donor ' + d.code + ', ' + d.state,
+        pick: () => this.setState({ sel: d.id }),
+        mkStyle: 'left:' + (d.x - 12) + 'px;top:' + (d.y - 12) + 'px;z-index:' + (on ? 30 : 10) + ';',
+        ringCls: d.pulse ? 'ping' : '',
+        ringStyle: d.pulse ? 'background:' + d.color + ';opacity:.45;' : (on ? 'position:absolute;inset:-4px;border-radius:50%;border:2px solid ' + d.color + ';' : 'display:none;'),
+        dotStyle: 'width:' + (on ? 15 : 12) + 'px;height:' + (on ? 15 : 12) + 'px;border-radius:50%;background:' + d.color + ';border:2.5px solid #FFFFFF;box-shadow:0 1px 3px rgba(16,24,40,0.28);',
+        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:10px 16px;border:none;background:' + (on ? '#EDF2F9' : 'transparent') + ';cursor:pointer;font-family:IBM Plex Sans, sans-serif;',
+        rowDot: 'width:8px;height:8px;border-radius:4px;flex-shrink:0;background:' + d.color + ';',
+        rowTag: 'font-size:10px;font-weight:600;letter-spacing:0.05em;color:' + tagText + ';flex-shrink:0;',
+        badgeStyle: 'font-size:11px;font-weight:600;letter-spacing:0.05em;padding:5px 10px;border-radius:6px;color:' + tagText + ';background:' + tagBg + ';',
+        stateDot: 'width:10px;height:10px;border-radius:5px;flex-shrink:0;background:' + d.color + ';'
+      });
+    });
+    const cur = donors.filter((x) => x.id === sel)[0] || donors[0];
+    const hist = (cur.history || []).map((h) => Object.assign({}, h, {
+      dot: 'width:9px;height:9px;border-radius:5px;flex-shrink:0;margin-top:3px;background:' + h.c + ';'
+    }));
+    return {
+      donors: donors,
+      d: Object.assign({}, cur, { history: hist }),
+      s: this.state.tick % 10
+    };
+  }
+}
+</script>
+</body>
+</html>

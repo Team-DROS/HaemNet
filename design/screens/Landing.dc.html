@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HaemNet — Emergency Blood Response Network</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',sans-serif;background:#FAF9F7;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:#FBD5D2;color:#0F1A2B}
+@keyframes hn-ping{0%{transform:scale(1);opacity:.4}70%{transform:scale(2.6);opacity:0}100%{opacity:0}}
+@keyframes hn-soft{0%,100%{opacity:1}50%{opacity:.4}}
+.ping{position:absolute;inset:0;border-radius:50%;animation:hn-ping 2.2s cubic-bezier(0,0,.2,1) infinite}
+.soft{animation:hn-soft 1.8s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width:1600px;height:1900px;box-sizing:border-box;background:#FAF9F7;color:#0F1A2B;overflow:hidden;">
+
+  <!-- NAV -->
+  <div style="height:78px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 80px;">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <svg width="30" height="30" viewBox="0 0 24 24" style="color:#0F1A2B;">
+        <path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 9.6L9.2 14.4M12 9.6l2.8 4.8M9.2 14.4h5.6" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+        <circle cx="12" cy="9.6" r="1.7" fill="#D92D20"/>
+        <circle cx="9.2" cy="14.4" r="1.3" fill="currentColor"/>
+        <circle cx="14.8" cy="14.4" r="1.3" fill="currentColor"/>
+      </svg>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-0.02em;">HaemNet</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:38px;">
+      <span style="font-size:13.5px;color:#58637A;">How it works</span>
+      <span style="font-size:13.5px;color:#58637A;">For hospitals</span>
+      <span style="font-size:13.5px;color:#58637A;">For donors</span>
+      <a href="Login.dc.html" style="background:#0F1A2B;color:#FFFFFF;font-weight:600;font-size:13.5px;padding:11px 20px;border-radius:8px;">Hospital login</a>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div style="padding:110px 80px 0;display:flex;flex-direction:column;align-items:center;text-align:center;">
+    <div style="display:inline-flex;align-items:center;gap:9px;background:#FFFFFF;border:1px solid #EFE3E1;padding:7px 15px;border-radius:999px;margin-bottom:38px;">
+      <span class="soft" style="width:6px;height:6px;border-radius:3px;background:#D92D20;"></span>
+      <span style="font-size:12.5px;font-weight:500;color:#58637A;">2 emergencies being coordinated right now</span>
+    </div>
+
+    <h1 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:76px;line-height:1.06;font-weight:600;letter-spacing:-0.035em;max-width:900px;">
+      Blood needed. Donors found.<br><span style="color:#D92D20;">Minutes, not hours.</span>
+    </h1>
+
+    <p style="margin:32px 0 0;font-size:18px;line-height:1.65;color:#58637A;max-width:660px;">HaemNet identifies compatible donors, reaches them through AI-powered voice outreach and coordinates emergency donation in real time.</p>
+
+    <div style="display:flex;gap:13px;margin-top:42px;">
+      <a href="Login.dc.html" style="display:flex;align-items:center;gap:9px;background:#0F1A2B;color:#FFFFFF;font-weight:600;font-size:14.5px;padding:16px 26px;border-radius:9px;">
+        Open the console
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <div style="display:flex;align-items:center;gap:9px;background:#FFFFFF;border:1px solid #E4E8EF;color:#0F1A2B;font-weight:600;font-size:14.5px;padding:16px 24px;border-radius:9px;">Watch a live dispatch</div>
+    </div>
+  </div>
+
+  <!-- STORY FLOW -->
+  <div style="margin:110px 80px 0;padding:56px 60px;background:#FFFFFF;border:1px solid #EFEDE9;border-radius:18px;box-shadow:0 1px 3px rgba(16,24,40,0.04);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:46px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#8B95A7;letter-spacing:0.1em;">ONE DISPATCH, START TO FINISH</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:600;margin-top:10px;letter-spacing:-0.02em;">What happens in the first three minutes</div>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#8B95A7;">EM-2291 · O− · 3 units</div>
+    </div>
+
+    <div style="display:flex;align-items:flex-start;">
+
+      <div style="flex-grow:1;">
+        <div style="display:flex;align-items:center;">
+          <span style="width:34px;height:34px;border-radius:10px;background:#FEF3F2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M12 10v5M9.5 12.5h5"/></svg>
+          </span>
+          <span style="flex-grow:1;height:2px;background:#E9ECF2;margin:0 10px;"></span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 0s</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;margin-top:8px;">Hospital request</div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;padding-right:26px;">Apollo Hospital triggers a critical O− request for trauma bay 2.</div>
+      </div>
+
+      <div style="flex-grow:1;">
+        <div style="display:flex;align-items:center;">
+          <span style="width:34px;height:34px;border-radius:10px;background:#F3F0FF;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6941F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v5M10 14l-3.5 3M14 14l3.5 3"/></svg>
+          </span>
+          <span style="flex-grow:1;height:2px;background:#E9ECF2;margin:0 10px;"></span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 3s</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;margin-top:8px;">Matching</div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;padding-right:26px;">Blood group, distance and 56-day cooldown resolve in one graph traversal.</div>
+      </div>
+
+      <div style="flex-grow:1;">
+        <div style="display:flex;align-items:center;">
+          <span style="width:34px;height:34px;border-radius:10px;background:#F3F0FF;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6941F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          </span>
+          <span style="flex-grow:1;height:2px;background:#E9ECF2;margin:0 10px;"></span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 4s</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:8px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;">82</span>
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;">compatible donors</span>
+        </div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;padding-right:26px;">Ranked by compatibility and travel time within 10 km.</div>
+      </div>
+
+      <div style="flex-grow:1;">
+        <div style="display:flex;align-items:center;">
+          <span style="position:relative;width:34px;height:34px;flex-shrink:0;">
+            <span class="ping" style="background:#2E5FEA;opacity:.3;"></span>
+            <span style="position:absolute;inset:0;border-radius:10px;background:#EEF3FF;display:flex;align-items:center;justify-content:center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2E5FEA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            </span>
+          </span>
+          <span style="flex-grow:1;height:2px;background:#E9ECF2;margin:0 10px;"></span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 9s</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;margin-top:8px;">AI voice outreach</div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;padding-right:26px;">Concurrent calls in English, Hindi or Tamil, holding a real conversation.</div>
+      </div>
+
+      <div style="flex-grow:1;">
+        <div style="display:flex;align-items:center;">
+          <span style="width:34px;height:34px;border-radius:10px;background:#E7F6EF;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E9B6C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </span>
+          <span style="flex-grow:1;height:2px;background:#E9ECF2;margin:0 10px;"></span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 2:48</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;margin-top:8px;color:#08734F;">Donor accepts</div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;padding-right:26px;">Eligibility is verified mid-call and the hospital sees it instantly.</div>
+      </div>
+
+      <div style="width:230px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;">
+          <span style="width:34px;height:34px;border-radius:10px;background:#E7F6EF;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E9B6C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+          </span>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;margin-top:20px;">t + 3:02</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:8px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;color:#08734F;">8 min</span>
+        </div>
+        <div style="font-size:13px;color:#58637A;margin-top:6px;line-height:1.5;">Routed to the ward with live ETA, tracked until arrival.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCT -->
+  <div style="margin:110px 80px 0;">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:34px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#8B95A7;letter-spacing:0.1em;margin-bottom:14px;">WHAT THE HOSPITAL SEES</div>
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:38px;font-weight:600;letter-spacing:-0.03em;">One console for the whole response.</h2>
+      </div>
+      <a href="Dashboard.dc.html" style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#2E5FEA;">
+        Open the Command Center
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2E5FEA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div style="background:#FFFFFF;border:1px solid #E7E9EE;border-radius:16px;box-shadow:0 8px 30px rgba(16,24,40,0.07);overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid #EDF0F5;background:#FCFDFE;">
+        <span class="soft" style="width:7px;height:7px;border-radius:4px;background:#D92D20;"></span>
+        <span style="font-size:13px;font-weight:600;">Critical · O− · 3 units · Apollo Hospital</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8B95A7;">elapsed 04:32</span>
+        <span style="flex-grow:1;"></span>
+        <span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#08734F;"><span style="width:6px;height:6px;border-radius:3px;background:#0E9B6C;"></span>Live</span>
+      </div>
+
+      <div style="display:flex;padding:26px 28px;border-bottom:1px solid #EDF0F5;">
+        <div style="flex-grow:1;">
+          <div style="display:flex;align-items:center;"><span style="width:18px;height:18px;border-radius:9px;background:#E7F6EF;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0E9B6C" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span style="flex-grow:1;height:2px;background:#C9EADC;margin:0 8px;"></span></div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:12px;">Triggered</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;">1</div>
+        </div>
+        <div style="flex-grow:1;">
+          <div style="display:flex;align-items:center;"><span style="width:18px;height:18px;border-radius:9px;background:#E7F6EF;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0E9B6C" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span style="flex-grow:1;height:2px;background:#C9EADC;margin:0 8px;"></span></div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:12px;">Matched</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;">82</div>
+        </div>
+        <div style="flex-grow:1;">
+          <div style="display:flex;align-items:center;"><span style="position:relative;width:18px;height:18px;flex-shrink:0;"><span class="ping" style="background:#2E5FEA;opacity:.3;"></span><span style="position:absolute;inset:0;border-radius:9px;background:#2E5FEA;"></span></span><span style="position:relative;flex-grow:1;height:2px;background:#E4E8EF;margin:0 8px;"><span style="position:absolute;left:0;top:0;bottom:0;width:58%;background:#2E5FEA;"></span></span></div>
+          <div style="font-size:12.5px;font-weight:600;color:#1E46B8;margin-top:12px;">Contacting</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;color:#1E46B8;">34</div>
+        </div>
+        <div style="flex-grow:1;">
+          <div style="display:flex;align-items:center;"><span style="width:18px;height:18px;border-radius:9px;border:2px solid #E4E8EF;box-sizing:border-box;flex-shrink:0;"></span><span style="flex-grow:1;height:2px;background:#E4E8EF;margin:0 8px;"></span></div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:12px;">Answered</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;">11</div>
+        </div>
+        <div style="flex-grow:1;">
+          <div style="display:flex;align-items:center;"><span style="width:18px;height:18px;border-radius:9px;border:2px solid #E4E8EF;box-sizing:border-box;flex-shrink:0;"></span><span style="flex-grow:1;height:2px;background:#E4E8EF;margin:0 8px;"></span></div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:12px;">Accepted</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;color:#08734F;">3</div>
+        </div>
+        <div style="width:180px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;"><span style="width:18px;height:18px;border-radius:9px;border:2px solid #E4E8EF;box-sizing:border-box;flex-shrink:0;"></span></div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:12px;">En route</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;color:#08734F;">2</div>
+        </div>
+      </div>
+
+      <div style="display:flex;">
+        <div style="flex-grow:1;border-right:1px solid #EDF0F5;">
+          <div style="display:grid;grid-template-columns:2fr 0.7fr 0.9fr 1.4fr 1fr;gap:14px;padding:11px 28px;background:#F8FAFC;font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">
+            <div>DONOR</div><div>BLOOD</div><div>DISTANCE</div><div>CONTACT</div><div style="text-align:right;">ETA</div>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 0.7fr 0.9fr 1.4fr 1fr;gap:14px;align-items:center;padding:13px 28px;border-bottom:1px solid #F1F3F7;background:#FAFDFB;">
+            <div style="font-size:13.5px;font-weight:600;">R. Kumar</div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O−</div>
+            <div style="font-size:13px;color:#58637A;">1.2 km</div>
+            <div style="font-size:13px;font-weight:600;color:#08734F;">Accepted</div>
+            <div style="text-align:right;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#08734F;">11 min</div>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 0.7fr 0.9fr 1.4fr 1fr;gap:14px;align-items:center;padding:13px 28px;border-bottom:1px solid #F1F3F7;">
+            <div style="font-size:13.5px;font-weight:600;">S. Pillai</div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O−</div>
+            <div style="font-size:13px;color:#58637A;">3.4 km</div>
+            <div style="display:flex;align-items:center;gap:8px;"><span class="soft" style="width:7px;height:7px;border-radius:4px;background:#E49412;"></span><span style="font-size:13px;font-weight:600;color:#A96206;">Ringing</span></div>
+            <div style="text-align:right;font-size:13px;color:#C3CAD5;">—</div>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 0.7fr 0.9fr 1.4fr 1fr;gap:14px;align-items:center;padding:13px 28px;">
+            <div style="font-size:13.5px;font-weight:600;">D. Varma</div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O−</div>
+            <div style="font-size:13px;color:#58637A;">4.1 km</div>
+            <div style="display:flex;align-items:center;gap:8px;"><span class="soft" style="width:7px;height:7px;border-radius:4px;background:#2E5FEA;"></span><span style="font-size:13px;font-weight:600;color:#1E46B8;">Calling · Tamil</span></div>
+            <div style="text-align:right;font-size:13px;color:#C3CAD5;">—</div>
+          </div>
+        </div>
+
+        <div style="width:420px;flex-shrink:0;">
+          <div style="padding:11px 24px;background:#F8FAFC;font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">AI ACTIVITY</div>
+          <div style="padding:16px 24px;">
+            <div style="display:flex;gap:11px;">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:40px;flex-shrink:0;padding-top:1px;">12:43</span>
+              <span style="width:11px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;"><span style="width:8px;height:8px;border-radius:4px;background:#0E9B6C;margin-top:4px;"></span><span style="flex-grow:1;width:1.5px;background:#EDF0F5;margin:4px 0;"></span></span>
+              <span style="flex-grow:1;padding-bottom:14px;"><span style="display:block;font-size:13px;font-weight:600;color:#08734F;">Donor accepted · D-038</span><span style="display:block;font-size:11.5px;color:#8B95A7;margin-top:3px;">ETA 11 min</span></span>
+            </div>
+            <div style="display:flex;gap:11px;">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:40px;flex-shrink:0;padding-top:1px;">12:42</span>
+              <span style="width:11px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;"><span style="width:8px;height:8px;border-radius:4px;background:#2E5FEA;margin-top:4px;"></span><span style="flex-grow:1;width:1.5px;background:#EDF0F5;margin:4px 0;"></span></span>
+              <span style="flex-grow:1;padding-bottom:14px;"><span style="display:block;font-size:13px;font-weight:600;">Eligibility confirmed</span><span style="display:block;font-size:11.5px;color:#8B95A7;margin-top:3px;">94 days since last donation</span></span>
+            </div>
+            <div style="display:flex;gap:11px;">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:40px;flex-shrink:0;padding-top:1px;">12:41</span>
+              <span style="width:11px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;"><span style="width:8px;height:8px;border-radius:4px;background:#6941F5;margin-top:4px;"></span></span>
+              <span style="flex-grow:1;"><span style="display:block;font-size:13px;font-weight:600;">Sarvam AI calling donor D-038</span><span style="display:block;font-size:11.5px;color:#8B95A7;margin-top:3px;">Tamil · voice outreach</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPEC -->
+  <div style="margin:110px 80px 0;display:flex;gap:80px;">
+    <div style="width:340px;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#8B95A7;letter-spacing:0.1em;margin-bottom:14px;">HOW IT HOLDS UP</div>
+      <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:600;letter-spacing:-0.03em;line-height:1.2;">Built for the worst fifteen minutes of someone's day.</h2>
+    </div>
+    <div style="flex-grow:1;">
+      <div style="display:flex;align-items:flex-start;gap:30px;padding:22px 0;border-top:1px solid #E7E5E1;">
+        <div style="width:190px;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;">Donor matching</div>
+        <div style="flex-grow:1;font-size:14px;color:#58637A;line-height:1.6;">A Neo4j graph holds donor relationships, geography and donation history, so blood group, radius and the 56-day cooldown resolve as a single traversal.</div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#6941F5;">12 ms</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:30px;padding:22px 0;border-top:1px solid #E7E5E1;">
+        <div style="width:190px;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;">Voice outreach</div>
+        <div style="flex-grow:1;font-size:14px;color:#58637A;line-height:1.6;">Sarvam AI speech models stream over Twilio, so the call sounds like a person in English, Hindi or Tamil. Calls go out concurrently, never one after another.</div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#2E5FEA;">20 lines</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:30px;padding:22px 0;border-top:1px solid #E7E5E1;">
+        <div style="width:190px;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;">Orchestration</div>
+        <div style="flex-grow:1;font-size:14px;color:#58637A;line-height:1.6;">A LangGraph state machine drives every call from initiate to routed, so a dropped line or a declined request never stalls the dispatch.</div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#58637A;">6 states</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:30px;padding:22px 0;border-top:1px solid #E7E5E1;border-bottom:1px solid #E7E5E1;">
+        <div style="width:190px;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;">Last mile</div>
+        <div style="flex-grow:1;font-size:14px;color:#58637A;line-height:1.6;">Accepted donors get push navigation to the exact ward. No app installed? An SMS with a tracking link goes out instead, so a willing donor is never lost to friction.</div>
+        <div style="width:110px;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#08734F;">91% arrive</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="margin:96px 80px 0;padding:52px 56px;background:#FFFFFF;border:1px solid #EFEDE9;border-radius:18px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;">Stop dialling donors one at a time.</div>
+      <div style="font-size:14.5px;color:#58637A;margin-top:11px;">Onboard your blood bank and run your next emergency through HaemNet.</div>
+    </div>
+    <div style="display:flex;gap:12px;">
+      <div style="display:flex;align-items:center;border:1px solid #E4E8EF;color:#0F1A2B;font-weight:600;font-size:14px;padding:15px 24px;border-radius:9px;">Talk to the team</div>
+      <a href="Login.dc.html" style="display:flex;align-items:center;gap:8px;background:#0F1A2B;color:#FFFFFF;font-weight:600;font-size:14px;padding:15px 26px;border-radius:9px;">
+        Hospital login
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div style="margin-top:48px;padding:26px 80px;border-top:1px solid #EAE8E4;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:12.5px;color:#8B95A7;">HaemNet · Team DROS · NAMESPACE HackHazards '26</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#AEB6C4;">FastAPI · Neo4j · LangGraph · Sarvam AI · Twilio · Expo</span>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

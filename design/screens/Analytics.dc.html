@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HaemNet — Network Intelligence</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',sans-serif;background:#F5F7FA;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:#CCDAFB;color:#0F1A2B}
+@keyframes hn-ping{0%{transform:scale(1);opacity:.45}70%{transform:scale(2.4);opacity:0}100%{opacity:0}}
+@keyframes hn-soft{0%,100%{opacity:1}50%{opacity:.45}}
+.ping{position:absolute;inset:0;border-radius:50%;animation:hn-ping 2s cubic-bezier(0,0,.2,1) infinite}
+.soft{animation:hn-soft 1.8s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width:1600px;height:1240px;box-sizing:border-box;display:flex;background:#F5F7FA;color:#0F1A2B;overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <div style="width:232px;flex-shrink:0;box-sizing:border-box;display:flex;flex-direction:column;background:#FFFFFF;border-right:1px solid #E4E8EF;">
+    <div style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 18px;">
+      <svg width="26" height="26" viewBox="0 0 24 24" style="color:#0F1A2B;flex-shrink:0;">
+        <path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 9.6L9.2 14.4M12 9.6l2.8 4.8M9.2 14.4h5.6" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+        <circle cx="12" cy="9.6" r="1.7" fill="#D92D20"/>
+        <circle cx="9.2" cy="14.4" r="1.3" fill="currentColor"/>
+        <circle cx="14.8" cy="14.4" r="1.3" fill="currentColor"/>
+      </svg>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;letter-spacing:-0.02em;">HaemNet</span>
+    </div>
+
+    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:1px;">
+      <div style="font-size:10.5px;font-weight:600;color:#8B95A7;letter-spacing:0.08em;padding:12px 10px 8px;">OPERATIONS</div>
+      <a href="Dashboard.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Command Center</span>
+        <span class="soft" style="width:6px;height:6px;border-radius:3px;background:#D92D20;"></span>
+      </a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Emergencies</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#B42318;background:#FEF3F2;padding:1px 7px;border-radius:5px;">2</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Donor Network</span>
+      </div>
+      <a href="Map.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/></svg>
+        <span style="font-size:13.5px;color:#58637A;flex-grow:1;">Dispatch Map</span>
+      </a>
+      <a href="Analytics.dc.html" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:7px;background:#EDF2F9;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2E5FEA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 4 5-8"/></svg>
+        <span style="font-size:13.5px;font-weight:600;color:#0F1A2B;flex-grow:1;">Network Intelligence</span>
+      </a>
+    </div>
+
+    <div style="flex-grow:1;"></div>
+
+    <div style="padding:14px 16px 16px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#F0FAF5;margin-bottom:12px;">
+        <span style="position:relative;width:6px;height:6px;flex-shrink:0;"><span class="ping" style="background:#0E9B6C;"></span><span style="position:absolute;inset:0;border-radius:3px;background:#0E9B6C;"></span></span>
+        <span style="font-size:11.5px;font-weight:600;color:#08734F;">Network operational</span>
+      </div>
+      <a href="Login.dc.html" style="display:flex;align-items:center;gap:10px;padding-top:12px;border-top:1px solid #EDF0F5;">
+        <div style="width:28px;height:28px;border-radius:14px;background:#EDF2F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#58637A;flex-shrink:0;">RS</div>
+        <div style="flex-grow:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;">Dr. R. Sundaram</div>
+          <div style="font-size:10.5px;color:#8B95A7;margin-top:1px;">Apollo · Blood Bank</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0;">
+
+    <div style="height:60px;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:#FFFFFF;border-bottom:1px solid #E4E8EF;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;letter-spacing:-0.015em;">Network Intelligence</span>
+        <span style="width:1px;height:18px;background:#E4E8EF;"></span>
+        <span style="font-size:12.5px;color:#58637A;">Chennai metro cluster · 14 hospitals</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:2px;background:#F1F4F8;padding:2px;border-radius:7px;">
+          <span style="font-size:12px;color:#58637A;padding:6px 12px;">7 days</span>
+          <span style="font-size:12px;font-weight:600;color:#0F1A2B;background:#FFFFFF;padding:6px 12px;border-radius:5px;box-shadow:0 1px 2px rgba(16,24,40,0.06);">30 days</span>
+          <span style="font-size:12px;color:#58637A;padding:6px 12px;">Quarter</span>
+        </div>
+        <button type="button" style="display:flex;align-items:center;gap:7px;background:#FFFFFF;border:1px solid #E4E8EF;color:#0F1A2B;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:7px;cursor:pointer;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#58637A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI STRIP -->
+    <div style="flex-shrink:0;display:flex;align-items:stretch;padding:18px 22px 16px;border-bottom:1px solid #E9ECF2;">
+      <div style="flex-grow:1;padding-right:26px;">
+        <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">REQUESTS</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;">128</span>
+          <span style="font-size:12px;color:#08734F;">↑ 14%</span>
+        </div>
+      </div>
+      <div style="width:1px;background:#E9ECF2;"></div>
+      <div style="flex-grow:1;padding:0 26px;">
+        <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">FULFILMENT RATE</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;color:#08734F;">96.8%</span>
+          <span style="font-size:12px;color:#58637A;">124 of 128</span>
+        </div>
+      </div>
+      <div style="width:1px;background:#E9ECF2;"></div>
+      <div style="flex-grow:1;padding:0 26px;">
+        <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">MEDIAN RESPONSE</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;">2:48</span>
+          <span style="font-size:12px;color:#08734F;">38s faster</span>
+        </div>
+      </div>
+      <div style="width:1px;background:#E9ECF2;"></div>
+      <div style="flex-grow:1;padding:0 26px;">
+        <div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">SUCCESSFUL DONATIONS</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;">141</span>
+          <span style="font-size:12px;color:#58637A;">units delivered</span>
+        </div>
+      </div>
+      <div style="width:1px;background:#E9ECF2;"></div>
+      <div style="width:260px;flex-shrink:0;padding-left:26px;">
+        <div style="font-size:11px;font-weight:600;color:#B42318;letter-spacing:0.05em;">UNRESOLVED CRITICAL</div>
+        <div style="display:flex;align-items:baseline;gap:9px;margin-top:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;color:#D92D20;">4</span>
+          <span style="font-size:12px;color:#58637A;">all O− shortage driven</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div style="flex-grow:1;padding:18px 22px 20px;display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;">
+
+      <!-- ROW 1 -->
+      <div style="flex-shrink:0;display:flex;background:#FFFFFF;border:1px solid #E4E8EF;border-radius:11px;box-shadow:0 1px 2px rgba(16,24,40,0.04);overflow:hidden;height:292px;">
+
+        <div style="flex-grow:1;padding:18px 20px;display:flex;flex-direction:column;min-width:0;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;">
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;">Emergency request volume</div>
+              <div style="font-size:12px;color:#8B95A7;margin-top:4px;">Daily requests over the last 30 days</div>
+            </div>
+            <div style="display:flex;gap:16px;">
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:2px;background:#2E5FEA;"></span><span style="font-size:11.5px;color:#58637A;">Routine &amp; urgent</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:2px;background:#D92D20;"></span><span style="font-size:11.5px;color:#58637A;">Critical</span></div>
+            </div>
+          </div>
+          <div style="flex-grow:1;display:flex;align-items:flex-end;gap:5px;margin-top:20px;border-bottom:1px solid #E9ECF2;padding-bottom:1px;">
+            <sc-for list="{{volume}}" as="b" hint-placeholder-count="30">
+              <div style="flex-grow:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%;">
+                <div style="{{b.critStyle}}"></div>
+                <div style="{{b.baseStyle}}"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:9px;flex-shrink:0;font-size:11px;color:#8B95A7;">
+            <span>Aug 20</span><span>Aug 27</span><span>Sep 3</span><span>Sep 10</span><span>Sep 18</span>
+          </div>
+        </div>
+
+        <div style="width:1px;background:#EDF0F5;flex-shrink:0;"></div>
+
+        <div style="width:470px;flex-shrink:0;padding:18px 20px;display:flex;flex-direction:column;">
+          <div style="flex-shrink:0;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;">Response funnel</div>
+            <div style="font-size:12px;color:#8B95A7;margin-top:4px;">Across 128 requests · where donors drop off</div>
+          </div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;justify-content:center;gap:7px;margin-top:14px;">
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:12.5px;color:#58637A;">Eligible donors matched</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;">6,204</span>
+              </div>
+              <div style="height:11px;border-radius:3px;background:#2E5FEA;width:100%;"></div>
+            </div>
+            <div style="font-size:11px;color:#8B95A7;padding-left:1px;">54% dialled</div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:12.5px;color:#58637A;">Contacted by AI voice</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;">3,379</span>
+              </div>
+              <div style="height:11px;border-radius:3px;background:#2E5FEA;opacity:0.78;width:54%;"></div>
+            </div>
+            <div style="font-size:11px;color:#8B95A7;padding-left:1px;">38% answered</div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:12.5px;color:#58637A;">Answered</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;">1,284</span>
+              </div>
+              <div style="height:11px;border-radius:3px;background:#2E5FEA;opacity:0.56;width:21%;"></div>
+            </div>
+            <div style="font-size:11px;color:#8B95A7;padding-left:1px;">29% accepted</div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:12.5px;color:#58637A;">Accepted</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#08734F;">372</span>
+              </div>
+              <div style="height:11px;border-radius:3px;background:#0E9B6C;width:9%;"></div>
+            </div>
+            <div style="font-size:11px;color:#8B95A7;padding-left:1px;">91% arrived and donated</div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:12.5px;color:#58637A;">Donation completed</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#08734F;">141</span>
+              </div>
+              <div style="height:11px;border-radius:3px;background:#0E9B6C;width:6%;"></div>
+            </div>
+          </div>
+          <div style="flex-shrink:0;margin-top:12px;padding-top:12px;border-top:1px solid #EDF0F5;display:flex;align-items:center;gap:9px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E49412" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+            <span style="font-size:12px;color:#58637A;">Pickup rate is the bottleneck. Evening calls answer <span style="color:#0F1A2B;font-weight:600;">22% more often</span>.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 2 -->
+      <div style="flex-shrink:0;display:flex;background:#FFFFFF;border:1px solid #E4E8EF;border-radius:11px;box-shadow:0 1px 2px rgba(16,24,40,0.04);overflow:hidden;height:326px;">
+
+        <div style="width:700px;flex-shrink:0;padding:18px 20px;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;">
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;">Blood group demand vs available donors</div>
+              <div style="font-size:12px;color:#8B95A7;margin-top:4px;">Units requested in 30 days against the ready-to-donate pool</div>
+            </div>
+            <div style="display:flex;gap:16px;">
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:2px;background:#2E5FEA;"></span><span style="font-size:11.5px;color:#58637A;">Demand</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:2px;background:#0E9B6C;"></span><span style="font-size:11.5px;color:#58637A;">Available</span></div>
+            </div>
+          </div>
+          <div style="flex-grow:1;display:flex;flex-direction:column;justify-content:center;margin-top:10px;">
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="8">
+              <div style="{{g.rowStyle}}">
+                <span style="width:40px;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:{{g.labelColor}};">{{g.label}}</span>
+                <span style="flex-grow:1;display:flex;flex-direction:column;gap:4px;min-width:0;">
+                  <span style="{{g.demandStyle}}"></span>
+                  <span style="{{g.supplyStyle}}"></span>
+                </span>
+                <span style="width:112px;flex-shrink:0;text-align:right;font-size:11.5px;color:#58637A;">{{g.demand}} req · {{g.supply}} avail</span>
+                <span style="{{g.flagStyle}}">{{g.flag}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="width:1px;background:#EDF0F5;flex-shrink:0;"></div>
+
+        <div style="flex-grow:1;padding:18px 20px;display:flex;flex-direction:column;min-width:0;">
+          <div style="flex-shrink:0;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;">Time to first acceptance</div>
+            <div style="font-size:12px;color:#8B95A7;margin-top:4px;">Distribution across 124 fulfilled requests</div>
+          </div>
+          <div style="display:flex;gap:30px;margin-top:16px;flex-shrink:0;">
+            <div><div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">MEDIAN</div><div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:#08734F;line-height:1;">2:48</div></div>
+            <div><div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">P90</div><div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;line-height:1;">6:31</div></div>
+            <div><div style="font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">SLOWEST</div><div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:#A96206;line-height:1;">14:02</div></div>
+          </div>
+          <div style="flex-grow:1;display:flex;align-items:flex-end;gap:5px;margin-top:18px;border-bottom:1px solid #E9ECF2;">
+            <sc-for list="{{dist}}" as="h" hint-placeholder-count="12">
+              <div style="{{h.style}}"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:9px;flex-shrink:0;font-size:11px;color:#8B95A7;">
+            <span>0 min</span><span>3 min</span><span>6 min</span><span>9 min</span><span>12 min+</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLE -->
+      <div style="flex-shrink:0;background:#FFFFFF;border:1px solid #E4E8EF;border-radius:11px;box-shadow:0 1px 2px rgba(16,24,40,0.04);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;">Request history</span>
+            <span style="font-size:12px;color:#8B95A7;">128 records</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="display:flex;align-items:center;gap:2px;background:#F1F4F8;padding:2px;border-radius:7px;">
+              <span style="font-size:12px;font-weight:600;color:#0F1A2B;background:#FFFFFF;padding:5px 11px;border-radius:5px;box-shadow:0 1px 2px rgba(16,24,40,0.06);">All</span>
+              <span style="font-size:12px;color:#58637A;padding:5px 11px;">Fulfilled 124</span>
+              <span style="font-size:12px;color:#B42318;padding:5px 11px;">Unresolved 4</span>
+            </div>
+            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#58637A;border:1px solid #E4E8EF;padding:6px 11px;border-radius:7px;">Blood group
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#58637A;border:1px solid #E4E8EF;padding:6px 11px;border-radius:7px;">Hospital
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8B95A7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;padding:9px 20px;background:#F8FAFC;border-top:1px solid #EDF0F5;border-bottom:1px solid #EDF0F5;font-size:11px;font-weight:600;color:#8B95A7;letter-spacing:0.05em;">
+          <div>HOSPITAL</div><div>BLOOD</div><div>UNITS</div><div>TRIGGERED</div><div>CONTACTED</div><div>ACCEPTED</div><div>TIME TO FULFIL</div><div style="text-align:right;">STATUS</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #F1F3F7;background:#FFFBFA;">
+          <div style="font-size:13.5px;font-weight:600;">Apollo Hospital</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O−</div>
+          <div style="font-size:13px;color:#58637A;">3</div>
+          <div style="font-size:13px;color:#58637A;">Sep 18, 12:40</div>
+          <div style="font-size:13px;color:#58637A;">34</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">3</div>
+          <div style="font-size:13px;color:#8B95A7;">In progress</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#FEF3F2;color:#B42318;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;"><span class="soft" style="width:6px;height:6px;border-radius:3px;background:#D92D20;"></span>Active</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #F1F3F7;">
+          <div style="font-size:13.5px;font-weight:600;">City General</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">B+</div>
+          <div style="font-size:13px;color:#58637A;">2</div>
+          <div style="font-size:13px;color:#58637A;">Sep 18, 12:27</div>
+          <div style="font-size:13px;color:#58637A;">19</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">1</div>
+          <div style="font-size:13px;color:#8B95A7;">In progress</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#FFF8EB;color:#A96206;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;">Contacting</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #F1F3F7;">
+          <div style="font-size:13.5px;font-weight:600;">St. Xavier's Medical</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">A+</div>
+          <div style="font-size:13px;color:#58637A;">1</div>
+          <div style="font-size:13px;color:#58637A;">Sep 18, 11:58</div>
+          <div style="font-size:13px;color:#58637A;">12</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">2</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">7:12</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#E7F6EF;color:#08734F;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;">Fulfilled</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #F1F3F7;">
+          <div style="font-size:13.5px;font-weight:600;">Kauvery Hospital</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">AB−</div>
+          <div style="font-size:13px;color:#58637A;">2</div>
+          <div style="font-size:13px;color:#58637A;">Sep 17, 22:03</div>
+          <div style="font-size:13px;color:#58637A;">48</div>
+          <div style="font-size:13px;font-weight:600;color:#A96206;">1</div>
+          <div style="font-size:13px;color:#A96206;">21:40</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#FFF8EB;color:#A96206;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;">Partial</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #F1F3F7;">
+          <div style="font-size:13.5px;font-weight:600;">Government General</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O+</div>
+          <div style="font-size:13px;color:#58637A;">4</div>
+          <div style="font-size:13px;color:#58637A;">Sep 17, 18:11</div>
+          <div style="font-size:13px;color:#58637A;">22</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">4</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">4:36</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#E7F6EF;color:#08734F;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;">Fulfilled</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.7fr 0.7fr 0.6fr 1.2fr 1fr 0.9fr 1.1fr 1.1fr;gap:14px;align-items:center;padding:12px 20px;">
+          <div style="font-size:13.5px;font-weight:600;">Apollo Hospital</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;">O−</div>
+          <div style="font-size:13px;color:#58637A;">2</div>
+          <div style="font-size:13px;color:#58637A;">Sep 16, 09:27</div>
+          <div style="font-size:13px;color:#58637A;">31</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">3</div>
+          <div style="font-size:13px;font-weight:600;color:#08734F;">3:02</div>
+          <div style="text-align:right;"><span style="display:inline-flex;align-items:center;gap:6px;background:#E7F6EF;color:#08734F;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;">Fulfilled</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const vol = [3,5,4,7,6,4,8,5,9,6,5,7,11,8,6,9,7,5,8,12,9,7,10,8,6,9,13,10,8,11];
+    const crit = [1,1,0,2,1,1,3,1,2,2,1,2,4,2,1,3,2,1,2,5,3,2,3,2,1,3,5,3,2,4];
+    const maxV = 14;
+    const volume = vol.map((v, i) => {
+      const totalH = Math.round((v / maxV) * 150);
+      const cH = Math.round((crit[i] / maxV) * 150);
+      return {
+        critStyle: 'height:' + cH + 'px;border-radius:3px 3px 0 0;background:#D92D20;',
+        baseStyle: 'height:' + (totalH - cH) + 'px;border-radius:' + (cH > 0 ? '0' : '3px 3px 0 0') + ';background:#2E5FEA;opacity:0.82;'
+      };
+    });
+
+    const raw = [
+      { label: 'O−', demand: 38, supply: 12, crit: true },
+      { label: 'O+', demand: 46, supply: 61, crit: false },
+      { label: 'A+', demand: 29, supply: 44, crit: false },
+      { label: 'A−', demand: 14, supply: 9, crit: true },
+      { label: 'B+', demand: 33, supply: 38, crit: false },
+      { label: 'B−', demand: 11, supply: 7, crit: true },
+      { label: 'AB+', demand: 8, supply: 14, crit: false },
+      { label: 'AB−', demand: 6, supply: 3, crit: true }
+    ];
+    const maxG = 65;
+    const groups = raw.map((g) => ({
+      label: g.label,
+      demand: g.demand,
+      supply: g.supply,
+      rowStyle: 'display:flex;align-items:center;gap:14px;padding:7px 10px;border-radius:8px;background:' + (g.crit ? '#FFF8F7' : 'transparent') + ';',
+      labelColor: g.crit ? '#B42318' : '#0F1A2B',
+      demandStyle: 'display:block;height:10px;border-radius:3px;background:#2E5FEA;width:' + Math.round((g.demand / maxG) * 100) + '%;',
+      supplyStyle: 'display:block;height:10px;border-radius:3px;background:' + (g.crit ? '#E8A9A3' : '#0E9B6C') + ';width:' + Math.round((g.supply / maxG) * 100) + '%;',
+      flag: g.crit ? 'SHORT BY ' + (g.demand - g.supply) : 'Healthy',
+      flagStyle: 'width:104px;flex-shrink:0;text-align:right;font-size:11px;font-weight:600;letter-spacing:0.04em;color:' + (g.crit ? '#B42318' : '#8B95A7') + ';'
+    }));
+
+    const d = [4, 12, 26, 31, 22, 14, 9, 6, 4, 3, 2, 1];
+    const maxD = 32;
+    const dist = d.map((v, i) => ({
+      style: 'flex-grow:1;border-radius:3px 3px 0 0;height:' + Math.round((v / maxD) * 120) + 'px;background:' + (i <= 3 ? '#0E9B6C' : (i <= 7 ? '#2E5FEA' : '#E49412')) + ';opacity:' + (i <= 3 ? '1' : '0.7') + ';'
+    }));
+
+    return { volume: volume, groups: groups, dist: dist };
+  }
+}
+</script>
+</body>
+</html>

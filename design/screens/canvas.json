@@ -1,0 +1,31 @@
+{
+  "v": 3,
+  "attachments": {},
+  "createdOnFiles": { "at": "2026-09-18T00:00:00Z", "v": 1 },
+  "title": "HaemNet Redesign",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "designSystems": [],
+  "boards": {
+    "Landing.dc.html": { "x": 0, "y": 0, "w": 1600, "h": 1900, "title": "Landing", "is_interactive": true },
+    "Login.dc.html": { "x": 1680, "y": 0, "w": 1600, "h": 1000, "title": "Hospital Access", "is_interactive": true },
+    "Dashboard.dc.html": { "x": 3360, "y": 0, "w": 1600, "h": 1000, "title": "Command Center", "is_interactive": true },
+    "Map.dc.html": { "x": 5040, "y": 0, "w": 1600, "h": 1000, "title": "Dispatch Map", "is_interactive": true },
+    "Analytics.dc.html": { "x": 6720, "y": 0, "w": 1600, "h": 1240, "title": "Network Intelligence", "is_interactive": true },
+    "DonorHome.dc.html": { "x": 1680, "y": 1400, "w": 390, "h": 844, "title": "Donor App — Home", "is_interactive": true },
+    "DonorAlert.dc.html": { "x": 2150, "y": 1400, "w": 390, "h": 844, "title": "Donor App — Urgent Request", "is_interactive": true }
+  },
+  "order": [
+    "Landing.dc.html",
+    "Login.dc.html",
+    "Dashboard.dc.html",
+    "Map.dc.html",
+    "Analytics.dc.html",
+    "DonorHome.dc.html",
+    "DonorAlert.dc.html"
+  ],
+  "notes": {
+    "n1": { "kind": "title1", "maxW": 4000, "text": "HaemNet — emergency blood response platform", "w": 240, "x": 0, "y": -230 },
+    "n2": { "kind": "title1", "maxW": 900, "size": 24, "text": "Donor mobile app", "w": 240, "x": 1680, "y": 1240 }
+  }
+}

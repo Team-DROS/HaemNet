@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HaemNet Donor — Urgent Blood Request</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',sans-serif;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+@keyframes hn-soft{0%,100%{opacity:1}50%{opacity:.4}}
+.soft{animation:hn-soft 1.6s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#FFFFFF;color:#0F1A2B;overflow:hidden;display:flex;flex-direction:column;">
+
+  <!-- HEADER BAND -->
+  <div style="flex-shrink:0;background:#FEF3F2;padding:26px 24px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <span class="soft" style="width:7px;height:7px;border-radius:4px;background:#D92D20;"></span>
+        <span style="font-size:12px;font-weight:600;color:#B42318;letter-spacing:0.1em;">URGENT BLOOD REQUEST</span>
+      </div>
+      <a href="DonorHome.dc.html" aria-label="Dismiss" style="width:30px;height:30px;border-radius:9px;background:rgba(217,45,32,0.08);display:flex;align-items:center;justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B42318" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </a>
+    </div>
+
+    <div style="display:flex;align-items:baseline;gap:14px;margin-top:22px;">
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:66px;font-weight:700;color:#D92D20;line-height:1;letter-spacing:-0.035em;">O−</span>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:600;color:#0F1A2B;">needed</span>
+    </div>
+    <div style="font-size:14px;color:#7A6461;margin-top:12px;">You are a match and eligible to donate today.</div>
+  </div>
+
+  <!-- DETAILS -->
+  <div style="flex-shrink:0;padding:6px 24px 0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid #EDF0F5;">
+      <span style="font-size:14px;color:#58637A;">Hospital</span>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;">Apollo Hospital</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid #EDF0F5;">
+      <span style="font-size:14px;color:#58637A;">Distance</span>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;">2.4 km away</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid #EDF0F5;">
+      <span style="font-size:14px;color:#58637A;">Travel time</span>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;">8 min</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 0;">
+      <span style="font-size:14px;color:#58637A;">Units required</span>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;">3</span>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span style="font-size:13px;color:#8B95A7;">Please respond within <span style="color:#0F1A2B;font-weight:600;">1:42</span></span>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div style="flex-shrink:0;padding:0 24px 40px;">
+    <div style="display:flex;align-items:center;justify-content:center;gap:11px;background:#0E9B6C;color:#FFFFFF;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:19px;padding:22px;border-radius:14px;box-shadow:0 6px 18px rgba(14,155,108,0.24);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      I CAN DONATE
+    </div>
+    <a href="DonorHome.dc.html" style="display:flex;align-items:center;justify-content:center;padding:18px;margin-top:10px;border-radius:12px;font-size:14.5px;font-weight:500;color:#8B95A7;">
+      I can't donate right now
+    </a>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

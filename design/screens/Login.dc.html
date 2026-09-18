@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HaemNet — Hospital Access</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',sans-serif;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:#CCDAFB;color:#0F1A2B}
+@keyframes hn-ping{0%{transform:scale(1);opacity:.4}70%{transform:scale(3);opacity:0}100%{opacity:0}}
+@keyframes hn-dash{to{stroke-dashoffset:-30}}
+@keyframes hn-fade{0%,100%{opacity:.35}50%{opacity:1}}
+.ping{position:absolute;inset:0;border-radius:50%;animation:hn-ping 2.6s cubic-bezier(0,0,.2,1) infinite}
+.flow{stroke-dasharray:4 7;animation:hn-dash 3s linear infinite}
+.twinkle{animation:hn-fade 4s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width:1600px;height:1000px;box-sizing:border-box;display:flex;background:#FFFFFF;color:#0F1A2B;overflow:hidden;">
+
+  <!-- LEFT -->
+  <div style="width:580px;flex-shrink:0;box-sizing:border-box;display:flex;flex-direction:column;padding:44px 64px;background:#FFFFFF;">
+
+    <a href="Landing.dc.html" style="display:flex;align-items:center;gap:11px;flex-shrink:0;">
+      <svg width="30" height="30" viewBox="0 0 24 24" style="color:#0F1A2B;flex-shrink:0;">
+        <path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 9.6L9.2 14.4M12 9.6l2.8 4.8M9.2 14.4h5.6" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+        <circle cx="12" cy="9.6" r="1.7" fill="#D92D20"/>
+        <circle cx="9.2" cy="14.4" r="1.3" fill="currentColor"/>
+        <circle cx="14.8" cy="14.4" r="1.3" fill="currentColor"/>
+      </svg>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-0.02em;">HaemNet</span>
+    </a>
+
+    <div style="flex-grow:1;display:flex;flex-direction:column;justify-content:center;">
+      <h1 style="margin:0 0 8px;font-family:'Space Grotesk',sans-serif;font-size:29px;font-weight:600;letter-spacing:-0.02em;">Sign in to the hospital network</h1>
+      <p style="margin:0 0 34px;font-size:14px;color:#58637A;line-height:1.6;max-width:400px;">Credentialed blood bank staff only. Every dispatch, call and acceptance is recorded against your hospital ID.</p>
+
+      <label for="hn-id" style="display:block;font-size:12.5px;font-weight:600;color:#0F1A2B;margin-bottom:8px;">Hospital ID</label>
+      <div style="display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;padding:0 14px;border-radius:9px;border:1px solid #E4E8EF;background:#FFFFFF;box-shadow:0 1px 2px rgba(16,24,40,0.04);margin-bottom:20px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/></svg>
+        <input id="hn-id" type="text" value="HOSP-042" readonly style="flex-grow:1;padding:13px 0;border:none;background:transparent;color:#0F1A2B;font-size:14px;font-family:'IBM Plex Mono',monospace;outline:none;">
+        <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#08734F;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0E9B6C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          Verified
+        </span>
+      </div>
+
+      <label for="hn-pw" style="display:block;font-size:12.5px;font-weight:600;color:#0F1A2B;margin-bottom:8px;">Password</label>
+      <div style="display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;padding:0 14px;border-radius:9px;border:1px solid #E4E8EF;background:#FFFFFF;box-shadow:0 1px 2px rgba(16,24,40,0.04);margin-bottom:16px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#AEB6C4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <input id="hn-pw" type="password" value="notarealpassword" readonly style="flex-grow:1;padding:13px 0;border:none;background:transparent;color:#0F1A2B;font-size:14px;font-family:'IBM Plex Sans',sans-serif;outline:none;">
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#58637A;cursor:pointer;">
+          <input type="checkbox" checked readonly style="width:15px;height:15px;accent-color:#2E5FEA;">
+          Trust this workstation
+        </label>
+        <a href="#" style="font-size:13px;font-weight:500;color:#2E5FEA;">Reset access</a>
+      </div>
+
+      <a href="Dashboard.dc.html" style="display:flex;align-items:center;justify-content:center;gap:9px;background:#0F1A2B;color:#FFFFFF;font-weight:600;font-size:14.5px;padding:15px;border-radius:9px;">
+        Sign in
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-top:20px;padding:13px 15px;border-radius:9px;background:#F8FAFC;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6941F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span style="font-size:12.5px;color:#58637A;">A second factor will be sent to the registered blood bank number ending <span style="font-family:'IBM Plex Mono',monospace;color:#0F1A2B;">••41</span></span>
+      </div>
+    </div>
+
+    <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#8B95A7;">
+      <span>New facility? <a href="#" style="color:#2E5FEA;font-weight:500;">Onboard a hospital</a></span>
+      <span style="font-family:'IBM Plex Mono',monospace;">v2.4.1</span>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div style="flex-grow:1;position:relative;background:#F7F9FC;border-left:1px solid #EDF0F5;overflow:hidden;min-width:0;">
+
+    <svg width="1020" height="1000" viewBox="0 0 1020 1000" style="position:absolute;top:0;left:0;">
+      <path class="flow" d="M510 470 L300 310" stroke="#C9D6EB" stroke-width="1.2" fill="none"/>
+      <path class="flow" d="M510 470 L740 340" stroke="#C9D6EB" stroke-width="1.2" fill="none"/>
+      <path class="flow" d="M510 470 L340 650" stroke="#BFE0D2" stroke-width="1.2" fill="none"/>
+      <path class="flow" d="M510 470 L760 640" stroke="#C9D6EB" stroke-width="1.2" fill="none"/>
+      <path d="M300 310 L180 470" stroke="#E1E7F0" stroke-width="1" fill="none"/>
+      <path d="M740 340 L860 500" stroke="#E1E7F0" stroke-width="1" fill="none"/>
+      <path d="M340 650 L250 790" stroke="#E1E7F0" stroke-width="1" fill="none"/>
+      <path d="M760 640 L850 780" stroke="#E1E7F0" stroke-width="1" fill="none"/>
+      <path d="M300 310 L510 470 L740 340" stroke="#EAE0E0" stroke-width="1" fill="none"/>
+      <path d="M340 650 L510 470 L760 640" stroke="#EAE0E0" stroke-width="1" fill="none"/>
+      <circle cx="510" cy="470" r="150" fill="none" stroke="#E7EBF2" stroke-width="1" stroke-dasharray="3 8"/>
+      <circle cx="510" cy="470" r="280" fill="none" stroke="#EBEFF5" stroke-width="1" stroke-dasharray="3 8"/>
+      <circle cx="510" cy="470" r="410" fill="none" stroke="#EFF2F7" stroke-width="1" stroke-dasharray="3 8"/>
+    </svg>
+
+    <sc-for list="{{nodes}}" as="n" hint-placeholder-count="40">
+      <span class="twinkle" style="{{n.style}}"></span>
+    </sc-for>
+
+    <div style="position:absolute;left:286px;top:296px;display:flex;align-items:center;gap:8px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:#2E5FEA;border:2px solid #F7F9FC;"></span>
+      <span style="font-size:11.5px;color:#58637A;">Kauvery</span>
+    </div>
+    <div style="position:absolute;left:726px;top:326px;display:flex;align-items:center;gap:8px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:#2E5FEA;border:2px solid #F7F9FC;"></span>
+      <span style="font-size:11.5px;color:#58637A;">City General</span>
+    </div>
+    <div style="position:absolute;left:326px;top:636px;display:flex;align-items:center;gap:8px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:#0E9B6C;border:2px solid #F7F9FC;"></span>
+      <span style="font-size:11.5px;color:#58637A;">St. Xavier's</span>
+    </div>
+    <div style="position:absolute;left:746px;top:626px;display:flex;align-items:center;gap:8px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:#2E5FEA;border:2px solid #F7F9FC;"></span>
+      <span style="font-size:11.5px;color:#58637A;">Govt. General</span>
+    </div>
+
+    <div style="position:absolute;left:488px;top:448px;width:44px;height:44px;">
+      <span class="ping" style="background:rgba(217,45,32,0.28);"></span>
+      <div style="position:absolute;inset:0;border-radius:13px;background:#FFFFFF;box-shadow:0 4px 14px rgba(16,24,40,0.12);display:flex;align-items:center;justify-content:center;">
+        <svg width="24" height="24" viewBox="0 0 24 24" style="color:#0F1A2B;">
+          <path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="12" cy="9.6" r="1.7" fill="#D92D20"/>
+          <circle cx="9.2" cy="14.4" r="1.3" fill="currentColor"/>
+          <circle cx="14.8" cy="14.4" r="1.3" fill="currentColor"/>
+        </svg>
+      </div>
+    </div>
+
+    <div style="position:absolute;top:56px;left:56px;">
+      <div style="font-size:11.5px;font-weight:600;color:#8B95A7;letter-spacing:0.09em;">LIVE NETWORK · CHENNAI METRO</div>
+      <div style="display:flex;gap:52px;margin-top:22px;">
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;">{{donors}}</div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:7px;">Eligible donors</div>
+        </div>
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;">14</div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:7px;">Hospitals</div>
+        </div>
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;color:#08734F;">96.8%</div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:7px;">Fulfilment</div>
+        </div>
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;">2:48</div>
+          <div style="font-size:12.5px;color:#58637A;margin-top:7px;">Median response</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="position:absolute;bottom:48px;left:56px;right:56px;background:#FFFFFF;border:1px solid #E4E8EF;border-radius:11px;box-shadow:0 1px 3px rgba(16,24,40,0.05);overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:9px;padding:11px 18px;border-bottom:1px solid #EDF0F5;">
+        <span style="position:relative;width:6px;height:6px;flex-shrink:0;"><span class="ping" style="background:#0E9B6C;"></span><span style="position:absolute;inset:0;border-radius:3px;background:#0E9B6C;"></span></span>
+        <span style="font-size:11.5px;font-weight:600;color:#58637A;letter-spacing:0.06em;">NETWORK ACTIVITY</span>
+        <span style="flex-grow:1;"></span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;">{{clock}}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid #F1F3F7;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:44px;flex-shrink:0;">12:43</span>
+        <span style="width:7px;height:7px;border-radius:4px;background:#0E9B6C;flex-shrink:0;"></span>
+        <span style="font-size:13px;color:#0F1A2B;">Donor accepted · O− · Apollo Hospital</span>
+        <span style="flex-grow:1;"></span>
+        <span style="font-size:12px;font-weight:600;color:#08734F;">45 sec to accept</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid #F1F3F7;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:44px;flex-shrink:0;">12:40</span>
+        <span style="width:7px;height:7px;border-radius:4px;background:#6941F5;flex-shrink:0;"></span>
+        <span style="font-size:13px;color:#0F1A2B;">82 compatible donors matched · Neo4j traversal</span>
+        <span style="flex-grow:1;"></span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8B95A7;">EM-2291</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:11px 18px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8B95A7;width:44px;flex-shrink:0;">12:33</span>
+        <span style="width:7px;height:7px;border-radius:4px;background:#0E9B6C;flex-shrink:0;"></span>
+        <span style="font-size:13px;color:#58637A;">Request fulfilled · A+ · St. Xavier's Medical</span>
+        <span style="flex-grow:1;"></span>
+        <span style="font-size:12px;color:#8B95A7;">7:12 total</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tick: 0 };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => { this.setState({ tick: this.state.tick + 1 }); }, 1000);
+  }
+  componentWillUnmount() { if (this.timer) clearInterval(this.timer); }
+  pad(n) { return n < 10 ? '0' + n : '' + n; }
+  renderVals() {
+    const nodes = [];
+    let seed = 7;
+    for (let i = 0; i < 74; i++) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      const a = (seed / 2147483648) * Math.PI * 2;
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      const r = 120 + (seed / 2147483648) * 350;
+      const x = 510 + Math.cos(a) * r;
+      const y = 470 + Math.sin(a) * r * 0.86;
+      if (x < 40 || x > 980 || y < 190 || y > 800) continue;
+      const near = r < 200;
+      const color = near ? '#2E5FEA' : (i % 9 === 0 ? '#0E9B6C' : '#CBD5E3');
+      const size = near ? 6 : 5;
+      nodes.push({
+        style: 'position:absolute;left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';animation-delay:' + (i % 11) * 0.35 + 's;'
+      });
+    }
+    const base = 12 * 3600 + 43 * 60 + 12;
+    const t = base + this.state.tick;
+    const clock = this.pad(Math.floor(t / 3600) % 24) + ':' + this.pad(Math.floor(t / 60) % 60);
+    const donors = (2841 + Math.floor(this.state.tick / 7)).toLocaleString('en-IN');
+    return { nodes: nodes, clock: clock, donors: donors };
+  }
+}
+</script>
+</body>
+</html>

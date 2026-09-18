@@ -43,3 +43,13 @@ You can scan the QR code with the Expo Go app on your physical device, or press 
 - **Styling:** NativeWind (Tailwind CSS for React Native)
 - **Maps:** `react-native-maps`
 - **Networking:** Axios, WebSockets
+
+## Working on this codebase
+
+Expo changed significantly in recent versions. Before writing code here, check the exact
+versioned docs at https://docs.expo.dev/versions/v57.0.0/ rather than relying on older guides
+or generated snippets.
+
+The visual language both apps should follow lives in [`../design/`](../design): `tokens.json`
+holds the colour, typography and spacing tokens, and `design/README.md` explains the colour
+rules and the shared emergency lifecycle.

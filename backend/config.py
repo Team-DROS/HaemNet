@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
+    # ── MongoDB (migration target) ───────────────────────────────
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_database: str = "haemnet"
+
     # ── Twilio Telephony ────────────────────────────────────────
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

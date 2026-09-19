@@ -4,6 +4,7 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
 neo4j==5.24.0
+pymongo==4.15.0
 httpx==0.27.2
 websockets==13.1
 langgraph==0.2.34

@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown — close service clients.
     from backend.db_services import close as close_db
+    from backend.db_services.mongodb import close as close_mongodb
     from backend.services.twilio_service import close as close_twilio
     from backend.services.push_service import close as close_push
     from backend.services.sarvam_service import close as close_sarvam
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
     await close_sarvam()
     await close_push()
     await close_db()
+    await close_mongodb()
     logger.info("🛑  Blood Dispatch Backend shut down cleanly.")
 
 

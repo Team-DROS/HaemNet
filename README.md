@@ -93,3 +93,9 @@ npm install
 npx expo start --web
 ```
 Set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL` in `frontend/donor-web/.env`. Register a hospital from the sign-in screen; the server issues its hospital ID.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Team DROS.
+
+The `LICENSE` files inside `frontend/donor-mobile` and `frontend/donor-web` are the MIT notices of the Expo starter template those apps were created from; they cover that template code, and the rest of the project is under the root license.

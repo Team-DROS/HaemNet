@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -38,6 +38,7 @@ class DonorCallState(BaseModel):
     status: CallStatus = CallStatus.RINGING
     eta_minutes: Optional[int] = None
     twilio_call_sid: Optional[str] = None
+    distance_km: Optional[float] = None
 
 
 class DispatchState(BaseModel):
@@ -49,10 +50,12 @@ class DispatchState(BaseModel):
     hospital_id: str = ""
     blood_group: str = ""
     urgency: str = "urgent"
+    units: int = 1
+    address: str = ""
     lat: float = 0.0
     lng: float = 0.0
     donors: Dict[str, DonorCallState] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     is_complete: bool = False
     updates: List[Dict[str, Any]] = Field(default_factory=list)
 
@@ -64,6 +67,7 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Query the database for eligible donors and populate the state.
     """
     from backend.db_services import find_eligible_donors
+    from backend.services.geo import haversine_km
 
     donors: List[DonorNode] = await find_eligible_donors(
         blood_group=state["blood_group"],
@@ -73,6 +77,7 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     donor_states = {}
     for d in donors:
+        distance = haversine_km(state["lat"], state["lng"], d.location.lat, d.location.lng)
         donor_states[str(d.id)] = DonorCallState(
             donor_id=str(d.id),
             name=d.name,
@@ -80,6 +85,7 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
             has_app=d.has_app,
             language=d.language.value,
             status=CallStatus.RINGING,
+            distance_km=round(distance, 2),
         ).model_dump()
 
     logger.info("Matched %d eligible donors for dispatch %s", len(donors), state.get("dispatch_id"))
@@ -114,6 +120,9 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
         blood_group=state.get("blood_group", ""),
         lat=state.get("lat", 0.0),
         lng=state.get("lng", 0.0),
+        units=state.get("units", 1),
+        urgency=state.get("urgency", "urgent"),
+        address=state.get("address", ""),
     )
 
     # Build the callback URL that Twilio will POST status updates to.
@@ -136,12 +145,15 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
             _initiate_single_call(donor_node, dispatch_id, donor_id, callback_url)
         )
 
-        # Emit a RINGING update for the dashboard.
+        # Emit a RINGING update for the dashboard. This is the only update
+        # that carries distance and language; later ones only change status.
         update = DonorStatusUpdate(
             donor_id=donor_id,
             name=donor_data["name"],
             status=CallStatus.RINGING,
             eta_minutes=None,
+            distance_km=donor_data.get("distance_km"),
+            language=donor_data.get("language"),
         ).model_dump()
         updates.append(update)
 
@@ -234,7 +246,7 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         update = DonorStatusUpdate(
             donor_id=donor_id,
             name=donor_data["name"],
-            status=CallStatus.COMPLETED,
+            status=CallStatus.EN_ROUTE,
             eta_minutes=donor_data.get("eta_minutes"),
         ).model_dump()
         updates.append(update)

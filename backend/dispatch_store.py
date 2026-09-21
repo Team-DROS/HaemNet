@@ -24,7 +24,9 @@ from backend.db_services import (
     db_mark_complete,
     db_remove_dispatch,
     db_active_count,
-    db_summary
+    db_summary,
+    db_active_dispatch_ids,
+    db_requests_for_donor,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,10 +55,19 @@ class DispatchStore:
         blood_group: str = "",
         lat: float = 0.0,
         lng: float = 0.0,
+        units: int = 1,
+        urgency: str = "urgent",
+        address: str = "",
     ) -> None:
         """Register a new dispatch and its donor roster."""
-        donor_ids = list(donors.keys())
-        await db_create_dispatch(dispatch_id, hospital_id, blood_group, lat, lng, donor_ids)
+        roster = [
+            {"id": donor_id, "distance_km": (data or {}).get("distance_km")}
+            for donor_id, data in donors.items()
+        ]
+        await db_create_dispatch(
+            dispatch_id, hospital_id, blood_group, lat, lng, roster,
+            units=units, urgency=urgency, address=address,
+        )
         logger.info("Dispatch %s registered with %d donors in Neo4j", dispatch_id, len(donors))
 
     async def register_call(
@@ -137,6 +148,19 @@ class DispatchStore:
     async def summary(self) -> List[Dict[str, Any]]:
         """Return a compact summary of all active dispatches."""
         return await db_summary()
+
+    async def active_for_hospital(self, hospital_id: str) -> List[Dict[str, Any]]:
+        """Full state of every open dispatch belonging to a hospital, newest first."""
+        dispatches = []
+        for dispatch_id in await db_active_dispatch_ids(hospital_id):
+            dispatch = await self.get_dispatch(dispatch_id)
+            if dispatch:
+                dispatches.append(dispatch)
+        return dispatches
+
+    async def requests_for_donor(self, phone: str) -> List[Dict[str, Any]]:
+        """Open requests a donor has been matched to and not yet answered."""
+        return await db_requests_for_donor(phone)
 
 
 # Singleton instance — import this everywhere.

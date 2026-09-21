@@ -160,3 +160,87 @@ export const LogOut = ({ size = 24, color = "currentColor", ...props }) => (
     <Line x1="21" y1="12" x2="9" y2="12" />
   </Svg>
 );
+
+// ── Added for the light-first redesign ───────────────────────────
+const stroke = (color, strokeWidth = 2) => ({
+  fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round',
+});
+
+export const Plus = ({ size = 24, color = 'currentColor', strokeWidth = 2.4 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color, strokeWidth)}>
+    <Path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+
+export const X = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color, 2.4)}>
+    <Path d="M18 6 6 18M6 6l12 12" />
+  </Svg>
+);
+
+export const Mic = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <Path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+  </Svg>
+);
+
+export const Users = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <Circle cx="9" cy="7" r="4" />
+    <Path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </Svg>
+);
+
+export const Chart = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M3 3v18h18" />
+    <Path d="m7 15 4-6 4 4 5-8" />
+  </Svg>
+);
+
+export const Alert = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" />
+  </Svg>
+);
+
+export const Navigation = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M3 11 22 2l-9 19-2-8-8-2z" />
+  </Svg>
+);
+
+export const Network = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Circle cx="12" cy="5" r="2.5" />
+    <Circle cx="5" cy="19" r="2.5" />
+    <Circle cx="19" cy="19" r="2.5" />
+    <Path d="M12 7.5v5M10 14l-3.5 3M14 14l3.5 3" />
+  </Svg>
+);
+
+export const Hospital = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M3 21h18M5 21V7l7-4 7 4v14" />
+    <Path d="M12 10v5M9.5 12.5h5" />
+  </Svg>
+);
+
+export const Download = ({ size = 24, color = 'currentColor' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" {...stroke(color)}>
+    <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+  </Svg>
+);
+
+// HaemNet mark: a droplet holding three connected nodes, one of them red.
+export const HaemNetMark = ({ size = 26, color = '#0F1A2B', accent = '#D92D20' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Path d="M12 2.6c-3.4 4.2-5.7 7-5.7 9.9a5.7 5.7 0 0 0 11.4 0c0-2.9-2.3-5.7-5.7-9.9z" fill="none" stroke={color} strokeWidth={1.5} />
+    <Path d="M12 9.6 9.2 14.4M12 9.6l2.8 4.8M9.2 14.4h5.6" stroke={color} strokeWidth={1} opacity={0.55} />
+    <Circle cx="12" cy="9.6" r="1.7" fill={accent} />
+    <Circle cx="9.2" cy="14.4" r="1.3" fill={color} />
+    <Circle cx="14.8" cy="14.4" r="1.3" fill={color} />
+  </Svg>
+);

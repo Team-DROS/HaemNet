@@ -339,7 +339,9 @@ SET d.name              = $name,
     d.language           = $language,
     d.location            = point({latitude: $lat, longitude: $lng}),
     d.has_app             = true,
-    d.last_donated_date  = $last_donated_date,
+    // Never clear an existing donation date on re-registration: editing a
+    // profile used to wipe it, silently lifting the 56-day cooldown.
+    d.last_donated_date  = coalesce(datetime($last_donated_date), d.last_donated_date),
     d.push_token          = coalesce($push_token, d.push_token)
 RETURN
     d.id AS id, d.name AS name, d.phone AS phone,
@@ -436,13 +438,17 @@ SET dp.hospital_id = $hospital_id,
     dp.blood_group = $blood_group,
     dp.lat = $lat,
     dp.lng = $lng,
+    dp.units = $units,
+    dp.urgency = $urgency,
+    dp.address = $address,
     dp.created_at = $created_at,
     dp.is_complete = false
 WITH dp
-UNWIND $donor_ids AS donor_id
-MATCH (d:Donor {id: donor_id})
-MERGE (c:CallSession {dispatch_id: $dispatch_id, donor_id: donor_id})
+UNWIND $roster AS entry
+MATCH (d:Donor {id: entry.id})
+MERGE (c:CallSession {dispatch_id: $dispatch_id, donor_id: entry.id})
 ON CREATE SET c.status = 'ringing'
+SET c.distance_km = entry.distance_km
 MERGE (dp)-[:HAS_CALL]->(c)
 MERGE (c)-[:CALLED]->(d)
 RETURN dp.id AS id
@@ -460,10 +466,23 @@ async def db_create_dispatch(
     blood_group: str,
     lat: float,
     lng: float,
-    donor_ids: list[str]
+    roster: list,
+    units: int = 1,
+    urgency: str = "urgent",
+    address: str = "",
 ) -> None:
+    """
+    Create a Dispatch and one CallSession per matched donor.
+
+    ``roster`` is a list of ``{"id": donor_id, "distance_km": float | None}``.
+    A plain list of donor-id strings is still accepted for older callers.
+    """
+    roster = [
+        entry if isinstance(entry, dict) else {"id": entry, "distance_km": None}
+        for entry in roster
+    ]
     driver = _get_driver()
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now(timezone.utc).isoformat()
     async with driver.session() as session:
         await session.run(
             _CREATE_DISPATCH_QUERY,
@@ -472,8 +491,11 @@ async def db_create_dispatch(
             blood_group=blood_group,
             lat=lat,
             lng=lng,
+            units=units,
+            urgency=urgency,
+            address=address or "",
             created_at=created_at,
-            donor_ids=donor_ids
+            roster=roster,
         )
 
 _REGISTER_CALL_SID_QUERY = """
@@ -491,10 +513,13 @@ MATCH (dp:Dispatch {id: $dispatch_id})
 OPTIONAL MATCH (dp)-[:HAS_CALL]->(c:CallSession)-[:CALLED]->(d:Donor)
 RETURN dp.id AS dispatch_id, dp.hospital_id AS hospital_id, dp.blood_group AS blood_group,
        dp.lat AS lat, dp.lng AS lng, dp.created_at AS created_at, dp.is_complete AS is_complete,
+       coalesce(dp.units, 1) AS units, coalesce(dp.urgency, 'urgent') AS urgency,
+       coalesce(dp.address, '') AS address,
        collect({
            call_sid: c.sid,
            status: c.status,
            eta_minutes: c.eta_minutes,
+           distance_km: c.distance_km,
            donor_id: d.id,
            name: d.name,
            phone: d.phone,
@@ -590,6 +615,81 @@ async def db_summary() -> list[dict]:
     driver = _get_driver()
     async with driver.session() as session:
         result = await session.run(_SUMMARY_QUERY)
+        return [record.data() async for record in result]
+
+
+_ELIGIBLE_COUNTS_QUERY = """
+MATCH (d:Donor)
+WHERE point.distance(d.location, point({latitude: $lat, longitude: $lng})) <= $radius_meters
+  AND (d.last_donated_date IS NULL OR d.last_donated_date < datetime($cooldown_cutoff))
+RETURN d.blood_group AS blood_group, count(d) AS available
+"""
+
+async def db_eligible_counts_by_group(
+    lat: float, lng: float, radius_km: float = 10.0, cooldown_days: int = 56,
+) -> dict[str, int]:
+    """
+    How many donors of each blood group could be called right now within
+    ``radius_km`` of a point. Uses the same eligibility rules as dispatch
+    matching, so the dashboard's availability numbers match what a real
+    dispatch would find.
+    """
+    cooldown_cutoff = (datetime.now(timezone.utc) - timedelta(days=cooldown_days)).isoformat()
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(
+            _ELIGIBLE_COUNTS_QUERY, lat=lat, lng=lng,
+            radius_meters=radius_km * 1000, cooldown_cutoff=cooldown_cutoff,
+        )
+        return {record["blood_group"]: record["available"] async for record in result}
+
+
+_ACTIVE_DISPATCH_IDS_QUERY = """
+MATCH (dp:Dispatch {hospital_id: $hospital_id, is_complete: false})
+RETURN dp.id AS dispatch_id
+ORDER BY dp.created_at DESC
+LIMIT $limit
+"""
+
+async def db_active_dispatch_ids(hospital_id: str, limit: int = 20) -> list[str]:
+    """Open dispatches for one hospital, newest first."""
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(_ACTIVE_DISPATCH_IDS_QUERY, hospital_id=hospital_id, limit=limit)
+        return [record["dispatch_id"] async for record in result]
+
+
+_REQUESTS_FOR_DONOR_QUERY = """
+MATCH (d:Donor {phone: $phone})<-[:CALLED]-(c:CallSession)<-[:HAS_CALL]-(dp:Dispatch {is_complete: false})
+WHERE c.status IN $open_statuses
+OPTIONAL MATCH (h:Hospital {id: dp.hospital_id})
+RETURN dp.id AS dispatch_id,
+       d.id AS donor_id,
+       c.status AS status,
+       c.distance_km AS distance_km,
+       dp.blood_group AS blood_group,
+       coalesce(dp.units, 1) AS units,
+       coalesce(dp.urgency, 'urgent') AS urgency,
+       dp.created_at AS created_at,
+       dp.lat AS lat,
+       dp.lng AS lng,
+       coalesce(h.name, dp.hospital_id) AS hospital_name,
+       coalesce(dp.address, h.location, '') AS address
+ORDER BY dp.created_at DESC
+"""
+
+async def db_requests_for_donor(phone: str) -> list[dict]:
+    """
+    Open requests this donor was matched to and has not yet decided on.
+    Powers the donor app's "urgent request" screen.
+    """
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(
+            _REQUESTS_FOR_DONOR_QUERY,
+            phone=phone,
+            open_statuses=["ringing", "answered", "no_answer"],
+        )
         return [record.data() async for record in result]
 
 _CREATE_HOSPITAL_QUERY = """

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -60,7 +61,16 @@ class DashboardConnectionManager:
         logger.info("Dashboard WS disconnected (dispatch=%s)", dispatch_id)
 
     async def broadcast(self, dispatch_id: str, update: DonorStatusUpdate) -> None:
-        """Send a status update to all clients watching a dispatch."""
+        """
+        Send a status update to all clients watching a dispatch.
+
+        Stamps the message with its dispatch_id and event time so dashboards
+        watching several emergencies can route each update correctly.
+        """
+        update = update.model_copy(update={
+            "dispatch_id": dispatch_id,
+            "timestamp": update.timestamp or datetime.now(timezone.utc).isoformat(),
+        })
         payload = update.model_dump_json()
         async with self._lock:
             conns = self._connections.get(dispatch_id, set()).copy()
@@ -82,6 +92,11 @@ class DashboardConnectionManager:
 
     async def broadcast_raw(self, dispatch_id: str, data: dict) -> None:
         """Send a raw dict payload to all watchers of a dispatch."""
+        data = {
+            "dispatch_id": dispatch_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **data,
+        }
         payload = json.dumps(data)
         async with self._lock:
             conns = self._connections.get(dispatch_id, set()).copy()

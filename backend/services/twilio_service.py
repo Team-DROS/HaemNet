@@ -51,7 +51,10 @@ async def initiate_call(
         "From": settings.twilio_phone_number,
         "Url": twiml_url,
         "StatusCallback": status_cb,
-        "StatusCallbackEvent": "completed", 
+        # Ask for the answered event too, so the dashboard can show pickup
+        # separately from the final outcome. httpx sends a list as repeated
+        # form fields, which is what Twilio expects.
+        "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
     }
 
     try:

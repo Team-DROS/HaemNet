@@ -1,23 +1,56 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Linking, Platform, Image, Alert, RefreshControl } from 'react-native';
+import {
+  View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
+  Linking, Image, Alert, RefreshControl, AppState,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import MapView, { Marker } from 'react-native-maps';
 import * as ImagePicker from 'expo-image-picker';
+import { bg, color, mono, radius, shadow } from './theme';
 
 const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_LAT = 12.9716;
 const DEFAULT_LNG = 77.5946;
+const POLL_MS = 15000;
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Others'];
-const LANGUAGES = ['English', 'Hindi', 'Tamil', 'Telugu', 'Kannada', 'Malayalam'];
+// The AI voice agent speaks these three languages. Anything else falls back to English on the server.
+const LANGUAGES = ['English', 'Hindi', 'Tamil'];
+
+// Configure EXPO_PUBLIC_API_URL per environment (EAS/local .env).
+const SERVER_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+
+const withCountryCode = (p) => (p.startsWith('+91') ? p : `+91${p}`);
+const localDigits = (p) => (p || '').replace(/^\+91/, '').replace(/[^0-9]/g, '').slice(-10);
+
+// Server timestamps are UTC; older rows may lack the zone suffix.
+function parseUtc(value) {
+  if (!value) return NaN;
+  const str = String(value);
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(str) ? str : `${str}Z`).getTime();
+}
+
+function minutesAgo(value) {
+  const t = parseUtc(value);
+  if (Number.isNaN(t)) return null;
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  return `${Math.floor(mins / 60)} h ago`;
+}
+
+function openDirections(target) {
+  const dest = target.lat && target.lng ? `${target.lat},${target.lng}` : encodeURIComponent(target.address || target.hospital_name || '');
+  Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${dest}`);
+}
 
 export default function DonorApp() {
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null); // { id: 'email/phone' }
+  const [currentUser, setCurrentUser] = useState(null); // { id: 'phone' }
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +59,7 @@ export default function DonorApp() {
 
   // ─── PROFILE STATE ───
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(''); // 10 local digits, no country code
   const [bloodGroup, setBloodGroup] = useState('O+');
   const [customBloodGroup, setCustomBloodGroup] = useState('');
   const [language, setLanguage] = useState('English');
@@ -53,6 +86,13 @@ export default function DonorApp() {
   // ─── DONATION LOG STATE ───
   const [donationLog, setDonationLog] = useState([]);
 
+  // ─── LIVE REQUESTS ───
+  const [requests, setRequests] = useState([]);
+  const [requestsError, setRequestsError] = useState('');
+  const [responding, setResponding] = useState(null); // dispatch_id being answered
+  const [respondMsg, setRespondMsg] = useState('');
+  const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
+
   useEffect(() => { checkLoginStatus(); }, []);
   useEffect(() => { if (isLoggedIn && currentUser) loadProfile(); }, [isLoggedIn, currentUser]);
   useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
@@ -66,47 +106,39 @@ export default function DonorApp() {
         setIsLoggedIn(true);
       }
     } catch (e) {
-      Alert.alert('Login Error', 'Error checking login status');
+      Alert.alert('Sign in', 'Could not check your sign-in status.');
     }
   };
 
   const handleAuth = async () => {
     setAuthError('');
     if (!loginId.trim() || !password.trim()) {
-      return setAuthError('Please enter both Login ID and Password');
+      return setAuthError('Enter your mobile number and password.');
     }
     if (loginId.trim().length !== 10 || !/^\d+$/.test(loginId.trim())) {
-      return setAuthError('Mobile number must be exactly 10 digits');
+      return setAuthError('Mobile number must be exactly 10 digits.');
     }
     setAuthLoading(true);
     try {
       const authKey = `@auth_${loginId.toLowerCase()}`;
+      const existing = await AsyncStorage.getItem(authKey);
 
       if (authMode === 'signup') {
-        const existing = await AsyncStorage.getItem(authKey);
         if (existing) {
-          setAuthError('An account with this ID already exists. Please login.');
+          setAuthError('An account with this number already exists. Sign in instead.');
           setAuthLoading(false);
           return;
         }
-        await AsyncStorage.setItem(authKey, 'true'); // Store dummy token
-        const user = { id: loginId.toLowerCase() };
-        await AsyncStorage.setItem('@current_user', JSON.stringify(user));
-        setCurrentUser(user);
-        setIsLoggedIn(true);
-      } else {
-        const existing = await AsyncStorage.getItem(authKey);
-        if (!existing) {
-          setAuthError('No account found with this ID. Please sign up.');
-          setAuthLoading(false);
-          return;
-        }
-        // Mock authentication check
-        const user = { id: loginId.toLowerCase() };
-        await AsyncStorage.setItem('@current_user', JSON.stringify(user));
-        setCurrentUser(user);
-        setIsLoggedIn(true);
+        await AsyncStorage.setItem(authKey, 'true'); // Local account marker (no server auth yet)
+      } else if (!existing) {
+        setAuthError('No account found for this number. Create one first.');
+        setAuthLoading(false);
+        return;
       }
+      const user = { id: loginId.toLowerCase() };
+      await AsyncStorage.setItem('@current_user', JSON.stringify(user));
+      setCurrentUser(user);
+      setIsLoggedIn(true);
     } catch (e) {
       setAuthError('Authentication error: ' + e.message);
     }
@@ -120,11 +152,14 @@ export default function DonorApp() {
     setLoginId('');
     setPassword('');
     setIsRegistered(false);
+    setRequests([]);
+    setActiveTrip(null);
   };
 
   // ─── PROFILE LOGIC ───
   const getProfileKey = () => `@donor_profile_${currentUser.id}`;
   const getLogKey = () => `@donor_log_${currentUser.id}`;
+  const getTripKey = () => `@donor_trip_${currentUser.id}`;
 
   const loadProfile = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -133,7 +168,7 @@ export default function DonorApp() {
       if (savedProfile) {
         const profile = JSON.parse(savedProfile);
         setName(profile.name || '');
-        setPhone(profile.phone || '');
+        setPhone(localDigits(profile.phone));
         const loadedBg = profile.blood_group || 'O+';
         if (BLOOD_GROUPS.includes(loadedBg) && loadedBg !== 'Others') {
           setBloodGroup(loadedBg);
@@ -143,7 +178,7 @@ export default function DonorApp() {
           setCustomBloodGroup(loadedBg);
         }
 
-        setLanguage(profile.language || 'English');
+        setLanguage(LANGUAGES.includes(profile.language) ? profile.language : 'English');
         setLat(parseFloat(profile.lat) || DEFAULT_LAT);
         setLng(parseFloat(profile.lng) || DEFAULT_LNG);
         setAddress(profile.address || '');
@@ -154,24 +189,27 @@ export default function DonorApp() {
         }
         setIsRegistered(true);
       } else {
-        // Reset state for new user
-        setName(''); setPhone(''); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
+        // Reset state for new user; the login number doubles as the donor phone.
+        setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
         setLat(DEFAULT_LAT); setLng(DEFAULT_LNG); setAddress(''); setLocationSource(null);
         setProfilePic(null); setLastDonatedDate(null); setIsRegistered(false);
       }
+
+      const savedTrip = await AsyncStorage.getItem(getTripKey());
+      setActiveTrip(savedTrip ? JSON.parse(savedTrip) : null);
 
       const savedLog = await AsyncStorage.getItem(getLogKey());
       let currentLog = savedLog ? JSON.parse(savedLog) : [];
 
       // ─── SYNC WITH BACKEND ───
       try {
-        const phoneParam = currentUser.id.startsWith('+91') ? currentUser.id : `+91${currentUser.id}`;
+        const phoneParam = withCountryCode(currentUser.id);
         const response = await axios.get(`${SERVER_BASE_URL}/api/donor/profile/${encodeURIComponent(phoneParam)}`);
         const backendProfile = response.data.donor;
-        
+
         if (backendProfile && backendProfile.last_donated_date) {
           const backendDate = new Date(backendProfile.last_donated_date);
-          
+
           let localDate = null;
           if (savedProfile) {
             const parsedProfile = JSON.parse(savedProfile);
@@ -183,49 +221,53 @@ export default function DonorApp() {
           // If backend has a newer donation date, update local state
           if (!localDate || backendDate.getTime() > localDate.getTime()) {
             setLastDonatedDate(backendDate);
-            
+
             if (savedProfile) {
               const updatedProfile = { ...JSON.parse(savedProfile), last_donated_date: backendProfile.last_donated_date };
               await AsyncStorage.setItem(getProfileKey(), JSON.stringify(updatedProfile));
             }
-            
-            // Add to donation log
+
+            // The trip that led to this donation is over.
+            const tripRaw = await AsyncStorage.getItem(getTripKey());
+            const trip = tripRaw ? JSON.parse(tripRaw) : null;
+            await AsyncStorage.removeItem(getTripKey());
+            setActiveTrip(null);
+
             const newLogEntry = {
               id: Date.now().toString(),
               date: backendProfile.last_donated_date,
-              hospital: 'AI Dispatch System',
-              status: 'Completed'
+              hospital: trip?.hospital_name || 'HaemNet emergency dispatch',
+              status: 'Completed',
             };
             currentLog = [newLogEntry, ...currentLog];
             await AsyncStorage.setItem(getLogKey(), JSON.stringify(currentLog));
           }
         }
       } catch (backendErr) {
-        console.log("Could not sync with backend:", backendErr.message);
+        console.log('Could not sync with backend:', backendErr.message);
       }
 
       setDonationLog(currentLog);
     } catch (err) {
       Alert.alert('Error', 'Failed to load profile');
     }
-    if (isRefresh) setRefreshing(false);
+    if (isRefresh) {
+      await fetchRequests();
+      setRefreshing(false);
+    }
   };
-
-  // Hardcoded to guarantee connection (bypasses any EAS env var issues)
-  // Configure EXPO_PUBLIC_API_URL per environment (EAS/local .env).
-  const SERVER_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
   const handleRegister = async () => {
     setRegError('');
-    if (!name.trim()) return setRegError('Name is required');
-    if (!phone.trim()) return setRegError('Phone number is required');
-    if (phone.length !== 10) return setRegError('Phone number must be exactly 10 digits');
-    if (!locationSource) return setRegError('Please set your location using GPS or enter it manually');
+    if (!name.trim()) return setRegError('Name is required.');
+    if (!phone.trim()) return setRegError('Phone number is required.');
+    if (phone.length !== 10) return setRegError('Phone number must be exactly 10 digits.');
+    if (!locationSource) return setRegError('Set your location with GPS or type your area.');
 
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
-    if (!finalBloodGroup) return setRegError('Please specify your blood group');
+    if (!finalBloodGroup) return setRegError('Specify your blood group.');
 
-    const finalPhone = phone.startsWith('+91') ? phone : `+91${phone}`;
+    const finalPhone = withCountryCode(phone);
 
     setIsSaving(true);
     const profile = {
@@ -235,66 +277,119 @@ export default function DonorApp() {
       last_donated_date: lastDonatedDate ? lastDonatedDate.toISOString() : null,
     };
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/register`, {
+      await axios.post(`${SERVER_BASE_URL}/api/donor/register`, {
         name: profile.name,
         phone: profile.phone,
         blood_group: profile.blood_group,
         language: profile.language,
         lat: profile.lat,
-        lng: profile.lng
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+        lng: profile.lng,
+      }, { headers: { 'Content-Type': 'application/json' } });
       await AsyncStorage.setItem(getProfileKey(), JSON.stringify(profile));
       setIsSaving(false); setIsRegistered(true); setIsEditing(false);
     } catch (err) {
       setIsSaving(false);
-      const errorMsg = err.response ? `Backend error: ${err.response.status}` : err.message;
-      setRegError(`Failed to save profile: ${errorMsg}`);
+      const errorMsg = err.response ? `server returned ${err.response.status}` : err.message;
+      setRegError(`Could not save your profile: ${errorMsg}`);
     }
   };
 
   const clearProfile = async () => {
     try {
-      const phoneParam = currentUser.id.startsWith('+91') ? currentUser.id : `+91${currentUser.id}`;
-      await axios.delete(`${SERVER_BASE_URL}/api/donor/profile/${encodeURIComponent(phoneParam)}`);
-      
-      await AsyncStorage.removeItem(getProfileKey());
-      await AsyncStorage.removeItem(getLogKey());
-      setName(''); setPhone(''); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
+      await axios.delete(`${SERVER_BASE_URL}/api/donor/profile/${encodeURIComponent(withCountryCode(currentUser.id))}`);
+
+      await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey()]);
+      setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
       setLat(DEFAULT_LAT); setLng(DEFAULT_LNG); setAddress(''); setLocationSource(null);
-      setProfilePic(null); setLastDonatedDate(null); setDonationLog([]);
+      setProfilePic(null); setLastDonatedDate(null); setDonationLog([]); setActiveTrip(null); setRequests([]);
       setIsRegistered(false); setIsEditing(false);
-      Alert.alert('Profile Deleted', 'Your profile has been removed completely.');
-    } catch (err) { 
+      Alert.alert('Profile deleted', 'You have been removed from the donor network.');
+    } catch (err) {
       console.error(err);
-      Alert.alert('Error', 'Failed to clear profile'); 
+      Alert.alert('Error', 'Failed to delete profile');
     }
+  };
+
+  const confirmClearProfile = () => {
+    Alert.alert(
+      'Delete your donor profile?',
+      'Hospitals will no longer be able to reach you in an emergency.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: clearProfile },
+      ],
+    );
   };
 
   const handleNameChange = (text) => {
-    const regex = /^[a-zA-Z\s]*$/;
-    if (regex.test(text)) {
-      setName(text);
-    }
+    if (/^[a-zA-Z\s]*$/.test(text)) setName(text);
   };
 
   const handlePhoneChange = (text) => {
-    const numericValue = text.replace(/[^0-9]/g, '');
-    setPhone(numericValue.slice(0, 10));
+    setPhone(text.replace(/[^0-9]/g, '').slice(0, 10));
   };
 
   const handleLoginIdChange = (text) => {
-    // If the string is purely numeric, limit to 10 digits
-    if (/^\d+$/.test(text)) {
-      if (text.length <= 10) {
-        setLoginId(text);
-      }
-    } else {
-      setLoginId(text);
+    setLoginId(text.replace(/[^0-9]/g, '').slice(0, 10));
+  };
+
+  // ─── LIVE REQUESTS ───
+  const donorPhone = isRegistered && phone ? withCountryCode(phone) : null;
+
+  const fetchRequests = useCallback(async () => {
+    if (!donorPhone) return;
+    try {
+      const res = await axios.get(`${SERVER_BASE_URL}/api/donor/requests/${encodeURIComponent(donorPhone)}`);
+      setRequests(res.data.requests || []);
+      setRequestsError('');
+    } catch (err) {
+      setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
     }
+  }, [donorPhone]);
+
+  // Poll while the app is in the foreground and the donor is registered.
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    if (!donorPhone || isEditing) return undefined;
+    fetchRequests();
+    const timer = setInterval(() => { if (appState.current === 'active') fetchRequests(); }, POLL_MS);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (appState.current !== 'active' && next === 'active') fetchRequests();
+      appState.current = next;
+    });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [donorPhone, isEditing, fetchRequests]);
+
+  const respond = async (req, accept) => {
+    setResponding(req.dispatch_id);
+    setRespondMsg('');
+    try {
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/respond`, {
+        dispatch_id: req.dispatch_id, phone: donorPhone, accept,
+      });
+      setRequests((list) => list.filter((r) => r.dispatch_id !== req.dispatch_id));
+      if (accept) {
+        const trip = { ...req, eta_minutes: res.data.eta_minutes ?? req.eta_minutes, accepted_at: new Date().toISOString() };
+        setActiveTrip(trip);
+        await AsyncStorage.setItem(getTripKey(), JSON.stringify(trip));
+      } else {
+        setRespondMsg('Thanks for letting them know. The hospital will reach other donors.');
+      }
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 404 || status === 409) {
+        setRequests((list) => list.filter((r) => r.dispatch_id !== req.dispatch_id));
+        setRespondMsg(status === 404 ? 'That request has already been filled or closed.' : 'You already responded to this request.');
+      } else {
+        setRespondMsg('Could not send your answer. Check your connection and try again.');
+      }
+    }
+    setResponding(null);
+  };
+
+  const endTrip = async () => {
+    setActiveTrip(null);
+    await AsyncStorage.removeItem(getTripKey());
   };
 
   // ─── IMAGE PICKER ───
@@ -308,10 +403,7 @@ export default function DonorApp() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.5,
+          mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -320,13 +412,9 @@ export default function DonorApp() {
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.5,
+          mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
       }
-
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setProfilePic(result.assets[0].uri);
       }
@@ -336,15 +424,11 @@ export default function DonorApp() {
   };
 
   const promptImagePicker = () => {
-    Alert.alert(
-      "Profile Picture",
-      "Choose an option",
-      [
-        { text: "Take Photo", onPress: () => pickImage(true) },
-        { text: "Choose from Gallery", onPress: () => pickImage(false) },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    Alert.alert('Profile photo', 'Choose an option', [
+      { text: 'Take photo', onPress: () => pickImage(true) },
+      { text: 'Choose from gallery', onPress: () => pickImage(false) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   // ─── LOCATION HELPERS ───
@@ -354,23 +438,20 @@ export default function DonorApp() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocationError('Location permission denied. Please enter your address manually below.');
+        setLocationError('Location permission denied. Type your area below instead.');
         setLocationLoading(false);
         return;
       }
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = location.coords;
       setLat(latitude);
       setLng(longitude);
-
-      // Removed reverseGeocodeAsync as it can cause native crashes on some Android devices
-      // without proper Google Play Services. Using coordinates directly instead.
+      // reverseGeocodeAsync can crash on Android devices without Google Play Services,
+      // so the coordinates are shown directly.
       setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
       setLocationSource('gps');
     } catch (err) {
-      setLocationError(`Could not get location: ${err.message}. Please enter manually.`);
+      setLocationError(`Could not get location: ${err.message}. Type your area instead.`);
     }
     setLocationLoading(false);
   };
@@ -383,7 +464,7 @@ export default function DonorApp() {
     setLng(DEFAULT_LNG);
   };
 
-  // ─── DONATION MILESTONES & LOGGING ───
+  // ─── COOLDOWN ───
   const calculateCooldown = () => {
     if (!lastDonatedDate) {
       setDaysRemaining(0);
@@ -394,120 +475,93 @@ export default function DonorApp() {
     const today = new Date();
     const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const donationMidnight = new Date(lastDonatedDate.getFullYear(), lastDonatedDate.getMonth(), lastDonatedDate.getDate());
-    const diffTime = todayMidnight.getTime() - donationMidnight.getTime();
-    const diffDays = Math.floor(diffTime / MS_IN_A_DAY);
-    const remaining = Math.max(0, COOLDOWN_DAYS - diffDays);
-    const progress = Math.min(100, (diffDays / COOLDOWN_DAYS) * 100);
+    const diffDays = Math.floor((todayMidnight.getTime() - donationMidnight.getTime()) / MS_IN_A_DAY);
     setDaysElapsed(diffDays);
-    setDaysRemaining(remaining);
-    setProgressPercent(progress);
+    setDaysRemaining(Math.max(0, COOLDOWN_DAYS - diffDays));
+    setProgressPercent(Math.min(100, (diffDays / COOLDOWN_DAYS) * 100));
   };
 
   const getNextEligibleDateText = () => {
     if (!lastDonatedDate) return '';
     const eligibleDate = new Date(lastDonatedDate.getTime());
     eligibleDate.setDate(eligibleDate.getDate() + COOLDOWN_DAYS);
-    return eligibleDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return eligibleDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   };
-
 
   // ─── RENDERERS ───
 
   if (!isLoggedIn) {
     return (
-      <View style={[s.root, { justifyContent: 'center', padding: 24 }]}>
-        <View style={{ alignItems: 'center', marginBottom: 40 }}>
-          <View style={s.headerIcon}><Text style={{ fontSize: 32 }}>❤️</Text></View>
-          <Text style={s.headerTitle}>HaemNet App</Text>
-          <Text style={s.headerSub}>SIGN IN TO CONTINUE</Text>
+      <ScrollView style={s.root} contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled">
+        <View style={[s.row, { marginBottom: 44 }]}>
+          <DropMark size={26} />
+          <Text style={s.brand}>HaemNet</Text>
         </View>
 
-        <View style={s.card}>
-          <Text style={s.cardTitle}>{authMode === 'login' ? 'Welcome Back' : 'Create Account'}</Text>
-          <Text style={s.cardDesc}>
-            {authMode === 'login' ? 'Sign in with your Email or Mobile Number.' : 'Sign up to become a lifesaver.'}
-          </Text>
+        <Text style={s.h1}>{authMode === 'login' ? 'Welcome back' : 'Become a donor'}</Text>
+        <Text style={s.lede}>
+          {authMode === 'login'
+            ? 'Sign in with the mobile number hospitals will call you on.'
+            : 'When a nearby hospital needs your blood group, you get a call and can say yes in one tap.'}
+        </Text>
 
-          <Text style={s.label}>EMAIL OR MOBILE NUMBER</Text>
-          <TextInput
-            value={loginId}
-            onChangeText={handleLoginIdChange}
-            placeholder="e.g. 9876543210 or user@email.com"
-            placeholderTextColor="#cbd5e1"
-            style={s.input}
-            autoCapitalize="none"
-          />
-
-          <Text style={[s.label, { marginTop: 14 }]}>PASSWORD</Text>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor="#cbd5e1"
-            secureTextEntry
-            style={s.input}
-          />
-
-          {authError ? (
-            <View style={s.errorBox}><Text style={s.errorText}>{authError}</Text></View>
-          ) : null}
-
-          <TouchableOpacity onPress={handleAuth} disabled={authLoading} style={[s.btnPrimary, { marginTop: 24 }]}>
-            {authLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnPrimaryText}>{authMode === 'login' ? 'LOGIN' : 'SIGN UP'}</Text>}
-          </TouchableOpacity>
-
-          <View style={s.orRow}>
-            <View style={s.orLine} />
-            <Text style={s.orText}>OR</Text>
-            <View style={s.orLine} />
+        <Field label="Mobile number">
+          <View style={s.phoneRow}>
+            <Text style={s.phonePrefix}>+91</Text>
+            <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
+              placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
+              style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
           </View>
+        </Field>
 
-          <TouchableOpacity style={s.btnGoogle} onPress={() => Alert.alert('Coming Soon', 'Google Sign-In integration requires backend setup.')}>
-            <Text style={{ fontSize: 16, marginRight: 8 }}>G</Text>
-            <Text style={s.btnGoogleText}>Continue with Google</Text>
-          </TouchableOpacity>
-        </View>
+        <Field label="Password">
+          <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={color.faint}
+            secureTextEntry style={s.input} onSubmitEditing={handleAuth} accessibilityLabel="Password" />
+        </Field>
 
-        <TouchableOpacity
-          style={{ alignItems: 'center', marginTop: 20 }}
-          onPress={() => {
-            setAuthMode(authMode === 'login' ? 'signup' : 'login');
-            setAuthError('');
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 14, fontWeight: '600' }}>
-            {authMode === 'login' ? "Don't have an account? Sign up" : "Already have an account? Login"}
+        {authError ? <Notice tone="red">{authError}</Notice> : null}
+
+        <PrimaryButton onPress={handleAuth} busy={authLoading} style={{ marginTop: 8 }}>
+          {authMode === 'login' ? 'Sign in' : 'Create account'}
+        </PrimaryButton>
+
+        <TouchableOpacity style={{ alignItems: 'center', marginTop: 22 }} accessibilityRole="button"
+          onPress={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); }}>
+          <Text style={s.switchText}>
+            {authMode === 'login' ? 'New to HaemNet? ' : 'Already a donor? '}
+            <Text style={s.switchLink}>{authMode === 'login' ? 'Create an account' : 'Sign in'}</Text>
           </Text>
         </TouchableOpacity>
-      </View>
+
+        <View style={s.authFacts}>
+          <Fact title="Only when it matters" body="You are contacted only when your group is needed within 10 km." />
+          <Fact title="Your health first" body="The 56-day recovery window is tracked for you. No calls while you recover." />
+          <Fact title="In your language" body="The AI caller speaks English, Hindi or Tamil." last />
+        </View>
+      </ScrollView>
     );
   }
 
   const renderLocationPicker = () => (
-    <View style={{ marginTop: 14 }}>
-      <Text style={s.label}>YOUR LOCATION</Text>
+    <View style={{ marginTop: 18 }}>
+      <Text style={s.label}>Your location</Text>
 
       {locationSource ? (
         <View style={s.locationConfirmed}>
-          <View style={[s.row, { justifyContent: 'space-between', marginBottom: 10 }]}>
-            <View style={[s.row, { flex: 1, marginRight: 10 }]}>
-              <Text style={{ fontSize: 16 }}>✅</Text>
-              <Text style={s.locationConfirmedAddr} numberOfLines={2}>  {address || 'Location set'}</Text>
+          <View style={[s.row, { justifyContent: 'space-between', gap: 10 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.locationTag}>{locationSource === 'gps' ? 'GPS location set' : 'Area set'}</Text>
+              <Text style={s.locationAddr} numberOfLines={2}>{address || 'Location set'}</Text>
             </View>
-            <TouchableOpacity onPress={clearLocation} style={s.changeBtn}>
-              <Text style={s.changeBtnText}>Change</Text>
+            <TouchableOpacity onPress={clearLocation} style={s.smallBtn} accessibilityRole="button">
+              <Text style={s.smallBtnText}>Change</Text>
             </TouchableOpacity>
           </View>
 
           {locationSource === 'gps' && (
             <MapView
               style={s.mapPreview}
-              initialRegion={{
-                latitude: lat,
-                longitude: lng,
-                latitudeDelta: 0.006,
-                longitudeDelta: 0.006,
-              }}
+              initialRegion={{ latitude: lat, longitude: lng, latitudeDelta: 0.006, longitudeDelta: 0.006 }}
               scrollEnabled={false} zoomEnabled={false} pitchEnabled={false} rotateEnabled={false}
             >
               <Marker coordinate={{ latitude: lat, longitude: lng }} title={address} />
@@ -516,43 +570,38 @@ export default function DonorApp() {
         </View>
       ) : (
         <View>
-          <TouchableOpacity onPress={requestLocation} disabled={locationLoading} style={s.gpsBtn} activeOpacity={0.8}>
+          <TouchableOpacity onPress={requestLocation} disabled={locationLoading} style={s.gpsBtn} activeOpacity={0.85} accessibilityRole="button">
             {locationLoading ? (
               <View style={s.row}>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={s.gpsBtnText}>  Detecting location...</Text>
+                <ActivityIndicator size="small" color={color.greenText} />
+                <Text style={[s.gpsBtnText, { marginLeft: 10 }]}>Detecting location…</Text>
               </View>
             ) : (
               <View style={s.row}>
-                <Text style={{ fontSize: 18 }}>📍</Text>
+                <View style={s.gpsDot}><View style={s.gpsDotInner} /></View>
                 <View style={{ marginLeft: 12 }}>
-                  <Text style={s.gpsBtnText}>Use My Current Location</Text>
-                  <Text style={s.gpsBtnSub}>Detects via GPS</Text>
+                  <Text style={s.gpsBtnText}>Use my current location</Text>
+                  <Text style={s.gpsBtnSub}>Most accurate for matching</Text>
                 </View>
               </View>
             )}
           </TouchableOpacity>
 
-          {locationError ? (
-            <View style={s.locationErrBox}>
-              <Text style={{ fontSize: 12 }}>⚠️</Text>
-              <Text style={s.locationErrText}>  {locationError}</Text>
-            </View>
-          ) : null}
+          {locationError ? <Notice tone="amber">{locationError}</Notice> : null}
 
           <View style={s.orRow}>
             <View style={s.orLine} />
-            <Text style={s.orText}>or enter manually</Text>
+            <Text style={s.orText}>or type your area</Text>
             <View style={s.orLine} />
           </View>
 
           <TextInput
-            value={locationSource === 'manual' ? address : (address && !locationSource ? address : '')}
+            value={address}
             onChangeText={setAddress}
             onEndEditing={() => setLocationSource(address.trim() ? 'manual' : null)}
-            placeholder="e.g. Koramangala, Bangalore 560034"
-            placeholderTextColor="#cbd5e1"
-            style={s.input}
+            placeholder="Koramangala, Bengaluru 560034"
+            placeholderTextColor={color.faint}
+            style={[s.input, { minHeight: 64, textAlignVertical: 'top' }]}
             multiline
             numberOfLines={2}
           />
@@ -561,223 +610,200 @@ export default function DonorApp() {
     </View>
   );
 
+  const eligible = daysRemaining === 0;
+  const firstName = (name || '').trim().split(/\s+/)[0];
+  const displayGroup = bloodGroup === 'Others' ? customBloodGroup : bloodGroup;
+
   return (
-    <ScrollView 
-      style={s.root} 
+    <ScrollView
+      style={s.root}
       contentContainerStyle={s.rootContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => loadProfile(true)} colors={['#e11d48']} />
-      }
+      keyboardShouldPersistTaps="handled"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadProfile(true)} colors={[color.text]} tintColor={color.text2} />}
     >
-      <View style={s.headerWrap}>
-        <View style={[s.row, { width: '100%', justifyContent: 'space-between', paddingHorizontal: 10, position: 'absolute', top: -30 }]}>
-          <Text style={{ fontSize: 12, color: '#94a3b8', fontWeight: 'bold' }}>{currentUser.id}</Text>
-          <TouchableOpacity onPress={handleLogout}><Text style={{ color: '#e11d48', fontSize: 12, fontWeight: 'bold' }}>Logout</Text></TouchableOpacity>
+      <View style={[s.row, { justifyContent: 'space-between', marginBottom: 22 }]}>
+        <View style={s.row}>
+          <DropMark size={22} />
+          <Text style={[s.brand, { fontSize: 17 }]}>HaemNet</Text>
         </View>
-        <View style={s.headerIcon}><Text style={{ fontSize: 28 }}>❤️</Text></View>
-        <Text style={s.headerTitle}>HaemNet App</Text>
-        <Text style={s.headerSub}>ACTIVE EMERGENCY DONOR NETWORK</Text>
+        <TouchableOpacity onPress={handleLogout} style={s.smallBtn} accessibilityRole="button">
+          <Text style={s.smallBtnText}>Sign out</Text>
+        </TouchableOpacity>
       </View>
 
       {!isRegistered || isEditing ? (
         <View style={s.card}>
-          <View style={s.cardTitleRow}>
-            <Text style={{ fontSize: 16, marginRight: 6 }}>👤</Text>
-            <Text style={s.cardTitle}>Zero-Friction Registry</Text>
-          </View>
-          <Text style={s.cardDesc}>Register your details to join the emergency donor network.</Text>
+          <Text style={s.cardTitle}>{isEditing ? 'Edit your donor profile' : 'Join the donor network'}</Text>
+          <Text style={s.cardDesc}>Hospitals near you see only your blood group and distance until you accept a request.</Text>
 
-          <View style={{ alignItems: 'center', marginBottom: 20 }}>
-            <TouchableOpacity onPress={promptImagePicker} style={s.avatarContainer}>
+          <View style={{ alignItems: 'center', marginBottom: 22 }}>
+            <TouchableOpacity onPress={promptImagePicker} style={s.avatarLg} accessibilityRole="button" accessibilityLabel="Add profile photo">
               {profilePic ? (
-                <Image source={{ uri: profilePic }} style={s.avatarImage} />
+                <Image source={{ uri: profilePic }} style={s.avatarLgImage} />
               ) : (
-                <View style={s.avatarPlaceholder}>
-                  <Text style={{ fontSize: 32 }}>📷</Text>
-                </View>
+                <Text style={s.avatarLgInitial}>{firstName ? firstName[0].toUpperCase() : '+'}</Text>
               )}
-              <View style={s.avatarBadge}><Text style={{ fontSize: 12 }}>✏️</Text></View>
             </TouchableOpacity>
+            <Text style={s.avatarHint}>{profilePic ? 'Change photo' : 'Add photo (optional)'}</Text>
           </View>
 
-          <Text style={s.label}>FULL NAME</Text>
-          <TextInput value={name} onChangeText={handleNameChange} placeholder="e.g. Ramesh Patel" placeholderTextColor="#cbd5e1" style={s.input} />
+          <Field label="Full name">
+            <TextInput value={name} onChangeText={handleNameChange} placeholder="Ramesh Patel" placeholderTextColor={color.faint} style={s.input} />
+          </Field>
 
-          <Text style={[s.label, { marginTop: 14 }]}>PHONE NUMBER</Text>
-          <View style={s.phoneInputContainer}>
-            <View style={s.phonePrefix}><Text style={s.phonePrefixText}>+91</Text></View>
-            <TextInput
-              value={phone}
-              onChangeText={handlePhoneChange}
-              placeholder="9876543210"
-              placeholderTextColor="#cbd5e1"
-              keyboardType="phone-pad"
-              maxLength={10}
-              style={[s.input, s.phoneInput]}
-            />
-          </View>
+          <Field label="Phone number" hint="Hospitals' AI caller rings this number.">
+            <View style={s.phoneRow}>
+              <Text style={s.phonePrefix}>+91</Text>
+              <TextInput value={phone} onChangeText={handlePhoneChange} placeholder="98765 43210" placeholderTextColor={color.faint}
+                keyboardType="phone-pad" maxLength={10} style={[s.inputBare, { fontFamily: mono }]} />
+            </View>
+          </Field>
 
-          <Text style={[s.label, { marginTop: 14 }]}>BLOOD GROUP</Text>
-          <View style={s.chipContainer}>
-            {BLOOD_GROUPS.map(bg => (
-              <TouchableOpacity
-                key={bg}
-                onPress={() => setBloodGroup(bg)}
-                style={[s.chip, bloodGroup === bg && s.chipSelected]}
-              >
-                <Text style={[s.chipText, bloodGroup === bg && s.chipTextSelected]}>{bg}</Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={s.label}>Blood group</Text>
+          <View style={s.chipGrid}>
+            {BLOOD_GROUPS.map((g) => {
+              const active = bloodGroup === g;
+              return (
+                <TouchableOpacity key={g} onPress={() => setBloodGroup(g)} accessibilityRole="button" accessibilityState={{ selected: active }}
+                  style={[s.groupChip, g === 'Others' && { width: '48%' }, active && s.groupChipActive]}>
+                  <Text style={[s.groupChipText, active && s.groupChipTextActive]}>{g === 'Others' ? 'Other / rare' : bg(g)}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {bloodGroup === 'Others' && (
-            <TextInput
-              value={customBloodGroup}
-              onChangeText={setCustomBloodGroup}
-              placeholder="e.g. Bombay Blood"
-              placeholderTextColor="#cbd5e1"
-              style={[s.input, { marginTop: 8 }]}
-            />
+            <TextInput value={customBloodGroup} onChangeText={setCustomBloodGroup} placeholder="e.g. Bombay (hh)"
+              placeholderTextColor={color.faint} style={[s.input, { marginTop: 10 }]} />
           )}
 
-          <Text style={[s.label, { marginTop: 14 }]}>AI CALL LANGUAGE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
-            {LANGUAGES.map(lang => (
-              <TouchableOpacity
-                key={lang}
-                onPress={() => setLanguage(lang)}
-                style={[s.chip, { marginHorizontal: 4 }, language === lang && s.chipSelected]}
-              >
-                <Text style={[s.chipText, language === lang && s.chipTextSelected]}>{lang}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <Text style={[s.label, { marginTop: 18 }]}>AI call language</Text>
+          <View style={s.segmented}>
+            {LANGUAGES.map((lang) => {
+              const active = language === lang;
+              return (
+                <TouchableOpacity key={lang} onPress={() => setLanguage(lang)} accessibilityRole="button" accessibilityState={{ selected: active }}
+                  style={[s.segment, active && s.segmentActive]}>
+                  <Text style={[s.segmentText, active && s.segmentTextActive]}>{lang}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {renderLocationPicker()}
 
-          {regError ? <View style={s.errorBox}><Text style={s.errorText}>{regError}</Text></View> : null}
+          {regError ? <Notice tone="red">{regError}</Notice> : null}
 
-          <View style={[s.row, { marginTop: 20 }]}>
+          <View style={[s.row, { marginTop: 22, gap: 10 }]}>
             {isEditing && (
-              <TouchableOpacity onPress={() => setIsEditing(false)} style={s.btnSecondary}>
-                <Text style={s.btnSecondaryText}>Cancel</Text>
-              </TouchableOpacity>
+              <SecondaryButton onPress={() => { setIsEditing(false); setRegError(''); }} style={{ flex: 1 }}>Cancel</SecondaryButton>
             )}
-            <TouchableOpacity onPress={handleRegister} disabled={isSaving} style={[s.btnPrimary, { flex: 1, marginLeft: isEditing ? 10 : 0 }]}>
-              {isSaving ? <ActivityIndicator size="small" color="white" /> : <Text style={s.btnPrimaryText}>{isEditing ? 'SAVE PROFILE' : 'REGISTER PROFILE'}</Text>}
-            </TouchableOpacity>
+            <PrimaryButton onPress={handleRegister} busy={isSaving} style={{ flex: 2 }}>
+              {isEditing ? 'Save changes' : 'Join the network'}
+            </PrimaryButton>
           </View>
         </View>
       ) : (
         <View>
-          {/* Profile card */}
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-start' }]}>
-              <View style={[s.row, { flex: 1 }]}>
-                {profilePic ? (
-                  <Image source={{ uri: profilePic }} style={s.profileAvatarSm} />
-                ) : (
-                  <View style={s.profileAvatarSmPlaceholder}><Text style={{ fontSize: 24 }}>👤</Text></View>
-                )}
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={s.labelTiny}>REGISTERED PROFILE</Text>
-                  <Text style={s.profileName}>{name}</Text>
-                  <Text style={s.profilePhone}>{phone.startsWith('+91') ? phone : `+91 ${phone}`}</Text>
-                </View>
-              </View>
-              <View style={s.bloodBadge}>
-                <Text style={s.bloodBadgeText}>{bloodGroup}</Text>
-                <Text style={s.bloodBadgeSub}>GROUP</Text>
-              </View>
-            </View>
+          <Text style={s.greeting}>Hi {firstName || 'there'}</Text>
+          <Text style={s.greetingSub}>
+            {requests.length
+              ? `${requests.length === 1 ? 'A hospital needs' : `${requests.length} hospitals need`} your help right now.`
+              : activeTrip ? 'Thank you for saying yes.' : eligible ? 'You are ready to donate if a hospital nearby needs you.' : 'You are recovering. We will not call you until you are ready.'}
+          </Text>
 
-            <View style={s.profileMetaRow}>
-              <View style={[s.row, { flex: 1, marginRight: 8 }]}>
-                <Text style={{ fontSize: 10 }}>📍</Text>
-                <Text style={s.metaText} numberOfLines={1}>  {address || 'Location not set'}</Text>
-              </View>
-              <View style={s.langBadge}><Text style={s.langBadgeText}>{language.toUpperCase()}</Text></View>
-            </View>
+          {requests.map((req) => (
+            <RequestCard key={req.dispatch_id} req={req} busy={responding === req.dispatch_id}
+              onAccept={() => respond(req, true)} onDecline={() => respond(req, false)} />
+          ))}
 
-            <View style={[s.row, { marginTop: 14 }]}>
-              <TouchableOpacity onPress={() => setIsEditing(true)} style={[s.btnSecondary, { flex: 1, marginRight: 8 }]}>
-                <Text style={s.btnSecondaryText}>Edit Settings</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={clearProfile} style={s.btnDanger}>
-                <Text style={s.btnDangerText}>Delete Profile</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          {respondMsg ? <Notice tone="neutral">{respondMsg}</Notice> : null}
+          {requestsError ? <Notice tone="amber">{requestsError}</Notice> : null}
 
-          {/* Cooldown tracker */}
+          {activeTrip && <TripCard trip={activeTrip} onDirections={() => openDirections(activeTrip)} onDone={endTrip} />}
+
+          {/* Readiness */}
           <View style={[s.card, { marginTop: 16 }]}>
-            <View style={[s.row, { justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }]}>
-              <View style={s.row}>
-                <Text style={{ fontSize: 16, marginRight: 6 }}>📅</Text>
-                <Text style={[s.cardTitle, { marginLeft: 0 }]}>Medical Cooldown Tracker</Text>
-              </View>
-              <View style={[s.statusBadge, daysRemaining === 0 ? s.statusEligible : s.statusLocked]}>
-                <Text style={[s.statusBadgeText, daysRemaining === 0 ? s.statusEligibleText : s.statusLockedText]}>
-                  {daysRemaining === 0 ? 'ELIGIBLE' : 'LOCKED'}
-                </Text>
-              </View>
+            <View style={[s.row, { justifyContent: 'space-between' }]}>
+              <Text style={s.overline}>Donation readiness</Text>
+              <StatusPill tone={eligible ? 'green' : 'amber'}>{eligible ? 'Eligible' : 'Recovering'}</StatusPill>
             </View>
 
-            {/* Progress bar area */}
-            <View style={s.progressBox}>
-              <View style={[s.row, { justifyContent: 'space-between', marginBottom: 8 }]}>
-                <Text style={s.progressLabel}>Recovery Status</Text>
-                <Text style={s.progressValue}>{Math.round(progressPercent)}%</Text>
-              </View>
-              <View style={s.progressTrack}>
-                <View style={[s.progressFill, { width: `${progressPercent}%`, backgroundColor: daysRemaining === 0 ? '#10b981' : '#e11d48' }]} />
-              </View>
+            <View style={[s.row, { alignItems: 'flex-end', marginTop: 14, gap: 10 }]}>
+              <Text style={[s.bigNum, { color: eligible ? color.greenText : color.text }]}>
+                {eligible ? 'Ready' : daysRemaining}
+              </Text>
+              <Text style={s.bigNumSub}>
+                {eligible ? (lastDonatedDate ? `${daysElapsed} days since your last donation` : 'No recent donation on record') : `day${daysRemaining === 1 ? '' : 's'} until you can donate again`}
+              </Text>
+            </View>
 
-              <View style={s.counterPanel}>
-                {daysRemaining > 0 ? (
-                  <>
-                    <Text style={s.counterNumber}>{daysRemaining}</Text>
-                    <Text style={s.counterLabel}>DAYS LOCKOUT REMAINING</Text>
-                  </>
-                ) : (
-                  <View style={{ alignItems: 'center', paddingVertical: 8 }}>
-                    <Text style={{ fontSize: 24 }}>✅</Text>
-                    <Text style={s.eligibleText}>FULLY ELIGIBLE</Text>
-                  </View>
-                )}
-              </View>
+            <View style={s.meterTrack}>
+              <View style={[s.meterFill, { width: `${progressPercent}%`, backgroundColor: eligible ? color.green : color.amber }]} />
+            </View>
+            <View style={[s.row, { justifyContent: 'space-between', marginTop: 8 }]}>
+              <Text style={s.meterLabel}>{lastDonatedDate ? `Day ${Math.min(daysElapsed, COOLDOWN_DAYS)} of ${COOLDOWN_DAYS}` : `${COOLDOWN_DAYS}-day recovery window`}</Text>
+              <Text style={s.meterLabel}>{!eligible ? `Eligible ${getNextEligibleDateText()}` : `${Math.round(progressPercent)}%`}</Text>
             </View>
           </View>
 
-          {/* DONATION LOG */}
-          <View style={[s.card, { marginTop: 16, paddingHorizontal: 0 }]}>
-            <View style={[s.row, { paddingHorizontal: 20, marginBottom: 12 }]}>
-              <Text style={{ fontSize: 16, marginRight: 6 }}>📜</Text>
-              <Text style={s.cardTitle}>Donation History Log</Text>
+          {/* Impact */}
+          <View style={[s.card, s.row, { marginTop: 16, paddingVertical: 18 }]}>
+            <Stat value={donationLog.length} label={donationLog.length === 1 ? 'Donation' : 'Donations'} />
+            <View style={s.vDivider} />
+            <Stat value={donationLog.length ? `up to ${donationLog.length * 3}` : '0'} label="Patients helped" />
+            <View style={s.vDivider} />
+            <Stat value={bg(displayGroup) || '—'} label="Your group" tone="red" />
+          </View>
+
+          {/* Profile */}
+          <View style={[s.card, { marginTop: 16 }]}>
+            <View style={[s.row, { gap: 12 }]}>
+              {profilePic ? (
+                <Image source={{ uri: profilePic }} style={s.avatarSm} />
+              ) : (
+                <View style={[s.avatarSm, s.avatarSmEmpty]}><Text style={s.avatarSmInitial}>{firstName ? firstName[0].toUpperCase() : '?'}</Text></View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={s.profileName} numberOfLines={1}>{name}</Text>
+                <Text style={s.profilePhone}>+91 {phone}</Text>
+              </View>
+              <View style={s.groupBadge}><Text style={s.groupBadgeText}>{bg(displayGroup)}</Text></View>
             </View>
 
+            <View style={s.metaList}>
+              <MetaRow label="Location" value={address || 'Not set'} />
+              <MetaRow label="Call language" value={language} />
+              <MetaRow label="Matching radius" value="10 km" last />
+            </View>
+
+            <View style={[s.row, { gap: 10, marginTop: 14 }]}>
+              <SecondaryButton onPress={() => setIsEditing(true)} style={{ flex: 1 }}>Edit profile</SecondaryButton>
+              <TouchableOpacity onPress={confirmClearProfile} style={s.dangerBtn} accessibilityRole="button">
+                <Text style={s.dangerBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* History */}
+          <View style={[s.card, { marginTop: 16, paddingHorizontal: 0, paddingBottom: 6 }]}>
+            <Text style={[s.overline, { paddingHorizontal: 18, marginBottom: 6 }]}>Donation history</Text>
             {donationLog.length === 0 ? (
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <Text style={{ color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>No donations recorded yet.</Text>
-              </View>
+              <Text style={s.emptyText}>No donations recorded yet. When a hospital logs your donation it appears here.</Text>
             ) : (
-              <View>
-                {donationLog.map((log, i) => {
-                  const logDate = new Date(log.date);
-                  const formattedDate = logDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-                  const isLast = i === donationLog.length - 1;
-                  return (
-                    <View key={log.id} style={[s.logItem, !isLast && s.logItemBorder]}>
-                      <View style={s.logItemIcon}><Text style={{ fontSize: 14 }}>🩸</Text></View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={s.logHospitalText}>{log.hospital}</Text>
-                        <Text style={s.logDateText}>{formattedDate}</Text>
-                      </View>
-                      <View style={s.logBadge}><Text style={s.logBadgeText}>DONATED</Text></View>
+              donationLog.map((log, i) => {
+                const formattedDate = new Date(log.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                return (
+                  <View key={log.id} style={[s.logItem, i < donationLog.length - 1 && s.logItemBorder]}>
+                    <View style={s.logDot} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.logHospital} numberOfLines={1}>{log.hospital}</Text>
+                      <Text style={s.logDate}>{formattedDate}</Text>
                     </View>
-                  );
-                })}
-              </View>
+                    <StatusPill tone="green">Donated</StatusPill>
+                  </View>
+                );
+              })
             )}
           </View>
         </View>
@@ -786,105 +812,287 @@ export default function DonorApp() {
   );
 }
 
+// ─── PIECES ───
+
+function RequestCard({ req, busy, onAccept, onDecline }) {
+  const critical = req.urgency === 'critical';
+  const ago = minutesAgo(req.created_at);
+  return (
+    <View style={[s.requestCard, shadow]}>
+      <View style={s.requestBand}>
+        <View style={s.liveDot} />
+        <Text style={s.requestBandText}>{critical ? 'Critical request' : 'Urgent request'}{ago ? ` · ${ago}` : ''}</Text>
+      </View>
+      <View style={{ padding: 18 }}>
+        <View style={[s.row, { alignItems: 'flex-start', gap: 14 }]}>
+          <View style={s.requestGroup}>
+            <Text style={s.requestGroupText}>{bg(req.blood_group)}</Text>
+            <Text style={s.requestUnits}>{req.units} unit{req.units === 1 ? '' : 's'}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.requestHospital}>{req.hospital_name}</Text>
+            {req.address ? <Text style={s.requestAddr} numberOfLines={2}>{req.address}</Text> : null}
+          </View>
+        </View>
+
+        <View style={s.requestStats}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.statLabel}>Distance</Text>
+            <Text style={s.statValue}>{req.distance_km != null ? `${Number(req.distance_km).toFixed(1)} km` : '—'}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.statLabel}>Est. travel</Text>
+            <Text style={s.statValue}>{req.eta_minutes != null ? `${req.eta_minutes} min` : '—'}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity onPress={onAccept} disabled={busy} style={[s.acceptBtn, busy && { opacity: 0.7 }]} accessibilityRole="button">
+          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>I can donate</Text>}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDecline} disabled={busy} style={s.declineBtn} accessibilityRole="button">
+          <Text style={s.declineBtnText}>I can't make it</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function TripCard({ trip, onDirections, onDone }) {
+  return (
+    <View style={[s.tripCard, shadow]}>
+      <View style={[s.row, { justifyContent: 'space-between' }]}>
+        <Text style={[s.overline, { color: color.greenText }]}>You're confirmed</Text>
+        <StatusPill tone="green">En route</StatusPill>
+      </View>
+      <Text style={s.tripHospital}>{trip.hospital_name}</Text>
+      {trip.address ? <Text style={s.requestAddr}>{trip.address}</Text> : null}
+      <Text style={s.tripNote}>
+        The blood bank can see you are on your way{trip.eta_minutes != null ? ` (about ${trip.eta_minutes} min)` : ''}. Bring a photo ID and eat something light before you donate.
+      </Text>
+      <TouchableOpacity onPress={onDirections} style={s.tripBtn} accessibilityRole="button">
+        <Text style={s.tripBtnText}>Get directions</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onDone} style={{ alignSelf: 'center', marginTop: 12 }} accessibilityRole="button">
+        <Text style={s.tripDismiss}>Hide this card</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function DropMark({ size = 24 }) {
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', marginRight: 9 }}>
+      <View style={{
+        width: size * 0.72, height: size * 0.72, backgroundColor: color.red,
+        borderRadius: size * 0.36, borderTopLeftRadius: 0, transform: [{ rotate: '45deg' }], marginTop: size * 0.18,
+      }} />
+    </View>
+  );
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={s.label}>{label}</Text>
+      {children}
+      {hint ? <Text style={s.hint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+function Notice({ tone, children }) {
+  const map = {
+    red: [color.redSurface, color.redBorder, color.redText],
+    amber: [color.amberSurface, color.amberBorder, color.amberText],
+    neutral: [color.surface2, color.border, color.text2],
+  }[tone] || [color.surface2, color.border, color.text2];
+  return (
+    <View style={[s.notice, { backgroundColor: map[0], borderColor: map[1] }]}>
+      <Text style={[s.noticeText, { color: map[2] }]}>{children}</Text>
+    </View>
+  );
+}
+
+function PrimaryButton({ onPress, busy, children, style }) {
+  return (
+    <TouchableOpacity onPress={onPress} disabled={busy} style={[s.btnPrimary, busy && { opacity: 0.75 }, style]} accessibilityRole="button">
+      {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.btnPrimaryText}>{children}</Text>}
+    </TouchableOpacity>
+  );
+}
+
+function SecondaryButton({ onPress, children, style }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[s.btnSecondary, style]} accessibilityRole="button">
+      <Text style={s.btnSecondaryText}>{children}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function StatusPill({ tone, children }) {
+  const map = {
+    green: [color.greenSurface, color.greenText],
+    amber: [color.amberSurface, color.amberText],
+    red: [color.redSurface, color.redText],
+  }[tone];
+  return (
+    <View style={[s.pill, { backgroundColor: map[0] }]}>
+      <Text style={[s.pillText, { color: map[1] }]}>{children}</Text>
+    </View>
+  );
+}
+
+function Stat({ value, label, tone }) {
+  return (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Text style={[s.statBig, tone === 'red' && { color: color.redText }]} numberOfLines={1}>{value}</Text>
+      <Text style={s.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function MetaRow({ label, value, last }) {
+  return (
+    <View style={[s.metaRow, !last && { borderBottomWidth: 1, borderBottomColor: color.divider }]}>
+      <Text style={s.metaLabel}>{label}</Text>
+      <Text style={s.metaValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
+function Fact({ title, body, last }) {
+  return (
+    <View style={[s.fact, !last && { borderBottomWidth: 1, borderBottomColor: color.divider }]}>
+      <Text style={s.factTitle}>{title}</Text>
+      <Text style={s.factBody}>{body}</Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
-  rootContent: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 120 },
-  headerWrap: { alignItems: 'center', marginBottom: 28 },
-  headerIcon: { height: 56, width: 56, borderRadius: 16, backgroundColor: '#e11d48', alignItems: 'center', justifyContent: 'center', marginBottom: 12, elevation: 2 },
-  headerTitle: { color: '#1e293b', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  headerSub: { color: '#94a3b8', fontSize: 10, marginTop: 4, fontWeight: '700', letterSpacing: 2 },
-
-  card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 20, padding: 20, elevation: 1 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  cardTitle: { color: '#1e293b', fontWeight: '800', fontSize: 16 },
-  cardDesc: { color: '#64748b', fontSize: 12, lineHeight: 18, marginBottom: 16 },
-
-  label: { color: '#64748b', fontSize: 10, fontWeight: '700', marginBottom: 6, letterSpacing: 1 },
-  labelTiny: { color: '#94a3b8', fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: '#1e293b', fontWeight: '600', fontSize: 14 },
-
+  root: { flex: 1, backgroundColor: color.canvas },
+  rootContent: { paddingHorizontal: 16, paddingTop: 56, paddingBottom: 96 },
+  authContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 72, paddingBottom: 48, backgroundColor: color.surface },
   row: { flexDirection: 'row', alignItems: 'center' },
-  halfCol: { flex: 1, marginHorizontal: 4, marginTop: 14 },
 
-  errorBox: { backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', padding: 12, borderRadius: 12, marginTop: 12 },
-  errorText: { color: '#be123c', fontSize: 12, fontWeight: '700' },
+  brand: { fontSize: 19, fontWeight: '700', color: color.text, letterSpacing: -0.4 },
+  h1: { fontSize: 27, fontWeight: '700', color: color.text, letterSpacing: -0.6 },
+  lede: { fontSize: 14.5, color: color.text2, lineHeight: 22, marginTop: 8, marginBottom: 28 },
+  switchText: { fontSize: 14, color: color.text2 },
+  switchLink: { color: color.blue, fontWeight: '600' },
+  authFacts: { marginTop: 40, borderWidth: 1, borderColor: color.border, borderRadius: radius.card, backgroundColor: color.surface2 },
+  fact: { paddingHorizontal: 16, paddingVertical: 14 },
+  factTitle: { fontSize: 13.5, fontWeight: '600', color: color.text },
+  factBody: { fontSize: 12.5, color: color.text2, marginTop: 3, lineHeight: 18 },
 
-  btnPrimary: { backgroundColor: '#e11d48', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', elevation: 1 },
-  btnPrimaryText: { color: '#fff', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
-  btnSecondary: { flex: 1, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  btnSecondaryText: { color: '#475569', fontSize: 12, fontWeight: '700' },
-  btnDanger: { backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
-  btnDangerText: { color: '#e11d48', fontSize: 12, fontWeight: '700' },
+  card: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.card, padding: 18 },
+  cardTitle: { color: color.text, fontWeight: '700', fontSize: 18, letterSpacing: -0.3 },
+  cardDesc: { color: color.text2, fontSize: 13, lineHeight: 19, marginTop: 6, marginBottom: 20 },
+  overline: { fontSize: 11, fontWeight: '700', color: color.muted, letterSpacing: 0.8, textTransform: 'uppercase' },
 
-  btnGoogle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingVertical: 14, marginTop: 16 },
-  btnGoogleText: { color: '#1e293b', fontSize: 14, fontWeight: '700' },
+  label: { color: color.text, fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  hint: { color: color.muted, fontSize: 12, marginTop: 6 },
+  input: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, paddingHorizontal: 14, paddingVertical: 12, color: color.text, fontSize: 15 },
+  inputBare: { flex: 1, paddingHorizontal: 12, paddingVertical: 12, color: color.text, fontSize: 15 },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: color.border, borderRadius: radius.input, backgroundColor: color.surface, overflow: 'hidden' },
+  phonePrefix: { paddingHorizontal: 12, paddingVertical: 12, backgroundColor: color.surface2, color: color.text2, fontWeight: '600', fontSize: 15, borderRightWidth: 1, borderRightColor: color.border, fontFamily: mono },
 
-  avatarContainer: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#e2e8f0' },
-  avatarPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  avatarImage: { width: '100%', height: '100%', borderRadius: 45 },
-  avatarBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#fff', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: '#e2e8f0' },
+  notice: { borderWidth: 1, borderRadius: radius.input, padding: 12, marginTop: 12 },
+  noticeText: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
 
-  phoneInputContainer: { flexDirection: 'row', alignItems: 'center' },
-  phonePrefix: { backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 12, borderTopLeftRadius: 12, borderBottomLeftRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', borderRightWidth: 0 },
-  phonePrefixText: { color: '#64748b', fontWeight: '700', fontSize: 14 },
-  phoneInput: { flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
+  btnPrimary: { backgroundColor: color.text, paddingVertical: 15, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' },
+  btnPrimaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  btnSecondary: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, paddingVertical: 12, alignItems: 'center' },
+  btnSecondaryText: { color: color.text, fontSize: 14, fontWeight: '600' },
+  dangerBtn: { borderWidth: 1, borderColor: color.redBorder, borderRadius: radius.input, paddingHorizontal: 18, paddingVertical: 12, alignItems: 'center' },
+  dangerBtnText: { color: color.redText, fontSize: 14, fontWeight: '600' },
+  smallBtn: { borderWidth: 1, borderColor: color.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: color.surface },
+  smallBtnText: { color: color.text2, fontSize: 12.5, fontWeight: '600' },
 
-  chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
-  chipSelected: { backgroundColor: '#e11d48', borderColor: '#e11d48' },
-  chipText: { color: '#64748b', fontSize: 13, fontWeight: '700' },
-  chipTextSelected: { color: '#fff' },
+  avatarLg: { width: 84, height: 84, borderRadius: 42, backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarLgImage: { width: '100%', height: '100%' },
+  avatarLgInitial: { fontSize: 28, fontWeight: '600', color: color.text2 },
+  avatarHint: { fontSize: 12.5, color: color.blue, fontWeight: '600', marginTop: 8 },
 
-  gpsBtn: { backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 18, elevation: 2 },
-  gpsBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  gpsBtnSub: { color: '#a7f3d0', fontSize: 11, fontWeight: '600', marginTop: 2 },
-  locationErrBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', padding: 12, borderRadius: 12, marginTop: 10 },
-  locationErrText: { color: '#92400e', fontSize: 12, fontWeight: '600', flex: 1 },
-  orRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 16 },
-  orLine: { flex: 1, height: 1, backgroundColor: '#e2e8f0' },
-  orText: { color: '#94a3b8', fontSize: 11, fontWeight: '700', marginHorizontal: 12 },
-  locationConfirmed: { backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: 14, padding: 14, overflow: 'hidden' },
-  locationConfirmedAddr: { color: '#065f46', fontSize: 13, fontWeight: '700', flex: 1 },
-  changeBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  changeBtnText: { color: '#e11d48', fontSize: 11, fontWeight: '800' },
-  mapPreview: { height: 160, width: '100%', borderRadius: 12, overflow: 'hidden', marginTop: 4 },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  groupChip: { width: '23%', alignItems: 'center', paddingVertical: 12, borderRadius: radius.input, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface },
+  groupChipActive: { borderColor: color.red, borderWidth: 1.5, backgroundColor: color.redSurface },
+  groupChipText: { fontSize: 15, fontWeight: '600', color: color.text2 },
+  groupChipTextActive: { color: color.redText, fontWeight: '700' },
 
-  profileAvatarSm: { width: 50, height: 50, borderRadius: 25 },
-  profileAvatarSmPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
-  profileName: { color: '#1e293b', fontSize: 20, fontWeight: '900', marginTop: 2 },
-  profilePhone: { color: '#64748b', fontSize: 12, marginTop: 4, fontWeight: '600' },
-  bloodBadge: { backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
-  bloodBadgeText: { color: '#be123c', fontWeight: '900', fontSize: 18 },
-  bloodBadgeSub: { color: '#e11d48', fontSize: 8, fontWeight: '700', marginTop: 2 },
+  segmented: { flexDirection: 'row', backgroundColor: color.track, borderRadius: radius.input, padding: 3 },
+  segment: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 7 },
+  segmentActive: { backgroundColor: color.surface, ...shadow },
+  segmentText: { fontSize: 13.5, color: color.text2, fontWeight: '500' },
+  segmentTextActive: { color: color.text, fontWeight: '600' },
 
-  profileMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9', justifyContent: 'space-between' },
-  metaText: { color: '#64748b', fontSize: 11, fontWeight: '600', flex: 1 },
-  langBadge: { backgroundColor: '#f8fafc', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#f1f5f9' },
-  langBadgeText: { color: '#64748b', fontSize: 9, fontWeight: '700' },
+  gpsBtn: { backgroundColor: color.greenSurface, borderWidth: 1, borderColor: color.greenBorder, borderRadius: radius.input, paddingVertical: 14, paddingHorizontal: 16 },
+  gpsDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: color.green, alignItems: 'center', justifyContent: 'center' },
+  gpsDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.green },
+  gpsBtnText: { color: color.greenText, fontSize: 14.5, fontWeight: '600' },
+  gpsBtnSub: { color: color.greenText, opacity: 0.75, fontSize: 12, marginTop: 2 },
+  orRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 14 },
+  orLine: { flex: 1, height: 1, backgroundColor: color.border },
+  orText: { color: color.muted, fontSize: 12, marginHorizontal: 10 },
+  locationConfirmed: { backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, padding: 12 },
+  locationTag: { fontSize: 11.5, fontWeight: '600', color: color.greenText },
+  locationAddr: { fontSize: 13.5, color: color.text, marginTop: 2 },
+  mapPreview: { height: 150, width: '100%', borderRadius: 8, overflow: 'hidden', marginTop: 10 },
 
-  statusBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1 },
-  statusEligible: { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' },
-  statusLocked: { backgroundColor: '#fff1f2', borderColor: '#fecdd3' },
-  statusBadgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  statusEligibleText: { color: '#047857' },
-  statusLockedText: { color: '#be123c' },
+  greeting: { fontSize: 25, fontWeight: '700', color: color.text, letterSpacing: -0.5 },
+  greetingSub: { fontSize: 14, color: color.text2, marginTop: 4, marginBottom: 16, lineHeight: 20 },
 
-  progressBox: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#f1f5f9', borderRadius: 16, padding: 18, marginBottom: 16 },
-  progressLabel: { color: '#64748b', fontSize: 12, fontWeight: '600' },
-  progressValue: { color: '#334155', fontFamily: 'monospace', fontWeight: '900', fontSize: 14 },
-  progressTrack: { height: 12, width: '100%', backgroundColor: '#e2e8f0', borderRadius: 999, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 999 },
-  progressHint: { color: '#94a3b8', fontSize: 10 },
-  counterPanel: { marginTop: 18, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 16, alignItems: 'center' },
-  counterNumber: { color: '#e11d48', fontSize: 40, fontWeight: '900', fontFamily: 'monospace' },
-  counterLabel: { color: '#64748b', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
-  eligibleText: { color: '#047857', fontWeight: '900', fontSize: 15, letterSpacing: 1, marginTop: 6 },
+  requestCard: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.redBorder, borderRadius: radius.card, overflow: 'hidden', marginBottom: 12 },
+  requestBand: { flexDirection: 'row', alignItems: 'center', backgroundColor: color.redSurface, paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.redBorder },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.red, marginRight: 8 },
+  requestBandText: { fontSize: 12.5, fontWeight: '700', color: color.redText },
+  requestGroup: { width: 70, paddingVertical: 10, borderRadius: 10, backgroundColor: color.redSurface, alignItems: 'center' },
+  requestGroupText: { fontSize: 26, fontWeight: '800', color: color.redText, letterSpacing: -0.5 },
+  requestUnits: { fontSize: 11.5, color: color.redText, fontWeight: '600', marginTop: 1 },
+  requestHospital: { fontSize: 17, fontWeight: '700', color: color.text, letterSpacing: -0.2 },
+  requestAddr: { fontSize: 13, color: color.text2, marginTop: 4, lineHeight: 19 },
+  requestStats: { flexDirection: 'row', marginTop: 16, marginBottom: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: color.divider },
+  statLabel: { fontSize: 11.5, color: color.muted, fontWeight: '600', marginTop: 2 },
+  statValue: { fontSize: 17, fontWeight: '700', color: color.text, marginTop: 3, fontFamily: mono },
+  acceptBtn: { backgroundColor: color.red, borderRadius: radius.input, paddingVertical: 15, alignItems: 'center' },
+  acceptBtnText: { color: '#FFFFFF', fontSize: 15.5, fontWeight: '700' },
+  declineBtn: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
+  declineBtnText: { color: color.text2, fontSize: 14, fontWeight: '600' },
 
-  logItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20 },
-  logItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  logItemIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#fff1f2', justifyContent: 'center', alignItems: 'center' },
-  logHospitalText: { color: '#1e293b', fontSize: 14, fontWeight: '700' },
-  logDateText: { color: '#64748b', fontSize: 11, marginTop: 2 },
-  logBadge: { backgroundColor: '#ecfdf5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#a7f3d0' },
-  logBadgeText: { color: '#059669', fontSize: 9, fontWeight: '800' },
+  tripCard: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.greenBorder, borderRadius: radius.card, padding: 18, marginBottom: 4 },
+  tripHospital: { fontSize: 18, fontWeight: '700', color: color.text, marginTop: 12 },
+  tripNote: { fontSize: 13, color: color.text2, lineHeight: 19, marginTop: 12 },
+  tripBtn: { backgroundColor: color.green, borderRadius: radius.input, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  tripBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  tripDismiss: { fontSize: 13, color: color.muted, fontWeight: '600' },
+
+  pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  pillText: { fontSize: 12, fontWeight: '700' },
+  bigNum: { fontSize: 40, fontWeight: '700', letterSpacing: -1, lineHeight: 44 },
+  bigNumSub: { flex: 1, fontSize: 13, color: color.text2, marginBottom: 6, lineHeight: 18 },
+  meterTrack: { height: 8, borderRadius: 999, backgroundColor: color.track, overflow: 'hidden', marginTop: 16 },
+  meterFill: { height: '100%', borderRadius: 999 },
+  meterLabel: { fontSize: 12, color: color.muted },
+
+  statBig: { fontSize: 20, fontWeight: '700', color: color.text, letterSpacing: -0.3 },
+  vDivider: { width: 1, alignSelf: 'stretch', backgroundColor: color.divider },
+
+  avatarSm: { width: 46, height: 46, borderRadius: 23 },
+  avatarSmEmpty: { backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border, alignItems: 'center', justifyContent: 'center' },
+  avatarSmInitial: { fontSize: 17, fontWeight: '600', color: color.text2 },
+  profileName: { fontSize: 16.5, fontWeight: '700', color: color.text },
+  profilePhone: { fontSize: 13, color: color.text2, marginTop: 2, fontFamily: mono },
+  groupBadge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: color.redSurface },
+  groupBadgeText: { fontSize: 18, fontWeight: '800', color: color.redText },
+  metaList: { marginTop: 14, borderTopWidth: 1, borderTopColor: color.divider },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 11, gap: 16 },
+  metaLabel: { fontSize: 13, color: color.text2 },
+  metaValue: { flex: 1, textAlign: 'right', fontSize: 13, color: color.text, fontWeight: '500' },
+
+  emptyText: { fontSize: 13, color: color.muted, paddingHorizontal: 18, paddingVertical: 14, lineHeight: 19 },
+  logItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 18, gap: 12 },
+  logItemBorder: { borderBottomWidth: 1, borderBottomColor: color.divider },
+  logDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.green },
+  logHospital: { fontSize: 14, fontWeight: '600', color: color.text },
+  logDate: { fontSize: 12, color: color.muted, marginTop: 2 },
 });

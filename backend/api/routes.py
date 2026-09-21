@@ -11,10 +11,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from backend.api.websockets import manager
-from backend.api.auth import get_current_hospital
+from backend.api.auth import get_current_donor, get_current_hospital
 from backend.db_services import (
     db_eligible_counts_by_group,
     db_get_hospital_by_id,
@@ -93,6 +93,12 @@ def _phone_variants(phone: str) -> List[str]:
     return list({phone, local, f"+91{local}", f"91{local}"})
 
 
+def _require_same_donor(claimed_phone: Optional[str], token_phone: str) -> None:
+    """A donor token only unlocks that donor's own records."""
+    if claimed_phone and not set(_phone_variants(claimed_phone)) & set(_phone_variants(token_phone)):
+        raise HTTPException(status_code=403, detail="This phone number is not yours")
+
+
 # ── POST /api/dispatch ────────────────────────────────────────────
 
 @router.post("/dispatch", response_model=DispatchResponse)
@@ -157,7 +163,9 @@ async def trigger_dispatch(
         lng=lng,
     ).model_dump()
 
-    # Step 3 — run orchestration in the background so we return fast
+    # Step 3 — run orchestration in the background so we return fast.
+    # Bind ownership first so live events only reach this hospital.
+    manager.bind(dispatch_id, hospital_id)
     background_tasks.add_task(_run_dispatch_graph, dispatch_id, initial_state)
 
     logger.info(
@@ -209,6 +217,46 @@ async def list_active_dispatches(hospital_id: str = Depends(get_current_hospital
     """
     dispatches = await dispatch_store.active_for_hospital(hospital_id)
     return {"dispatches": [_public_dispatch(d) for d in dispatches]}
+
+
+# ── GET /api/dispatches/history ───────────────────────────────────
+
+def _history_status(row: Dict[str, Any]) -> str:
+    if not row.get("is_complete"):
+        return "active"
+    if row.get("fulfilled"):
+        return "fulfilled"
+    return "partial" if row.get("donated") else "closed"
+
+
+@router.get("/dispatches/history")
+async def dispatch_history(
+    days: int = Query(30, ge=1, le=365),
+    hospital_id: str = Depends(get_current_hospital),
+):
+    """
+    Outcome of every request the hospital raised in the last `days` days.
+
+    Powers Network Intelligence, so analytics are the same on every staff
+    browser instead of living in one browser's storage. No donor details.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = await dispatch_store.history_for_hospital(hospital_id, since)
+    return {"days": days, "dispatches": [{
+        "dispatch_id": r["dispatch_id"],
+        "blood_group": r.get("blood_group"),
+        "units": r.get("units") or 1,
+        "urgency": r.get("urgency") or "urgent",
+        "created_at": r.get("created_at"),
+        "first_accept_at": r.get("first_accept_at"),
+        "closed_at": r.get("closed_at"),
+        "status": _history_status(r),
+        "matched": r.get("matched") or 0,
+        "contacted": r.get("matched") or 0,  # every matched donor is dialled
+        "answered": r.get("answered") or 0,
+        "accepted": r.get("accepted") or 0,
+        "donated": r.get("donated") or 0,
+    } for r in rows]}
 
 
 # ── GET /api/network/availability ─────────────────────────────────
@@ -313,7 +361,7 @@ async def log_donation(
         ) + 1
         if donated >= (dispatch.get("units") or 1):
             fulfilled = True
-            await dispatch_store.mark_complete(payload.dispatch_id)
+            await dispatch_store.mark_complete(payload.dispatch_id, fulfilled=True)
             await manager.broadcast_raw(payload.dispatch_id, {"type": "dispatch_fulfilled"})
 
     return {
@@ -328,14 +376,16 @@ async def log_donation(
 # ── POST /api/donor/register ───────────────────────────────────────
 
 @router.post("/donor/register")
-async def register_new_donor(payload: DonorRegistration):
+async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depends(get_current_donor)):
     """
     Called by the mobile app to register a new donor or update an existing one.
+    The phone must be the one the donor verified by SMS.
     """
+    _require_same_donor(payload.phone, donor_phone)
     try:
         await register_donor(
             name=payload.name,
-            phone=payload.phone,
+            phone=donor_phone,
             blood_group=payload.blood_group,
             language=normalise_language(payload.language),
             lat=payload.lat,
@@ -350,13 +400,14 @@ async def register_new_donor(payload: DonorRegistration):
 # ── GET /api/donor/profile/{phone} ─────────────────────────────────
 
 @router.get("/donor/profile/{phone}")
-async def get_donor_profile(phone: str):
+async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_donor)):
     """
     Called by the mobile app on startup to sync the donor's profile
     and cooldown status from the database.
     """
+    _require_same_donor(phone, donor_phone)
     try:
-        donor = await get_donor_by_phone(phone)
+        donor = await get_donor_by_phone(donor_phone)
         if not donor:
             raise HTTPException(status_code=404, detail="Donor not found")
 
@@ -380,12 +431,13 @@ async def get_donor_profile(phone: str):
 # ── DELETE /api/donor/profile/{phone} ───────────────────────────────
 
 @router.delete("/donor/profile/{phone}")
-async def remove_donor_profile(phone: str):
+async def remove_donor_profile(phone: str, donor_phone: str = Depends(get_current_donor)):
     """
     Called by the mobile app to delete the donor's profile from the DB.
     """
+    _require_same_donor(phone, donor_phone)
     try:
-        success = await delete_donor(phone)
+        success = await delete_donor(donor_phone)
         if not success:
             raise HTTPException(status_code=404, detail="Donor not found")
 
@@ -400,15 +452,16 @@ async def remove_donor_profile(phone: str):
 # ── GET /api/donor/requests/{phone} ────────────────────────────────
 
 @router.get("/donor/requests/{phone}")
-async def get_donor_requests(phone: str):
+async def get_donor_requests(phone: str, donor_phone: str = Depends(get_current_donor)):
     """
     Open emergency requests this donor has been matched to and not yet
     answered. The donor app polls this to show its urgent-request screen,
     so a donor who misses the AI call can still respond in one tap.
     """
+    _require_same_donor(phone, donor_phone)
     requests: List[Dict[str, Any]] = []
     seen = set()
-    for variant in _phone_variants(phone):
+    for variant in _phone_variants(donor_phone):
         for req in await dispatch_store.requests_for_donor(variant):
             if req["dispatch_id"] in seen:
                 continue
@@ -421,7 +474,7 @@ async def get_donor_requests(phone: str):
 # ── POST /api/donor/respond ───────────────────────────────────────
 
 @router.post("/donor/respond")
-async def donor_respond(payload: DonorResponse):
+async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_current_donor)):
     """
     A donor accepts or declines a request from the app.
 
@@ -430,11 +483,12 @@ async def donor_respond(payload: DonorResponse):
     An accepted donor has the hospital's location in the app, so they are
     marked en route straight away.
     """
+    _require_same_donor(payload.phone, donor_phone)
     dispatch = await dispatch_store.get_dispatch(payload.dispatch_id)
     if not dispatch or dispatch.get("is_complete"):
         raise HTTPException(status_code=404, detail="This request is no longer open")
 
-    variants = set(_phone_variants(payload.phone))
+    variants = set(_phone_variants(donor_phone))
     donor = next(
         (d for d in (dispatch.get("donors") or {}).values() if d.get("phone") in variants),
         None,

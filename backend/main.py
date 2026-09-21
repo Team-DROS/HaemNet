@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.auth import router as auth_router
+from backend.api.auth import donor_router as donor_auth_router, router as auth_router
 from backend.api.callbacks import router as callback_router
 from backend.api.routes import router as api_router
 from backend.api.websockets import router as ws_router
@@ -95,6 +95,7 @@ app.include_router(api_router)
 app.include_router(ws_router)
 app.include_router(callback_router)
 app.include_router(auth_router)
+app.include_router(donor_auth_router)
 
 
 # ── Root ──────────────────────────────────────────────────────────

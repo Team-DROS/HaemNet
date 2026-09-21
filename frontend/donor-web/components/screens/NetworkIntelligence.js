@@ -1,10 +1,11 @@
 // Network Intelligence: decisions a blood bank can act on.
 //
 // Availability comes from the server (eligible donors per group right now).
-// Everything else is computed from this hospital's recorded dispatches, so
-// nothing here is a demo number.
+// Everything else is computed from this hospital's dispatches as recorded
+// on the server (GET /api/dispatches/history), so every staff browser sees
+// the same numbers and nothing here is a demo figure.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Alert as AlertIcon, Chart } from '../Icons';
 import { bg, BLOOD_GROUPS, color, font } from '../theme';
@@ -23,6 +24,8 @@ function percentile(values, p) {
 export default function NetworkIntelligence({ store, compact }) {
   const [range, setRange] = useState(30);
   const now = store.now;
+  // Pull the hospital's recorded history from the server whenever the range grows.
+  useEffect(() => { store.refreshHistory(Math.max(range, 30)); }, [range]); // eslint-disable-line react-hooks/exhaustive-deps
   const history = useMemo(
     () => store.history.filter((h) => now - h.createdAt <= range * DAY),
     [store.history, range, now],

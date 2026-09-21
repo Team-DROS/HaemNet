@@ -133,6 +133,17 @@ function fromServerDispatch(d) {
   return pushEvent(em, { at: Date.now(), tone: 'muted', kind: 'system', title: 'Restored live state from server', sub: `${em.matched} donors in this request` });
 }
 
+function fromServerHistory(d) {
+  return {
+    id: d.dispatch_id, bloodGroup: d.blood_group, units: d.units, urgency: d.urgency,
+    createdAt: toMs(d.created_at),
+    firstAcceptAt: d.first_accept_at ? toMs(d.first_accept_at) : null,
+    closedAt: d.closed_at ? toMs(d.closed_at) : null,
+    matched: d.matched, contacted: d.contacted, answered: d.answered, accepted: d.accepted, donated: d.donated,
+    status: d.status,
+  };
+}
+
 function historyRecord(em) {
   const sm = summarize(em);
   return {
@@ -254,6 +265,8 @@ export function useDispatchStore() {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
     if (!msg || msg.type === 'pong') return;
+    if (msg.type === 'auth_ok') { retry.current.attempts = 0; setWsState('live'); return; }
+    if (msg.type === 'auth_error') return; // the close handler signs the user out
 
     setEmergencies((all) => {
       // Older backends omit dispatch_id: attach to the newest open emergency.
@@ -295,21 +308,25 @@ export function useDispatchStore() {
     ws.current = socket;
     let heartbeat = null;
     socket.onopen = () => {
-      retry.current.attempts = 0;
-      setWsState('live');
+      // First message authenticates; the server confirms with auth_ok.
+      socket.send(JSON.stringify({ type: 'auth', token: profileRef.current?.token || '' }));
       heartbeat = setInterval(() => { try { socket.send('ping'); } catch (e) { /* closed */ } }, 25000);
     };
     socket.onmessage = (event) => handleMessage(event.data);
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (heartbeat) clearInterval(heartbeat);
       setWsState('offline');
+      if (event && event.code === 4401) {
+        clearSession('Your session expired. Please sign in again.');
+        return;
+      }
       if (retry.current.stopped) return;
       const delay = Math.min(1000 * 2 ** retry.current.attempts, 30000);
       retry.current.attempts += 1;
       retry.current.timer = setTimeout(connect, delay);
     };
     socket.onerror = () => { /* onclose follows and schedules the retry */ };
-  }, [handleMessage]);
+  }, [handleMessage, clearSession]);
 
   const refreshActive = useCallback(async () => {
     try {
@@ -343,6 +360,26 @@ export function useDispatchStore() {
     }
   }, [request]);
 
+  // Server history is the source of truth for analytics; the local copy
+  // only fills in what the server does not keep (patient reference).
+  const refreshHistory = useCallback(async (days = 90) => {
+    try {
+      const data = await request(`/api/dispatches/history?days=${days}`);
+      setHistory((prev) => {
+        const local = Object.fromEntries(prev.map((h) => [h.id, h]));
+        const merged = { ...local };
+        data.dispatches.forEach((d) => {
+          const mine = local[d.dispatch_id] || {};
+          const live = mine.status === 'active' && d.status === 'active';
+          merged[d.dispatch_id] = live ? { ...fromServerHistory(d), ...mine } : { ...mine, ...fromServerHistory(d), patient: mine.patient };
+        });
+        const next = Object.values(merged).sort((a, b) => b.createdAt - a.createdAt).slice(0, 500);
+        if (profileRef.current) AsyncStorage.setItem(historyKey(profileRef.current.id), JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    } catch (e) { /* keep showing the local copy */ }
+  }, [request]);
+
   // Everything that starts when a hospital signs in.
   useEffect(() => {
     if (!profile) return undefined;
@@ -356,6 +393,7 @@ export function useDispatchStore() {
         const saved = await AsyncStorage.getItem(historyKey(profile.id));
         if (saved) setHistory(JSON.parse(saved));
       } catch (e) { /* ignore */ }
+      refreshHistory();
     })();
     return () => {
       clearInterval(healthTimer);
@@ -430,6 +468,6 @@ export function useDispatchStore() {
     booting, profile, login, register, logout, notice, setNotice,
     emergencies, ordered, selectedId, setSelectedId, selected: selectedId ? emergencies[selectedId] : null,
     history, wsState, health, availability, now,
-    triggerDispatch, markDonated, closeEmergency, refreshAvailability, reconnect: connect,
+    triggerDispatch, markDonated, closeEmergency, refreshAvailability, refreshHistory, reconnect: connect,
   };
 }

@@ -57,9 +57,14 @@ class FakeStore:
             donor["eta_minutes"] = eta_minutes
         return True
 
-    async def mark_complete(self, dispatch_id):
+    async def mark_complete(self, dispatch_id, fulfilled=False):
         self.dispatches[dispatch_id]["is_complete"] = True
+        self.dispatches[dispatch_id]["fulfilled"] = fulfilled
         self.completed.append(dispatch_id)
+
+    async def history_for_hospital(self, hospital_id, since_iso):
+        self.history_since = since_iso
+        return [dict(r) for r in getattr(self, "history_rows", []) if r["hospital_id"] == hospital_id]
 
     async def active_for_hospital(self, hospital_id):
         return [copy.deepcopy(d) for d in self.dispatches.values()
@@ -121,5 +126,20 @@ def client():
 
 @pytest.fixture
 def auth_headers():
-    token = create_access_token({"sub": HOSPITAL})
+    token = create_access_token({"sub": HOSPITAL, "role": "hospital"})
     return {"Authorization": f"Bearer {token}"}
+
+
+def donor_headers(phone="+919000000001"):
+    token = create_access_token({"sub": phone, "role": "donor"})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_limits():
+    """Rate limiters and pending codes are process-wide; isolate each test."""
+    from backend.api import auth
+    from backend.services import otp
+    otp.reset()
+    auth._login_failures.clear()
+    yield

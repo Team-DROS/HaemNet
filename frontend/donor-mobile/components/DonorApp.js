@@ -50,12 +50,16 @@ function openDirections(target) {
 export default function DonorApp() {
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null); // { id: 'phone' }
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+  const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
+  const [authStep, setAuthStep] = useState('phone'); // 'phone' | 'code'
   const [loginId, setLoginId] = useState('');
-  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [devCode, setDevCode] = useState(null); // only returned by a development server
+  const [resendAt, setResendAt] = useState(0);
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [clock, setClock] = useState(Date.now());
 
   // ─── PROFILE STATE ───
   const [name, setName] = useState('');
@@ -94,66 +98,101 @@ export default function DonorApp() {
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
 
   useEffect(() => { checkLoginStatus(); }, []);
+  useEffect(() => {
+    if (authStep !== 'code') return undefined;
+    const t = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [authStep]);
   useEffect(() => { if (isLoggedIn && currentUser) loadProfile(); }, [isLoggedIn, currentUser]);
   useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
 
   // ─── AUTHENTICATION ───
+  // Donors sign in with their phone number and a 6-digit SMS code. The server
+  // returns a donor token that every donor endpoint requires.
+  const SESSION_KEY = '@donor_session';
+  const userRef = useRef(null);
+  userRef.current = currentUser;
+
+  const api = async (method, path, data) => {
+    const token = userRef.current?.token;
+    try {
+      return await axios({
+        method, url: `${SERVER_BASE_URL}${path}`, data,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        timeout: 15000,
+      });
+    } catch (err) {
+      if (err.response?.status === 401 && token) {
+        await handleLogout('Your session expired. Sign in again with your phone number.');
+      }
+      throw err;
+    }
+  };
+
   const checkLoginStatus = async () => {
     try {
-      const userStr = await AsyncStorage.getItem('@current_user');
-      if (userStr) {
-        setCurrentUser(JSON.parse(userStr));
-        setIsLoggedIn(true);
+      await AsyncStorage.removeItem('@current_user'); // pre-OTP builds kept an unverified session here
+      const saved = await AsyncStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const session = JSON.parse(saved);
+        if (session?.token && session?.id) {
+          setCurrentUser(session);
+          setIsLoggedIn(true);
+        }
       }
     } catch (e) {
       Alert.alert('Sign in', 'Could not check your sign-in status.');
     }
   };
 
-  const handleAuth = async () => {
-    setAuthError('');
-    if (!loginId.trim() || !password.trim()) {
-      return setAuthError('Enter your mobile number and password.');
-    }
-    if (loginId.trim().length !== 10 || !/^\d+$/.test(loginId.trim())) {
-      return setAuthError('Mobile number must be exactly 10 digits.');
-    }
+  const serverError = (err, fallback) => err.response?.data?.detail || (err.response ? fallback : 'Cannot reach HaemNet. Check your connection.');
+
+  const requestCode = async () => {
+    setAuthError(''); setAuthNotice('');
+    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
     setAuthLoading(true);
     try {
-      const authKey = `@auth_${loginId.toLowerCase()}`;
-      const existing = await AsyncStorage.getItem(authKey);
-
-      if (authMode === 'signup') {
-        if (existing) {
-          setAuthError('An account with this number already exists. Sign in instead.');
-          setAuthLoading(false);
-          return;
-        }
-        await AsyncStorage.setItem(authKey, 'true'); // Local account marker (no server auth yet)
-      } else if (!existing) {
-        setAuthError('No account found for this number. Create one first.');
-        setAuthLoading(false);
-        return;
-      }
-      const user = { id: loginId.toLowerCase() };
-      await AsyncStorage.setItem('@current_user', JSON.stringify(user));
-      setCurrentUser(user);
-      setIsLoggedIn(true);
-    } catch (e) {
-      setAuthError('Authentication error: ' + e.message);
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId }, { timeout: 15000 });
+      setDevCode(res.data.dev_code || null);
+      setCode('');
+      setAuthStep('code');
+      setResendAt(Date.now() + 30000);
+      setClock(Date.now());
+      setAuthNotice(`We sent a 6-digit code to +91 ${loginId}.`);
+    } catch (err) {
+      setAuthError(serverError(err, 'Could not send the code.'));
     }
     setAuthLoading(false);
   };
 
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem('@current_user');
+  const verifyCode = async () => {
+    setAuthError('');
+    if (!/^\d{6}$/.test(code)) return setAuthError('Enter the 6-digit code from the SMS.');
+    setAuthLoading(true);
+    try {
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, code }, { timeout: 15000 });
+      const session = { id: localDigits(res.data.phone), token: res.data.access_token };
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      setAuthStep('phone'); setCode(''); setDevCode(null); setAuthNotice('');
+      setCurrentUser(session);
+      setIsLoggedIn(true);
+    } catch (err) {
+      setAuthError(serverError(err, 'That code did not work.'));
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async (message) => {
+    await AsyncStorage.removeItem(SESSION_KEY);
     setIsLoggedIn(false);
     setCurrentUser(null);
     setLoginId('');
-    setPassword('');
+    setCode('');
+    setAuthStep('phone');
     setIsRegistered(false);
     setRequests([]);
     setActiveTrip(null);
+    setAuthNotice(typeof message === 'string' ? message : '');
   };
 
   // ─── PROFILE LOGIC ───
@@ -204,8 +243,16 @@ export default function DonorApp() {
       // ─── SYNC WITH BACKEND ───
       try {
         const phoneParam = withCountryCode(currentUser.id);
-        const response = await axios.get(`${SERVER_BASE_URL}/api/donor/profile/${encodeURIComponent(phoneParam)}`);
+        const response = await api('get', `/api/donor/profile/${encodeURIComponent(phoneParam)}`);
         const backendProfile = response.data.donor;
+
+        // Returning donor on a new phone: start the form from what the network knows.
+        if (!savedProfile && backendProfile) {
+          setName(backendProfile.name || '');
+          const serverGroup = backendProfile.blood_group || 'O+';
+          if (BLOOD_GROUPS.includes(serverGroup)) setBloodGroup(serverGroup);
+          else { setBloodGroup('Others'); setCustomBloodGroup(serverGroup); }
+        }
 
         if (backendProfile && backendProfile.last_donated_date) {
           const backendDate = new Date(backendProfile.last_donated_date);
@@ -267,7 +314,7 @@ export default function DonorApp() {
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
     if (!finalBloodGroup) return setRegError('Specify your blood group.');
 
-    const finalPhone = withCountryCode(phone);
+    const finalPhone = withCountryCode(currentUser.id); // always the SMS-verified number
 
     setIsSaving(true);
     const profile = {
@@ -277,14 +324,14 @@ export default function DonorApp() {
       last_donated_date: lastDonatedDate ? lastDonatedDate.toISOString() : null,
     };
     try {
-      await axios.post(`${SERVER_BASE_URL}/api/donor/register`, {
+      await api('post', '/api/donor/register', {
         name: profile.name,
         phone: profile.phone,
         blood_group: profile.blood_group,
         language: profile.language,
         lat: profile.lat,
         lng: profile.lng,
-      }, { headers: { 'Content-Type': 'application/json' } });
+      });
       await AsyncStorage.setItem(getProfileKey(), JSON.stringify(profile));
       setIsSaving(false); setIsRegistered(true); setIsEditing(false);
     } catch (err) {
@@ -296,7 +343,7 @@ export default function DonorApp() {
 
   const clearProfile = async () => {
     try {
-      await axios.delete(`${SERVER_BASE_URL}/api/donor/profile/${encodeURIComponent(withCountryCode(currentUser.id))}`);
+      await api('delete', `/api/donor/profile/${encodeURIComponent(withCountryCode(currentUser.id))}`);
 
       await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey()]);
       setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
@@ -325,10 +372,6 @@ export default function DonorApp() {
     if (/^[a-zA-Z\s]*$/.test(text)) setName(text);
   };
 
-  const handlePhoneChange = (text) => {
-    setPhone(text.replace(/[^0-9]/g, '').slice(0, 10));
-  };
-
   const handleLoginIdChange = (text) => {
     setLoginId(text.replace(/[^0-9]/g, '').slice(0, 10));
   };
@@ -339,11 +382,11 @@ export default function DonorApp() {
   const fetchRequests = useCallback(async () => {
     if (!donorPhone) return;
     try {
-      const res = await axios.get(`${SERVER_BASE_URL}/api/donor/requests/${encodeURIComponent(donorPhone)}`);
+      const res = await api('get', `/api/donor/requests/${encodeURIComponent(donorPhone)}`);
       setRequests(res.data.requests || []);
       setRequestsError('');
     } catch (err) {
-      setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
+      if (err.response?.status !== 401) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
     }
   }, [donorPhone]);
 
@@ -364,9 +407,7 @@ export default function DonorApp() {
     setResponding(req.dispatch_id);
     setRespondMsg('');
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/respond`, {
-        dispatch_id: req.dispatch_id, phone: donorPhone, accept,
-      });
+      const res = await api('post', '/api/donor/respond', { dispatch_id: req.dispatch_id, accept });
       setRequests((list) => list.filter((r) => r.dispatch_id !== req.dispatch_id));
       if (accept) {
         const trip = { ...req, eta_minutes: res.data.eta_minutes ?? req.eta_minutes, accepted_at: new Date().toISOString() };
@@ -498,40 +539,56 @@ export default function DonorApp() {
           <Text style={s.brand}>HaemNet</Text>
         </View>
 
-        <Text style={s.h1}>{authMode === 'login' ? 'Welcome back' : 'Become a donor'}</Text>
+        <Text style={s.h1}>{authStep === 'phone' ? 'Sign in or join' : 'Enter your code'}</Text>
         <Text style={s.lede}>
-          {authMode === 'login'
-            ? 'Sign in with the mobile number hospitals will call you on.'
-            : 'When a nearby hospital needs your blood group, you get a call and can say yes in one tap.'}
+          {authStep === 'phone'
+            ? 'Use the mobile number hospitals should call. We text you a code to confirm it is yours.'
+            : `Sent to +91 ${loginId}. It expires in 5 minutes.`}
         </Text>
 
-        <Field label="Mobile number">
-          <View style={s.phoneRow}>
-            <Text style={s.phonePrefix}>+91</Text>
-            <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
-              placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
-              style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
-          </View>
-        </Field>
+        {authNotice && authStep === 'phone' ? <Notice tone="amber">{authNotice}</Notice> : null}
 
-        <Field label="Password">
-          <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={color.faint}
-            secureTextEntry style={s.input} onSubmitEditing={handleAuth} accessibilityLabel="Password" />
-        </Field>
+        {authStep === 'phone' ? (
+          <Field label="Mobile number">
+            <View style={s.phoneRow}>
+              <Text style={s.phonePrefix}>+91</Text>
+              <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
+                placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10} onSubmitEditing={requestCode}
+                style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
+            </View>
+          </Field>
+        ) : (
+          <Field label="6-digit code">
+            <TextInput value={code} onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+              placeholder="000000" placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
+              textContentType="oneTimeCode" autoComplete="sms-otp" autoFocus onSubmitEditing={verifyCode}
+              style={[s.input, s.codeInput]} accessibilityLabel="6-digit code" />
+          </Field>
+        )}
 
+        {devCode && authStep === 'code' ? (
+          <Notice tone="neutral">Development server: SMS is not configured, so your code is {devCode}.</Notice>
+        ) : null}
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
-        <PrimaryButton onPress={handleAuth} busy={authLoading} style={{ marginTop: 8 }}>
-          {authMode === 'login' ? 'Sign in' : 'Create account'}
+        <PrimaryButton onPress={authStep === 'phone' ? requestCode : verifyCode} busy={authLoading} style={{ marginTop: 8 }}>
+          {authStep === 'phone' ? 'Send code' : 'Verify and continue'}
         </PrimaryButton>
 
-        <TouchableOpacity style={{ alignItems: 'center', marginTop: 22 }} accessibilityRole="button"
-          onPress={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); }}>
-          <Text style={s.switchText}>
-            {authMode === 'login' ? 'New to HaemNet? ' : 'Already a donor? '}
-            <Text style={s.switchLink}>{authMode === 'login' ? 'Create an account' : 'Sign in'}</Text>
-          </Text>
-        </TouchableOpacity>
+        {authStep === 'code' && (
+          <View style={[s.row, { justifyContent: 'space-between', marginTop: 18 }]}>
+            <TouchableOpacity onPress={() => { setAuthStep('phone'); setAuthError(''); setDevCode(null); }} accessibilityRole="button">
+              <Text style={s.switchLink}>Change number</Text>
+            </TouchableOpacity>
+            {clock < resendAt ? (
+              <Text style={s.switchText}>Resend in {Math.ceil((resendAt - clock) / 1000)}s</Text>
+            ) : (
+              <TouchableOpacity onPress={requestCode} disabled={authLoading} accessibilityRole="button">
+                <Text style={s.switchLink}>Resend code</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         <View style={s.authFacts}>
           <Fact title="Only when it matters" body="You are contacted only when your group is needed within 10 km." />
@@ -626,7 +683,7 @@ export default function DonorApp() {
           <DropMark size={22} />
           <Text style={[s.brand, { fontSize: 17 }]}>HaemNet</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={s.smallBtn} accessibilityRole="button">
+        <TouchableOpacity onPress={() => handleLogout()} style={s.smallBtn} accessibilityRole="button">
           <Text style={s.smallBtnText}>Sign out</Text>
         </TouchableOpacity>
       </View>
@@ -651,11 +708,11 @@ export default function DonorApp() {
             <TextInput value={name} onChangeText={handleNameChange} placeholder="Ramesh Patel" placeholderTextColor={color.faint} style={s.input} />
           </Field>
 
-          <Field label="Phone number" hint="Hospitals' AI caller rings this number.">
-            <View style={s.phoneRow}>
+          <Field label="Phone number" hint="Verified by SMS. Hospitals' AI caller rings this number.">
+            <View style={[s.phoneRow, { backgroundColor: color.surface2 }]}>
               <Text style={s.phonePrefix}>+91</Text>
-              <TextInput value={phone} onChangeText={handlePhoneChange} placeholder="98765 43210" placeholderTextColor={color.faint}
-                keyboardType="phone-pad" maxLength={10} style={[s.inputBare, { fontFamily: mono }]} />
+              <TextInput value={phone} editable={false} style={[s.inputBare, { fontFamily: mono, color: color.text2 }]}
+                accessibilityLabel="Verified phone number" />
             </View>
           </Field>
 
@@ -992,6 +1049,7 @@ const s = StyleSheet.create({
 
   label: { color: color.text, fontSize: 13, fontWeight: '600', marginBottom: 8 },
   hint: { color: color.muted, fontSize: 12, marginTop: 6 },
+  codeInput: { fontFamily: mono, fontSize: 24, letterSpacing: 8, textAlign: 'center', paddingVertical: 14 },
   input: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, paddingHorizontal: 14, paddingVertical: 12, color: color.text, fontSize: 15 },
   inputBare: { flex: 1, paddingHorizontal: 12, paddingVertical: 12, color: color.text, fontSize: 15 },
   phoneRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: color.border, borderRadius: radius.input, backgroundColor: color.surface, overflow: 'hidden' },

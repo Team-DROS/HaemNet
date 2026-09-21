@@ -180,7 +180,7 @@ class DonationLog(BaseModel):
 class DonorResponse(BaseModel):
     """A donor accepting or declining a request from the mobile app."""
     dispatch_id: str = Field(..., min_length=1)
-    phone: str = Field(..., min_length=4, description="Donor phone, used to find their call session")
+    phone: Optional[str] = Field(None, description="Optional; the signed-in donor's phone is used")
     accept: bool
 
 

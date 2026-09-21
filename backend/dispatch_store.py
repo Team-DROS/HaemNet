@@ -27,6 +27,7 @@ from backend.db_services import (
     db_summary,
     db_active_dispatch_ids,
     db_requests_for_donor,
+    db_dispatch_history,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,10 +128,10 @@ class DispatchStore:
             )
         return success
 
-    async def mark_complete(self, dispatch_id: str) -> None:
-        """Mark a dispatch as fully completed."""
-        await db_mark_complete(dispatch_id)
-        logger.info("Dispatch %s marked complete", dispatch_id)
+    async def mark_complete(self, dispatch_id: str, fulfilled: bool = False) -> None:
+        """Close a dispatch. `fulfilled` records that every unit was donated."""
+        await db_mark_complete(dispatch_id, fulfilled=fulfilled)
+        logger.info("Dispatch %s marked complete (fulfilled=%s)", dispatch_id, fulfilled)
 
     # ── Cleanup ───────────────────────────────────────────────────
 
@@ -157,6 +158,10 @@ class DispatchStore:
             if dispatch:
                 dispatches.append(dispatch)
         return dispatches
+
+    async def history_for_hospital(self, hospital_id: str, since_iso: str) -> List[Dict[str, Any]]:
+        """Closed and open dispatches since a point in time, newest first."""
+        return await db_dispatch_history(hospital_id, since_iso)
 
     async def requests_for_donor(self, phone: str) -> List[Dict[str, Any]]:
         """Open requests a donor has been matched to and not yet answered."""

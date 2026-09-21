@@ -30,6 +30,9 @@ htmlcov/
 test_*.py
 tests/
 backend/tests/
+# ...except the backend test suite, which CI runs
+!backend/tests/
+!backend/tests/*.py
 scripts/
 database/setup_db.py
 database/ingest_csv.py

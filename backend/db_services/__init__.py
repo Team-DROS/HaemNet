@@ -560,26 +560,44 @@ async def db_get_by_call_sid(call_sid: str) -> Optional[tuple[str, str]]:
 _UPDATE_DONOR_STATUS_QUERY = """
 MATCH (c:CallSession {dispatch_id: $dispatch_id, donor_id: $donor_id})
 SET c.status = $status,
-    c.eta_minutes = COALESCE($eta_minutes, c.eta_minutes)
+    c.eta_minutes = COALESCE($eta_minutes, c.eta_minutes),
+    c.updated_at = $now
+WITH c
+OPTIONAL MATCH (dp:Dispatch {id: $dispatch_id})
+FOREACH (_ IN CASE WHEN dp IS NOT NULL AND dp.first_accept_at IS NULL AND $status IN $accept_statuses
+                   THEN [1] ELSE [] END |
+    SET dp.first_accept_at = $now)
 RETURN c.donor_id
 """
+
+# Statuses that mean the donor said yes (used for time-to-first-acceptance).
+_ACCEPT_STATUSES = ["accepted", "en_route", "completed", "donated"]
 
 async def db_update_donor_status(dispatch_id: str, donor_id: str, status: str, eta_minutes: Optional[int] = None) -> bool:
     driver = _get_driver()
     async with driver.session() as session:
-        result = await session.run(_UPDATE_DONOR_STATUS_QUERY, dispatch_id=dispatch_id, donor_id=donor_id, status=status, eta_minutes=eta_minutes)
+        result = await session.run(
+            _UPDATE_DONOR_STATUS_QUERY, dispatch_id=dispatch_id, donor_id=donor_id, status=status,
+            eta_minutes=eta_minutes, now=datetime.now(timezone.utc).isoformat(),
+            accept_statuses=_ACCEPT_STATUSES,
+        )
         record = await result.single()
         return record is not None
 
 _MARK_COMPLETE_QUERY = """
 MATCH (dp:Dispatch {id: $dispatch_id})
-SET dp.is_complete = true
+SET dp.is_complete = true,
+    dp.closed_at = coalesce(dp.closed_at, $now),
+    dp.fulfilled = coalesce(dp.fulfilled, false) OR $fulfilled
 """
 
-async def db_mark_complete(dispatch_id: str) -> None:
+async def db_mark_complete(dispatch_id: str, fulfilled: bool = False) -> None:
     driver = _get_driver()
     async with driver.session() as session:
-        await session.run(_MARK_COMPLETE_QUERY, dispatch_id=dispatch_id)
+        await session.run(
+            _MARK_COMPLETE_QUERY, dispatch_id=dispatch_id, fulfilled=fulfilled,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
 
 _REMOVE_DISPATCH_QUERY = """
 MATCH (dp:Dispatch {id: $dispatch_id})
@@ -657,6 +675,43 @@ async def db_active_dispatch_ids(hospital_id: str, limit: int = 20) -> list[str]
     async with driver.session() as session:
         result = await session.run(_ACTIVE_DISPATCH_IDS_QUERY, hospital_id=hospital_id, limit=limit)
         return [record["dispatch_id"] async for record in result]
+
+
+_HISTORY_QUERY = """
+MATCH (dp:Dispatch {hospital_id: $hospital_id})
+WHERE dp.created_at >= $since
+OPTIONAL MATCH (dp)-[:HAS_CALL]->(c:CallSession)
+WITH dp, collect(c.status) AS statuses
+RETURN dp.id AS dispatch_id,
+       dp.blood_group AS blood_group,
+       coalesce(dp.units, 1) AS units,
+       coalesce(dp.urgency, 'urgent') AS urgency,
+       dp.created_at AS created_at,
+       dp.first_accept_at AS first_accept_at,
+       dp.closed_at AS closed_at,
+       coalesce(dp.is_complete, false) AS is_complete,
+       coalesce(dp.fulfilled, false) AS fulfilled,
+       size(statuses) AS matched,
+       size([s IN statuses WHERE s IN $answered]) AS answered,
+       size([s IN statuses WHERE s IN $accepted]) AS accepted,
+       size([s IN statuses WHERE s = 'donated']) AS donated
+ORDER BY dp.created_at DESC
+LIMIT $limit
+"""
+
+# A donor who picked up (or answered in the app), whatever they then said.
+_ANSWERED_STATUSES = ["answered", "declined", *_ACCEPT_STATUSES]
+
+
+async def db_dispatch_history(hospital_id: str, since_iso: str, limit: int = 500) -> list[dict]:
+    """Every dispatch a hospital raised since `since_iso`, with outcome counts."""
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(
+            _HISTORY_QUERY, hospital_id=hospital_id, since=since_iso, limit=limit,
+            answered=_ANSWERED_STATUSES, accepted=_ACCEPT_STATUSES,
+        )
+        return [record.data() async for record in result]
 
 
 _REQUESTS_FOR_DONOR_QUERY = """

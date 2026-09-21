@@ -23,4 +23,9 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
-        
+
+    - name: Run backend tests
+      env:
+        JWT_SECRET: ci-only-secret
+        APP_ENV: development
+      run: python -m pytest backend/tests -q

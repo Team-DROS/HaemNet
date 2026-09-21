@@ -68,13 +68,15 @@ Our approach relies on a heavily decoupled, event-driven architecture designed f
 
 ### Backend Setup
 ```bash
-cd backend
 python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-# Configure .env with your Neo4j, Twilio, and Sarvam AI keys
-uvicorn main:app --reload
+source venv/bin/activate            # Windows: venv\Scripts\activate
+pip install -r backend/requirements.txt
+# Configure backend/.env with your Neo4j, Twilio and Sarvam AI keys and a JWT_SECRET
+uvicorn backend.main:app --reload   # run from the repository root
+python -m pytest backend/tests -q   # tests need no external services
 ```
+
+See [backend/README.md](backend/README.md) for authentication, the API and the dashboard WebSocket protocol.
 
 ### Mobile App Setup
 ```bash
@@ -82,6 +84,7 @@ cd frontend/donor-mobile
 npm install
 npx expo start
 ```
+Set `EXPO_PUBLIC_API_URL` in `frontend/donor-mobile/.env` to a backend address the phone can reach (your computer's LAN IP, not `localhost`). Donors sign in with their phone number and an SMS code; on a development backend without Twilio the code is shown in the app.
 
 ### Web Dashboard Setup
 ```bash
@@ -89,3 +92,4 @@ cd frontend/donor-web
 npm install
 npx expo start --web
 ```
+Set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL` in `frontend/donor-web/.env`. Register a hospital from the sign-in screen; the server issues its hospital ID.

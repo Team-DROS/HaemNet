@@ -16,7 +16,12 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.pranko007.donormobile"
+      "package": "com.pranko007.donormobile",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,7 +47,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "05b18a38-c9c6-4133-9f96-db43bec875da"
+        "projectId": "1e32720d-1259-4b34-9de9-fb9fa00ff4f0"
       }
     }
   }

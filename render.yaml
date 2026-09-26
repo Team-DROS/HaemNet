@@ -60,7 +60,6 @@ services:
   - type: web
     name: haemnet-dashboard
     runtime: static
-    plan: free
     rootDir: frontend/donor-web
     buildCommand: npm ci && npx expo export --platform web --output-dir dist
     staticPublishPath: ./dist

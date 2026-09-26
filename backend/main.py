@@ -76,6 +76,10 @@ async def lifespan(app: FastAPI):
         settings.app_env, settings.db_backend,
     )
     _warn_if_uvloop()
+    if not settings.twilio_configured:
+        logger.warning("Twilio is not configured: AI voice calls and donor SMS sign-in codes are disabled.")
+    if not settings.sarvam_configured:
+        logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
     try:
         from backend.db_services import ensure_indexes
         await ensure_indexes()

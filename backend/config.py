@@ -83,25 +83,42 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> "Settings":
-        """Reject insecure placeholder configuration outside development."""
+        """
+        Reject configuration that would be insecure or broken outside development.
+
+        Only the essentials are mandatory: a real JWT secret and a reachable,
+        non-local database. Twilio and Sarvam are optional so the dashboard can
+        go live before the telephony account exists; without them AI calls and
+        SMS sign-in codes are disabled and the app says so at startup and in
+        `python -m backend.tools.check_config`.
+        """
         if self.app_env.lower() in {"production", "staging"}:
             required = {
                 "JWT_SECRET": self.jwt_secret,
                 **({"MONGODB_URI": self.mongodb_uri}
                    if self.db_backend == "mongodb" else
                    {"NEO4J_PASSWORD": self.neo4j_password}),
-                "TWILIO_ACCOUNT_SID": self.twilio_account_sid,
-                "TWILIO_AUTH_TOKEN": self.twilio_auth_token,
-                "SARVAM_API_KEY": self.sarvam_api_key,
             }
-            missing = [name for name, value in required.items() if not value.strip()]
+            missing = [name for name, value in required.items() if not (value or "").strip()]
             if missing:
                 raise ValueError(
                     f"Missing required production configuration: {', '.join(missing)}"
                 )
-            if self.jwt_secret in {"change-me", "secret", "your-secret-key"}:
+            if self.jwt_secret in {"change-me", "secret", "your-secret-key", "replace-with-a-long-random-secret"}:
                 raise ValueError("JWT_SECRET must be changed from its placeholder value")
+            if self.db_backend == "mongodb" and any(
+                host in self.mongodb_uri for host in ("localhost", "127.0.0.1")
+            ):
+                raise ValueError("MONGODB_URI points at localhost; use the Atlas connection string in production")
         return self
+
+    @property
+    def twilio_configured(self) -> bool:
+        return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_phone_number)
+
+    @property
+    def sarvam_configured(self) -> bool:
+        return bool(self.sarvam_api_key)
 
 
 # Singleton instance — import this everywhere.

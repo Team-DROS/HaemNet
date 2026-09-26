@@ -39,10 +39,17 @@ async def db(monkeypatch):
     monkeypatch.setattr(mongodb, "_client", None)
     monkeypatch.setattr(mongo_repo, "_indexes_ready", False)
 
+    # Probe with a short timeout so a machine without MongoDB skips in
+    # seconds instead of waiting 30 s per test for server selection.
+    from pymongo import AsyncMongoClient
+
+    probe = AsyncMongoClient(TEST_URI, serverSelectionTimeoutMS=1500)
     try:
-        await mongodb.ping()
+        await probe.admin.command("ping")
     except Exception as exc:  # noqa: BLE001 - no server in this environment
         pytest.skip(f"MongoDB not reachable at {TEST_URI}: {exc}")
+    finally:
+        await probe.close()
 
     database = mongodb.get_database()
     for name in (mongo_repo.DONORS, mongo_repo.HOSPITALS, mongo_repo.DISPATCHES, mongo_repo.CALLS):

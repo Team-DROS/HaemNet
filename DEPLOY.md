@@ -107,8 +107,11 @@ npm install
 npx eas build --platform android --profile preview
 ```
 
-Set `EXPO_PUBLIC_API_URL` to the public API URL in `eas.json` (or as an EAS
-secret) before building, otherwise the app points at `localhost`.
+`eas.json` already points the `preview` and `production` builds at
+`https://haemnet-api.onrender.com`, the name `render.yaml` gives the API. If
+Render assigns a different URL (for example because the name was taken),
+change `EXPO_PUBLIC_API_URL` in `eas.json` before building, otherwise the app
+cannot reach the server.
 
 ## 8. After it is live
 

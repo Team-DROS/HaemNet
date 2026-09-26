@@ -8,13 +8,18 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com"
+      }
     },
     "production": {
       "android": {
         "buildType": "apk"
       },
-      "env": {}
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com"
+      }
     }
   },
   "submit": {

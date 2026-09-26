@@ -354,7 +354,10 @@ export function useDispatchStore() {
 
   const refreshHealth = useCallback(async () => {
     try {
-      setHealth(await request('/api/health', { auth: false }));
+      const data = await request('/api/health', { auth: false });
+      // The backend can run on MongoDB or Neo4j; database_status covers both,
+      // and older builds only sent the engine's own field.
+      setHealth({ ...data, dbOk: (data.database_status || data.mongodb || data.neo4j) === 'connected' });
     } catch (e) {
       setHealth({ status: 'unreachable' });
     }

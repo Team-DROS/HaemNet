@@ -1,7 +1,7 @@
 """Pure logic: geography, language handling, schemas, Twilio status mapping."""
 
 from backend.api.callbacks import map_twilio_status
-from backend.db_services import _REGISTER_DONOR_QUERY
+from backend.db_services.neo4j_repo import _REGISTER_DONOR_QUERY
 from backend.schemas.models import (
     CallStatus,
     DonorLanguage,

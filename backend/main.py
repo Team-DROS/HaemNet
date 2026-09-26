@@ -7,7 +7,9 @@ Start the server:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+
 import sentry_sdk
 from contextlib import asynccontextmanager
 
@@ -44,13 +46,41 @@ else:
 
 # ── Lifespan (startup / shutdown) ─────────────────────────────────
 
+def _warn_if_uvloop() -> None:
+    """
+    PyMongo's async client does not work on uvloop: server selection never
+    completes and every request hangs. uvicorn picks uvloop by default when
+    it is installed, so run it with `--loop asyncio` (the Dockerfile does).
+    """
+    if settings.db_backend != "mongodb":
+        return
+    try:
+        loop_module = type(asyncio.get_running_loop()).__module__
+    except RuntimeError:
+        return
+    if "uvloop" in loop_module:
+        logger.error(
+            "Running on uvloop with the MongoDB backend: requests will hang. "
+            "Start the server with `--loop asyncio`."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Manage resources that need setup/teardown around the app's
     lifecycle (e.g. HTTP clients, DB connections).
     """
-    logger.info("🚀  Blood Dispatch Backend starting up (env=%s)", settings.app_env)
+    logger.info(
+        "🚀  Blood Dispatch Backend starting up (env=%s, database=%s)",
+        settings.app_env, settings.db_backend,
+    )
+    _warn_if_uvloop()
+    try:
+        from backend.db_services import ensure_indexes
+        await ensure_indexes()
+    except Exception as exc:  # the app still starts; /api/health reports the problem
+        logger.error("Could not prepare database indexes: %s", exc)
     yield
     # Shutdown — close service clients.
     from backend.db_services import close as close_db

@@ -89,7 +89,7 @@ export default function HospitalDashboard() {
 }
 
 function Sidebar({ compact, tab, setTab, store, openCount }) {
-  const healthy = store.wsState === 'live' && store.health?.neo4j === 'connected';
+  const healthy = store.wsState === 'live' && store.health?.dbOk;
   const initials = (store.profile.name || store.profile.id || '?')
     .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   const statusText = healthy

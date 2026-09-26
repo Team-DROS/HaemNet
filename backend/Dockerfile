@@ -18,4 +18,5 @@ COPY . /app/backend
 EXPOSE 8000
 
 # Command to run the application using Uvicorn with 4 workers for production concurrency
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--workers", "1"]
+# --loop asyncio is required: PyMongo's async client hangs on uvloop.
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--loop", "asyncio", "--workers", "1"]

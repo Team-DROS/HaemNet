@@ -62,7 +62,7 @@ function KpiStrip({ store }) {
   }, { contacted: 0, confirmed: 0, enRoute: 0, live: 0 });
   const critical = open.filter((e) => e.urgency === 'critical').length;
   const med = medianResponseMs(store.history);
-  const dbOk = store.health?.neo4j === 'connected';
+  const dbOk = !!store.health?.dbOk;
 
   return (
     <View style={s.kpis}>
@@ -80,7 +80,7 @@ function KpiStrip({ store }) {
           <LiveDot tone={store.wsState === 'live' ? 'violet' : 'amber'} size={7} pulse={store.wsState === 'live'} />
           <Text style={s.kpiStatus}>{store.wsState === 'live' ? 'AI dispatch online' : 'Live feed offline'}</Text>
         </View>
-        <Text style={s.kpiSub}>{dbOk ? 'Donor graph connected' : store.health ? 'Donor graph unreachable' : 'Checking donor graph'}</Text>
+        <Text style={s.kpiSub}>{dbOk ? 'Donor database connected' : store.health ? 'Donor database unreachable' : 'Checking donor database'}</Text>
       </View>
     </View>
   );

@@ -2,28 +2,34 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch
 from backend.main import app
-from backend.schemas.models import DispatchResponse
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 @pytest.mark.asyncio
-@patch("backend.db_services._get_driver")
-async def test_health_check(mock_get_driver):
-    mock_session = AsyncMock()
-    mock_session.run = AsyncMock()
-    
-    session_cm = AsyncMock()
-    session_cm.__aenter__.return_value = mock_session
-    session_cm.__aexit__.return_value = False
-    
-    mock_driver = MagicMock()
-    mock_driver.session.return_value = session_cm
-    mock_get_driver.return_value = mock_driver
-    
+@patch("backend.api.routes.db_health", new_callable=AsyncMock)
+async def test_health_check(mock_health):
+    mock_health.return_value = {"backend": "mongodb", "status": "connected"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "service": "blood-dispatch-backend", "neo4j": "connected"}
+    assert response.json() == {
+        "status": "healthy",
+        "service": "blood-dispatch-backend",
+        "database": "mongodb",
+        "database_status": "connected",
+        "mongodb": "connected",
+    }
+
+
+@pytest.mark.asyncio
+@patch("backend.api.routes.db_health", new_callable=AsyncMock)
+async def test_health_check_reports_a_broken_database(mock_health):
+    mock_health.return_value = {"backend": "mongodb", "status": "disconnected: refused"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+
 
 @pytest.mark.asyncio
 async def test_unauthorized_dispatch():

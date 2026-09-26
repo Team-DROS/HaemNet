@@ -41,3 +41,6 @@ database/sample_donors.csv
 database/README.md
 *.md
 !README.md
+!DEPLOY.md
+!backend/README.md
+!design/README.md

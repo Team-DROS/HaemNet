@@ -42,6 +42,6 @@ async def close() -> None:
     """Close the shared client during application shutdown."""
     global _client
     if _client is not None:
-        _client.close()
+        await _client.close()
         _client = None
         logger.info("MongoDB client closed")

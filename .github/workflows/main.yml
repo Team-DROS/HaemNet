@@ -10,6 +10,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
     - uses: actions/checkout@v4
     
@@ -26,6 +37,8 @@ jobs:
 
     - name: Run backend tests
       env:
-        JWT_SECRET: ci-only-secret
+        JWT_SECRET: ci-only-secret-value-at-least-32-chars
         APP_ENV: development
+        DB_BACKEND: mongodb
+        MONGODB_TEST_URI: mongodb://127.0.0.1:27017
       run: python -m pytest backend/tests -q

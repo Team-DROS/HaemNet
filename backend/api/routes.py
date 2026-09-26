@@ -17,6 +17,7 @@ from backend.api.websockets import manager
 from backend.api.auth import get_current_donor, get_current_hospital
 from backend.db_services import (
     db_eligible_counts_by_group,
+    db_health,
     db_get_hospital_by_id,
     delete_donor,
     find_eligible_donors,
@@ -543,20 +544,14 @@ async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_c
 
 @router.get("/health")
 async def health_check():
-    """Advanced liveness and readiness probe."""
-    from backend.db_services import _get_driver
-    db_status = "unknown"
-    try:
-        driver = _get_driver()
-        async with driver.session() as session:
-            await session.run("RETURN 1")
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"disconnected: {str(e)}"
-        logger.error("Health check failed to connect to Neo4j: %s", e)
-
+    """Liveness and readiness probe, whichever data layer is configured."""
+    health = await db_health()
+    status = health["status"]
     return {
-        "status": "healthy" if db_status == "connected" else "degraded",
+        "status": "healthy" if status == "connected" else "degraded",
         "service": "blood-dispatch-backend",
-        "neo4j": db_status
+        "database": health["backend"],
+        "database_status": status,
+        # Kept so older dashboards that read this field keep working.
+        health["backend"]: status,
     }

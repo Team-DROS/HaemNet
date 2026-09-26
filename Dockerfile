@@ -45,4 +45,5 @@ COPY database/ ./database/
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]
+# --loop asyncio is required: PyMongo's async client hangs on uvloop.
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT} --loop asyncio --proxy-headers --forwarded-allow-ips=*"]

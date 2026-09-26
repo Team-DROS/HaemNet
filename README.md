@@ -76,7 +76,15 @@ uvicorn backend.main:app --reload   # run from the repository root
 python -m pytest backend/tests -q   # tests need no external services
 ```
 
-See [backend/README.md](backend/README.md) for authentication, the API and the dashboard WebSocket protocol.
+The backend stores everything in MongoDB by default (`DB_BACKEND=mongodb`); set `DB_BACKEND=neo4j` to use the original Neo4j data layer instead. A local MongoDB is enough for development:
+
+```bash
+docker run -d -p 27017:27017 --name haemnet-mongo mongo:7
+python -m backend.tools.seed_demo          # one hospital (HOSP-1001 / demo1234) and 96 donors
+python -m backend.tools.check_config       # verifies database, Twilio, Sarvam and settings
+```
+
+See [backend/README.md](backend/README.md) for authentication, the API and the dashboard WebSocket protocol, and [DEPLOY.md](DEPLOY.md) for putting it online.
 
 ### Mobile App Setup
 ```bash

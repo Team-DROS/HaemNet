@@ -28,9 +28,12 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
-    # ── MongoDB (migration target) ───────────────────────────────
+    # ── MongoDB (default data store) ─────────────────────────────
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "haemnet"
+
+    # Which data layer to use: "mongodb" (default) or "neo4j".
+    db_backend: str = "mongodb"
 
     # ── Twilio Telephony ────────────────────────────────────────
     twilio_account_sid: str = ""
@@ -57,6 +60,14 @@ class Settings(BaseSettings):
 
     # pydantic-settings doesn't auto-parse JSON lists from env vars,
     # so we accept a raw string and coerce it ourselves.
+    @field_validator("db_backend", mode="before")
+    @classmethod
+    def parse_db_backend(cls, v: str) -> str:
+        value = (v or "mongodb").strip().lower()
+        if value not in {"mongodb", "neo4j"}:
+            raise ValueError('DB_BACKEND must be "mongodb" or "neo4j"')
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors(cls, v: str | List[str]) -> List[str]:
@@ -76,7 +87,9 @@ class Settings(BaseSettings):
         if self.app_env.lower() in {"production", "staging"}:
             required = {
                 "JWT_SECRET": self.jwt_secret,
-                "NEO4J_PASSWORD": self.neo4j_password,
+                **({"MONGODB_URI": self.mongodb_uri}
+                   if self.db_backend == "mongodb" else
+                   {"NEO4J_PASSWORD": self.neo4j_password}),
                 "TWILIO_ACCOUNT_SID": self.twilio_account_sid,
                 "TWILIO_AUTH_TOKEN": self.twilio_auth_token,
                 "SARVAM_API_KEY": self.sarvam_api_key,

@@ -56,6 +56,30 @@ The backend interfaces with Neo4j to enforce strict medical guidelines:
    python -m pytest backend/tests -q
    ```
 
+## Data layer
+
+Two interchangeable implementations sit behind `backend/db_services`:
+
+| `DB_BACKEND` | Module | Notes |
+| --- | --- | --- |
+| `mongodb` (default) | `db_services/mongo_repo.py` | Collections `donors`, `hospitals`, `dispatches`, `calls`. Donor locations are GeoJSON points with a 2dsphere index, so the 10 km match is one `$geoNear` stage. Indexes are created at startup. |
+| `neo4j` | `db_services/neo4j_repo.py` | The original graph implementation, unchanged. |
+
+Both expose the same functions, so routes, the dispatch store, auth and the
+orchestration graph never know which one is running. `GET /api/health` reports
+the active backend and whether it is reachable.
+
+Run the server with `--loop asyncio`. PyMongo's async client hangs on uvloop,
+which uvicorn selects by default; both Dockerfiles already pass the flag, and
+the app logs an error if it detects uvloop.
+
+Helper commands:
+
+```bash
+python -m backend.tools.seed_demo     # demo hospital + 96 donors (never in production)
+python -m backend.tools.check_config  # database, Twilio, Sarvam, geocoding and security settings
+```
+
 ## Authentication
 
 Hospitals and donors sign in differently, and their tokens are not interchangeable (a `role` claim is checked on every request).

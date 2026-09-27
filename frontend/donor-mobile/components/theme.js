@@ -4,7 +4,7 @@
 
 import { Platform } from 'react-native';
 
-export const color = {
+export const light = {
   canvas: '#F5F7FA',
   surface: '#FFFFFF',
   surface2: '#F8FAFC',
@@ -24,6 +24,18 @@ export const color = {
   blue: '#2E5FEA', blueText: '#1E46B8', blueSurface: '#EEF3FF',
   amber: '#E49412', amberText: '#A96206', amberSurface: '#FFF8EB', amberBorder: '#F5DFB5',
 };
+
+export const dark = {
+  canvas: '#111927', surface: '#172234', surface2: '#1D2B3E', track: '#27354A',
+  border: '#324156', borderSoft: '#2B394E', divider: '#2B394E',
+  text: '#F4F7FB', text2: '#B8C4D5', muted: '#8C9BAF', faint: '#71829B',
+  red: '#F0645A', redText: '#FFAAA3', redSurface: '#3B252B', redBorder: '#684048',
+  green: '#31C493', greenText: '#71E0B5', greenSurface: '#183B37', greenBorder: '#2E6254',
+  blue: '#789BFF', blueText: '#A7BEFF', blueSurface: '#263755',
+  amber: '#EAB35B', amberText: '#F2C77C', amberSurface: '#403528', amberBorder: '#71593A',
+};
+
+export const palette = (theme) => theme === 'dark' ? dark : light;
 
 export const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 

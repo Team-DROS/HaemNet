@@ -1,20 +1,20 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
-  Linking, Image, Alert, RefreshControl, AppState,
+  Linking, Image, Alert, RefreshControl, AppState, StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import MapView, { Marker } from 'react-native-maps';
 import * as ImagePicker from 'expo-image-picker';
-import { bg, color, mono, radius, shadow } from './theme';
+import { bg, palette, mono, radius, shadow } from './theme';
+
+const ThemeContext = createContext(null);
 
 const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
-const DEFAULT_LAT = 12.9716;
-const DEFAULT_LNG = 77.5946;
 const POLL_MS = 15000;
+const WAKE_TIMEOUT_MS = 90000; // Render free instances can take a minute to wake.
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Others'];
 // The AI voice agent speaks these three languages. Anything else falls back to English on the server.
@@ -48,6 +48,31 @@ function openDirections(target) {
 }
 
 export default function DonorApp() {
+  const [theme, setTheme] = useState('light');
+  useEffect(() => {
+    AsyncStorage.getItem('@haemnet_theme').then((saved) => {
+      if (saved === 'dark') setTheme('dark');
+    }).catch(() => {});
+  }, []);
+  const toggleTheme = () => setTheme((current) => {
+    const next = current === 'dark' ? 'light' : 'dark';
+    AsyncStorage.setItem('@haemnet_theme', next).catch(() => {});
+    return next;
+  });
+  const values = useMemo(() => {
+    const color = palette(theme);
+    return { color, s: createStyles(color) };
+  }, [theme]);
+  return (
+    <ThemeContext.Provider value={values}>
+      <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={values.color.surface} />
+      <DonorExperience theme={theme} onToggleTheme={toggleTheme} />
+    </ThemeContext.Provider>
+  );
+}
+
+function DonorExperience({ theme, onToggleTheme }) {
+  const { color, s } = useContext(ThemeContext);
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
@@ -67,8 +92,8 @@ export default function DonorApp() {
   const [bloodGroup, setBloodGroup] = useState('O+');
   const [customBloodGroup, setCustomBloodGroup] = useState('');
   const [language, setLanguage] = useState('English');
-  const [lat, setLat] = useState(DEFAULT_LAT);
-  const [lng, setLng] = useState(DEFAULT_LNG);
+  const [lat, setLat] = useState(null);
+  const [lng, setLng] = useState(null);
   const [address, setAddress] = useState('');
   const [locationSource, setLocationSource] = useState(null); // 'gps' | 'manual' | null
   const [profilePic, setProfilePic] = useState(null);
@@ -119,7 +144,7 @@ export default function DonorApp() {
       return await axios({
         method, url: `${SERVER_BASE_URL}${path}`, data,
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-        timeout: 15000,
+        timeout: WAKE_TIMEOUT_MS,
       });
     } catch (err) {
       if (err.response?.status === 401 && token) {
@@ -145,14 +170,17 @@ export default function DonorApp() {
     }
   };
 
-  const serverError = (err, fallback) => err.response?.data?.detail || (err.response ? fallback : 'Cannot reach HaemNet. Check your connection.');
+  const serverError = (err, fallback) => {
+    const detail = err.response?.data?.detail;
+    return typeof detail === 'string' ? detail : (err.response ? fallback : 'Cannot reach HaemNet. Check your connection.');
+  };
 
   const requestCode = async () => {
     setAuthError(''); setAuthNotice('');
     if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
     setAuthLoading(true);
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId }, { timeout: 15000 });
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId }, { timeout: WAKE_TIMEOUT_MS });
       setDevCode(res.data.dev_code || null);
       setCode('');
       setAuthStep('code');
@@ -170,7 +198,7 @@ export default function DonorApp() {
     if (!/^\d{6}$/.test(code)) return setAuthError('Enter the 6-digit code from the SMS.');
     setAuthLoading(true);
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, code }, { timeout: 15000 });
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, code }, { timeout: WAKE_TIMEOUT_MS });
       const session = { id: localDigits(res.data.phone), token: res.data.access_token };
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
       setAuthStep('phone'); setCode(''); setDevCode(null); setAuthNotice('');
@@ -218,19 +246,18 @@ export default function DonorApp() {
         }
 
         setLanguage(LANGUAGES.includes(profile.language) ? profile.language : 'English');
-        setLat(parseFloat(profile.lat) || DEFAULT_LAT);
-        setLng(parseFloat(profile.lng) || DEFAULT_LNG);
+        setLat(profile.lat != null && Number.isFinite(Number(profile.lat)) ? Number(profile.lat) : null);
+        setLng(profile.lng != null && Number.isFinite(Number(profile.lng)) ? Number(profile.lng) : null);
         setAddress(profile.address || '');
         setLocationSource(profile.location_source || null);
         setProfilePic(profile.profilePic || null);
         if (profile.last_donated_date) {
           setLastDonatedDate(new Date(profile.last_donated_date));
         }
-        setIsRegistered(true);
       } else {
         // Reset state for new user; the login number doubles as the donor phone.
         setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
-        setLat(DEFAULT_LAT); setLng(DEFAULT_LNG); setAddress(''); setLocationSource(null);
+        setLat(null); setLng(null); setAddress(''); setLocationSource(null);
         setProfilePic(null); setLastDonatedDate(null); setIsRegistered(false);
       }
 
@@ -247,11 +274,17 @@ export default function DonorApp() {
         const backendProfile = response.data.donor;
 
         // Returning donor on a new phone: start the form from what the network knows.
-        if (!savedProfile && backendProfile) {
+        if (backendProfile) {
+          setIsRegistered(true);
           setName(backendProfile.name || '');
           const serverGroup = backendProfile.blood_group || 'O+';
-          if (BLOOD_GROUPS.includes(serverGroup)) setBloodGroup(serverGroup);
-          else { setBloodGroup('Others'); setCustomBloodGroup(serverGroup); }
+          if (BLOOD_GROUPS.includes(serverGroup) && serverGroup !== 'Others') {
+            setBloodGroup(serverGroup);
+            setCustomBloodGroup('');
+          } else {
+            setBloodGroup('Others');
+            setCustomBloodGroup(serverGroup);
+          }
         }
 
         if (backendProfile && backendProfile.last_donated_date) {
@@ -290,8 +323,16 @@ export default function DonorApp() {
             await AsyncStorage.setItem(getLogKey(), JSON.stringify(currentLog));
           }
         }
+        if (!backendProfile) setIsRegistered(false);
       } catch (backendErr) {
-        console.log('Could not sync with backend:', backendErr.message);
+        if (backendErr.response?.status === 404) {
+          setIsRegistered(false);
+          if (savedProfile) await AsyncStorage.removeItem(getProfileKey());
+        } else {
+          // A network outage must not silently claim registration succeeded.
+          setIsRegistered(false);
+          setRegError('Could not confirm your profile with HaemNet. Pull down to retry.');
+        }
       }
 
       setDonationLog(currentLog);
@@ -309,7 +350,9 @@ export default function DonorApp() {
     if (!name.trim()) return setRegError('Name is required.');
     if (!phone.trim()) return setRegError('Phone number is required.');
     if (phone.length !== 10) return setRegError('Phone number must be exactly 10 digits.');
-    if (!locationSource) return setRegError('Set your location with GPS or type your area.');
+    if (!locationSource || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return setRegError('Set an accurate location with GPS or confirm your area before joining.');
+    }
 
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
     if (!finalBloodGroup) return setRegError('Specify your blood group.');
@@ -347,7 +390,7 @@ export default function DonorApp() {
 
       await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey()]);
       setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
-      setLat(DEFAULT_LAT); setLng(DEFAULT_LNG); setAddress(''); setLocationSource(null);
+      setLat(null); setLng(null); setAddress(''); setLocationSource(null);
       setProfilePic(null); setLastDonatedDate(null); setDonationLog([]); setActiveTrip(null); setRequests([]);
       setIsRegistered(false); setIsEditing(false);
       Alert.alert('Profile deleted', 'You have been removed from the donor network.');
@@ -368,9 +411,7 @@ export default function DonorApp() {
     );
   };
 
-  const handleNameChange = (text) => {
-    if (/^[a-zA-Z\s]*$/.test(text)) setName(text);
-  };
+  const handleNameChange = (text) => setName(text.slice(0, 80));
 
   const handleLoginIdChange = (text) => {
     setLoginId(text.replace(/[^0-9]/g, '').slice(0, 10));
@@ -444,7 +485,7 @@ export default function DonorApp() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5,
+          mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -453,7 +494,7 @@ export default function DonorApp() {
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5,
+          mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
       }
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -501,8 +542,33 @@ export default function DonorApp() {
     setLocationSource(null);
     setAddress('');
     setLocationError('');
-    setLat(DEFAULT_LAT);
-    setLng(DEFAULT_LNG);
+    setLat(null);
+    setLng(null);
+  };
+
+  const confirmArea = async () => {
+    const query = address.trim();
+    if (query.length < 6) return setLocationError('Enter a full area and city so we can locate it accurately.');
+    setLocationLoading(true);
+    setLocationError('');
+    try {
+      // Android geocoding requires foreground location permission, even when
+      // the donor types the address. Never fall back to a different city.
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') throw new Error('Allow location access to confirm your area or use GPS.');
+      const matches = await Location.geocodeAsync(query);
+      const point = matches?.[0];
+      if (!point || !Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+        throw new Error('We could not locate that area. Add the city and postcode, or use GPS.');
+      }
+      setLat(point.latitude);
+      setLng(point.longitude);
+      setLocationSource('manual');
+    } catch (err) {
+      setLocationError(err.message || 'Could not find that area. Use GPS instead.');
+    } finally {
+      setLocationLoading(false);
+    }
   };
 
   // ─── COOLDOWN ───
@@ -519,7 +585,7 @@ export default function DonorApp() {
     const diffDays = Math.floor((todayMidnight.getTime() - donationMidnight.getTime()) / MS_IN_A_DAY);
     setDaysElapsed(diffDays);
     setDaysRemaining(Math.max(0, COOLDOWN_DAYS - diffDays));
-    setProgressPercent(Math.min(100, (diffDays / COOLDOWN_DAYS) * 100));
+    setProgressPercent(Math.max(0, Math.min(100, (diffDays / COOLDOWN_DAYS) * 100)));
   };
 
   const getNextEligibleDateText = () => {
@@ -534,9 +600,23 @@ export default function DonorApp() {
   if (!isLoggedIn) {
     return (
       <ScrollView style={s.root} contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled">
-        <View style={[s.row, { marginBottom: 44 }]}>
-          <DropMark size={26} />
-          <Text style={s.brand}>HaemNet</Text>
+        <View style={[s.row, { marginBottom: 34, justifyContent: 'space-between' }]}>
+          <View style={s.row}>
+            <DropMark size={26} />
+            <Text style={s.brand}>HaemNet</Text>
+          </View>
+          <ThemeSwitch theme={theme} onPress={onToggleTheme} />
+        </View>
+
+        <View style={s.authHero}>
+          <Text style={s.authHeroEyebrow}>THE DONOR NETWORK</Text>
+          <Text style={s.authHeroTitle}>Be there when someone needs you.</Text>
+          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes one verified number.</Text>
+          <View style={s.heroSteps}>
+            <Text style={s.heroStep}>01  Verify</Text>
+            <Text style={s.heroStep}>02  Join</Text>
+            <Text style={s.heroStep}>03  Help</Text>
+          </View>
         </View>
 
         <Text style={s.h1}>{authStep === 'phone' ? 'Sign in or join' : 'Enter your code'}</Text>
@@ -572,7 +652,7 @@ export default function DonorApp() {
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
         <PrimaryButton onPress={authStep === 'phone' ? requestCode : verifyCode} busy={authLoading} style={{ marginTop: 8 }}>
-          {authStep === 'phone' ? 'Send code' : 'Verify and continue'}
+          {authStep === 'phone' ? 'Continue with phone' : 'Verify and continue'}
         </PrimaryButton>
 
         {authStep === 'code' && (
@@ -615,14 +695,15 @@ export default function DonorApp() {
             </TouchableOpacity>
           </View>
 
-          {locationSource === 'gps' && (
-            <MapView
-              style={s.mapPreview}
-              initialRegion={{ latitude: lat, longitude: lng, latitudeDelta: 0.006, longitudeDelta: 0.006 }}
-              scrollEnabled={false} zoomEnabled={false} pitchEnabled={false} rotateEnabled={false}
-            >
-              <Marker coordinate={{ latitude: lat, longitude: lng }} title={address} />
-            </MapView>
+          {Number.isFinite(lat) && Number.isFinite(lng) && (
+            <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`)}
+              style={s.locationPreview} accessibilityRole="button" accessibilityLabel="View location in Maps">
+              <Text style={s.locationPreviewPin}>⌖</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.locationPreviewTitle}>Location pinned</Text>
+                <Text style={s.locationPreviewCoords}>{lat.toFixed(5)}, {lng.toFixed(5)} · View in Maps ↗</Text>
+              </View>
+            </TouchableOpacity>
           )}
         </View>
       ) : (
@@ -655,13 +736,16 @@ export default function DonorApp() {
           <TextInput
             value={address}
             onChangeText={setAddress}
-            onEndEditing={() => setLocationSource(address.trim() ? 'manual' : null)}
+            onEndEditing={() => { if (locationSource) setLocationSource(null); }}
             placeholder="Koramangala, Bengaluru 560034"
             placeholderTextColor={color.faint}
             style={[s.input, { minHeight: 64, textAlignVertical: 'top' }]}
             multiline
             numberOfLines={2}
           />
+          <SecondaryButton onPress={confirmArea} busy={locationLoading} style={{ marginTop: 10 }}>
+            {locationLoading ? 'Finding area…' : 'Confirm this area'}
+          </SecondaryButton>
         </View>
       )}
     </View>
@@ -683,13 +767,17 @@ export default function DonorApp() {
           <DropMark size={22} />
           <Text style={[s.brand, { fontSize: 17 }]}>HaemNet</Text>
         </View>
-        <TouchableOpacity onPress={() => handleLogout()} style={s.smallBtn} accessibilityRole="button">
-          <Text style={s.smallBtnText}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={[s.row, { gap: 8 }]}>
+          <ThemeSwitch theme={theme} onPress={onToggleTheme} />
+          <TouchableOpacity onPress={() => handleLogout()} style={s.smallBtn} accessibilityRole="button">
+            <Text style={s.smallBtnText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {!isRegistered || isEditing ? (
         <View style={s.card}>
+          <Text style={s.overline}>YOUR DONOR PROFILE</Text>
           <Text style={s.cardTitle}>{isEditing ? 'Edit your donor profile' : 'Join the donor network'}</Text>
           <Text style={s.cardDesc}>Hospitals near you see only your blood group and distance until you accept a request.</Text>
 
@@ -762,6 +850,11 @@ export default function DonorApp() {
         </View>
       ) : (
         <View>
+          <View style={s.welcomeBanner}>
+            <Text style={s.welcomeEyebrow}>HAEMNET DONOR · {bg(displayGroup)}</Text>
+            <Text style={s.welcomeTitle}>Your readiness matters.</Text>
+            <Text style={s.welcomeBody}>When a nearby hospital needs your blood group, the request appears here and we call your verified number.</Text>
+          </View>
           <Text style={s.greeting}>Hi {firstName || 'there'}</Text>
           <Text style={s.greetingSub}>
             {requests.length
@@ -808,7 +901,7 @@ export default function DonorApp() {
           <View style={[s.card, s.row, { marginTop: 16, paddingVertical: 18 }]}>
             <Stat value={donationLog.length} label={donationLog.length === 1 ? 'Donation' : 'Donations'} />
             <View style={s.vDivider} />
-            <Stat value={donationLog.length ? `up to ${donationLog.length * 3}` : '0'} label="Patients helped" />
+            <Stat value={language} label="Call language" />
             <View style={s.vDivider} />
             <Stat value={bg(displayGroup) || '—'} label="Your group" tone="red" />
           </View>
@@ -872,6 +965,7 @@ export default function DonorApp() {
 // ─── PIECES ───
 
 function RequestCard({ req, busy, onAccept, onDecline }) {
+  const { color, s } = useContext(ThemeContext);
   const critical = req.urgency === 'critical';
   const ago = minutesAgo(req.created_at);
   return (
@@ -915,6 +1009,7 @@ function RequestCard({ req, busy, onAccept, onDecline }) {
 }
 
 function TripCard({ trip, onDirections, onDone }) {
+  const { color, s } = useContext(ThemeContext);
   return (
     <View style={[s.tripCard, shadow]}>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
@@ -937,6 +1032,7 @@ function TripCard({ trip, onDirections, onDone }) {
 }
 
 function DropMark({ size = 24 }) {
+  const { color } = useContext(ThemeContext);
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', marginRight: 9 }}>
       <View style={{
@@ -947,7 +1043,19 @@ function DropMark({ size = 24 }) {
   );
 }
 
+function ThemeSwitch({ theme, onPress }) {
+  const { s } = useContext(ThemeContext);
+  const next = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <TouchableOpacity onPress={onPress} style={s.themeButton} accessibilityRole="button"
+      accessibilityLabel={`Switch to ${next} theme`}>
+      <Text style={s.themeButtonText}>{theme === 'dark' ? '☀ Light' : '☾ Dark'}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function Field({ label, hint, children }) {
+  const { s } = useContext(ThemeContext);
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={s.label}>{label}</Text>
@@ -958,6 +1066,7 @@ function Field({ label, hint, children }) {
 }
 
 function Notice({ tone, children }) {
+  const { color, s } = useContext(ThemeContext);
   const map = {
     red: [color.redSurface, color.redBorder, color.redText],
     amber: [color.amberSurface, color.amberBorder, color.amberText],
@@ -971,6 +1080,7 @@ function Notice({ tone, children }) {
 }
 
 function PrimaryButton({ onPress, busy, children, style }) {
+  const { s } = useContext(ThemeContext);
   return (
     <TouchableOpacity onPress={onPress} disabled={busy} style={[s.btnPrimary, busy && { opacity: 0.75 }, style]} accessibilityRole="button">
       {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.btnPrimaryText}>{children}</Text>}
@@ -978,15 +1088,17 @@ function PrimaryButton({ onPress, busy, children, style }) {
   );
 }
 
-function SecondaryButton({ onPress, children, style }) {
+function SecondaryButton({ onPress, children, style, busy = false }) {
+  const { s } = useContext(ThemeContext);
   return (
-    <TouchableOpacity onPress={onPress} style={[s.btnSecondary, style]} accessibilityRole="button">
+    <TouchableOpacity onPress={onPress} disabled={busy} style={[s.btnSecondary, busy && { opacity: 0.6 }, style]} accessibilityRole="button">
       <Text style={s.btnSecondaryText}>{children}</Text>
     </TouchableOpacity>
   );
 }
 
 function StatusPill({ tone, children }) {
+  const { color, s } = useContext(ThemeContext);
   const map = {
     green: [color.greenSurface, color.greenText],
     amber: [color.amberSurface, color.amberText],
@@ -1000,6 +1112,7 @@ function StatusPill({ tone, children }) {
 }
 
 function Stat({ value, label, tone }) {
+  const { color, s } = useContext(ThemeContext);
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
       <Text style={[s.statBig, tone === 'red' && { color: color.redText }]} numberOfLines={1}>{value}</Text>
@@ -1009,6 +1122,7 @@ function Stat({ value, label, tone }) {
 }
 
 function MetaRow({ label, value, last }) {
+  const { color, s } = useContext(ThemeContext);
   return (
     <View style={[s.metaRow, !last && { borderBottomWidth: 1, borderBottomColor: color.divider }]}>
       <Text style={s.metaLabel}>{label}</Text>
@@ -1018,6 +1132,7 @@ function MetaRow({ label, value, last }) {
 }
 
 function Fact({ title, body, last }) {
+  const { color, s } = useContext(ThemeContext);
   return (
     <View style={[s.fact, !last && { borderBottomWidth: 1, borderBottomColor: color.divider }]}>
       <Text style={s.factTitle}>{title}</Text>
@@ -1026,13 +1141,25 @@ function Fact({ title, body, last }) {
   );
 }
 
-const s = StyleSheet.create({
+const createStyles = (color) => StyleSheet.create({
   root: { flex: 1, backgroundColor: color.canvas },
   rootContent: { paddingHorizontal: 16, paddingTop: 56, paddingBottom: 96 },
-  authContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 72, paddingBottom: 48, backgroundColor: color.surface },
+  authContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 58, paddingBottom: 48, backgroundColor: color.canvas },
   row: { flexDirection: 'row', alignItems: 'center' },
 
   brand: { fontSize: 19, fontWeight: '700', color: color.text, letterSpacing: -0.4 },
+  themeButton: { backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  themeButtonText: { color: color.text2, fontSize: 12, fontWeight: '700' },
+  authHero: { backgroundColor: color.surface2, borderRadius: 20, borderWidth: 1, borderColor: color.border, padding: 22, marginBottom: 32 },
+  authHeroEyebrow: { color: color.redText, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  authHeroTitle: { color: color.text, fontSize: 26, fontWeight: '800', lineHeight: 31, letterSpacing: -0.7, marginTop: 12 },
+  authHeroBody: { color: color.text2, fontSize: 13.5, lineHeight: 20, marginTop: 10 },
+  heroSteps: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, borderTopWidth: 1, borderTopColor: color.border, paddingTop: 14 },
+  heroStep: { color: color.blueText, fontSize: 11.5, fontWeight: '700' },
+  welcomeBanner: { backgroundColor: color.blueSurface, borderWidth: 1, borderColor: color.border, borderRadius: 18, padding: 20, marginBottom: 22 },
+  welcomeEyebrow: { color: color.blueText, fontSize: 10.5, fontWeight: '800', letterSpacing: 1.1 },
+  welcomeTitle: { color: color.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.5, marginTop: 8 },
+  welcomeBody: { color: color.text2, fontSize: 13, lineHeight: 19, marginTop: 7 },
   h1: { fontSize: 27, fontWeight: '700', color: color.text, letterSpacing: -0.6 },
   lede: { fontSize: 14.5, color: color.text2, lineHeight: 22, marginTop: 8, marginBottom: 28 },
   switchText: { fontSize: 14, color: color.text2 },
@@ -1043,7 +1170,7 @@ const s = StyleSheet.create({
   factBody: { fontSize: 12.5, color: color.text2, marginTop: 3, lineHeight: 18 },
 
   card: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.card, padding: 18 },
-  cardTitle: { color: color.text, fontWeight: '700', fontSize: 18, letterSpacing: -0.3 },
+  cardTitle: { color: color.text, fontWeight: '700', fontSize: 20, letterSpacing: -0.3, marginTop: 8 },
   cardDesc: { color: color.text2, fontSize: 13, lineHeight: 19, marginTop: 6, marginBottom: 20 },
   overline: { fontSize: 11, fontWeight: '700', color: color.muted, letterSpacing: 0.8, textTransform: 'uppercase' },
 
@@ -1058,7 +1185,7 @@ const s = StyleSheet.create({
   notice: { borderWidth: 1, borderRadius: radius.input, padding: 12, marginTop: 12 },
   noticeText: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
 
-  btnPrimary: { backgroundColor: color.text, paddingVertical: 15, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' },
+  btnPrimary: { backgroundColor: color.blue, paddingVertical: 16, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' },
   btnPrimaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   btnSecondary: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, paddingVertical: 12, alignItems: 'center' },
   btnSecondaryText: { color: color.text, fontSize: 14, fontWeight: '600' },
@@ -1095,7 +1222,10 @@ const s = StyleSheet.create({
   locationConfirmed: { backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, padding: 12 },
   locationTag: { fontSize: 11.5, fontWeight: '600', color: color.greenText },
   locationAddr: { fontSize: 13.5, color: color.text, marginTop: 2 },
-  mapPreview: { height: 150, width: '100%', borderRadius: 8, overflow: 'hidden', marginTop: 10 },
+  locationPreview: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, marginTop: 10, backgroundColor: color.blueSurface, borderRadius: 10 },
+  locationPreviewPin: { color: color.blueText, fontSize: 24, fontWeight: '700' },
+  locationPreviewTitle: { color: color.text, fontSize: 13, fontWeight: '700' },
+  locationPreviewCoords: { color: color.text2, fontSize: 11.5, marginTop: 3 },
 
   greeting: { fontSize: 25, fontWeight: '700', color: color.text, letterSpacing: -0.5 },
   greetingSub: { fontSize: 14, color: color.text2, marginTop: 4, marginBottom: 16, lineHeight: 20 },

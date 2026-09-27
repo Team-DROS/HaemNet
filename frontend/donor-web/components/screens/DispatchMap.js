@@ -322,7 +322,7 @@ const s = StyleSheet.create({
   left: { width: 272, backgroundColor: color.surface, borderRightWidth: 1, borderRightColor: color.border },
   leftDivider: { height: 1, backgroundColor: color.borderSoft },
   emCard: { padding: 12, borderRadius: 9, borderWidth: 1, borderColor: color.border },
-  emCardActive: { backgroundColor: color.selected, borderColor: '#D7E0EE' },
+  emCardActive: { backgroundColor: color.selected, borderColor: color.border },
   emCardCritical: { backgroundColor: color.redBand, borderColor: color.redBorder },
   emGroup: { fontFamily: font.display, fontSize: 19, fontWeight: '700' },
   emUrgency: { fontFamily: font.body, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6 },
@@ -332,7 +332,7 @@ const s = StyleSheet.create({
   donorName: { fontFamily: font.body, fontSize: 12.5, fontWeight: '600', color: color.text },
   tag: { fontFamily: font.body, fontSize: 9.5, fontWeight: '600', letterSpacing: 0.4 },
 
-  mapCol: { flex: 1, position: 'relative', backgroundColor: '#EDF0F4', minWidth: 0 },
+  mapCol: { flex: 1, position: 'relative', backgroundColor: color.track, minWidth: 0 },
   mapFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   topOverlay: { position: 'absolute', top: 16, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   hospitalCard: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: color.surface, borderRadius: 10, borderWidth: 1, borderColor: color.border, paddingVertical: 10, paddingHorizontal: 13, maxWidth: 380, ...shadow },

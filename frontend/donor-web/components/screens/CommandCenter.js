@@ -351,7 +351,7 @@ function DonorRow({ d, em, onDonate, busy }) {
   }[d.status] || d.status;
 
   return (
-    <View style={[s.row, s.tr, confirmed && { backgroundColor: '#FAFDFB' }]}>
+    <View style={[s.row, s.tr, confirmed && { backgroundColor: color.greenBand }]}>
       <View style={{ flex: 2.2, minWidth: 0 }}>
         <Text style={[s.donorName, dim && { color: color.text2 }]} numberOfLines={1}>{d.name}</Text>
         <Mono style={{ marginTop: 2 }}>{d.id.slice(0, 8)}{d.language ? ` · ${d.language}` : ''}</Mono>
@@ -507,18 +507,18 @@ const s = StyleSheet.create({
   body: { flex: 1, flexDirection: 'row', gap: 16, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 18, minHeight: 0 },
   rail: { width: 348, gap: 14, minHeight: 0 },
 
-  kpis: { flexDirection: 'row', paddingHorizontal: 22, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#E9ECF2' },
-  kpi: { flexGrow: 1, flexBasis: 0, paddingHorizontal: 22, borderRightWidth: 1, borderRightColor: '#E9ECF2', minWidth: 0 },
+  kpis: { flexDirection: 'row', paddingHorizontal: 22, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: color.border },
+  kpi: { flexGrow: 1, flexBasis: 0, paddingHorizontal: 22, borderRightWidth: 1, borderRightColor: color.border, minWidth: 0 },
   kpiFixed: { flexGrow: 0, flexShrink: 0, borderRightWidth: 0 },
   kpiSub: { fontFamily: font.body, fontSize: 12, color: color.text2 },
   kpiStatus: { fontFamily: font.body, fontSize: 14, fontWeight: '600', color: color.text },
 
   band: { flexDirection: 'row', borderBottomWidth: 1 },
-  bandCritical: { backgroundColor: color.redBand, borderBottomColor: '#F4E3E1' },
-  bandDone: { backgroundColor: color.greenBand, borderBottomColor: '#D8EFE4' },
+  bandCritical: { backgroundColor: color.redBand, borderBottomColor: color.redBorder },
+  bandDone: { backgroundColor: color.greenBand, borderBottomColor: color.greenSurface },
   bandNeutral: { backgroundColor: color.surface2, borderBottomColor: color.borderSoft },
   bandInner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 28, paddingHorizontal: 22, paddingVertical: 18, flexWrap: 'wrap' },
-  bandDivider: { width: 1, alignSelf: 'stretch', backgroundColor: '#EEDDDB' },
+  bandDivider: { width: 1, alignSelf: 'stretch', backgroundColor: color.redBorder },
   group: { fontFamily: font.display, fontSize: 46, fontWeight: '700', letterSpacing: -1.4, lineHeight: 48 },
   units: { fontFamily: font.display, fontSize: 21, fontWeight: '600', color: color.text },
   place: { fontFamily: font.display, fontSize: 17, fontWeight: '600', color: color.text },
@@ -566,4 +566,3 @@ const s = StyleSheet.create({
   availGroup: { fontFamily: font.display, fontSize: 14, fontWeight: '700', color: color.text },
   availN: { fontFamily: font.body, fontSize: 12, color: color.text2, marginTop: 2 },
 });
-

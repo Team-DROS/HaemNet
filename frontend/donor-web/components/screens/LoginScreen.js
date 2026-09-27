@@ -6,11 +6,12 @@ import Svg, { Circle, Line } from 'react-native-svg';
 import { Check, HaemNetMark, Hospital, Lock, Mic, Navigation, Network, Phone, MapPin } from '../Icons';
 import { color, font, radius } from '../theme';
 import { Button } from '../ui';
+import ThemeToggle from '../ThemeToggle';
 
-export default function LoginScreen({ store }) {
+export default function LoginScreen({ store, theme, onToggleTheme }) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '+91 ' });
+  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -26,12 +27,13 @@ export default function LoginScreen({ store }) {
       }
       setBusy(false);
     } else {
-      if (!form.name.trim() || !form.location.trim() || form.phone.trim().length < 6 || form.password.length < 6) {
+      if (!form.name.trim() || !form.location.trim() || form.password.length < 6) {
         return setError('Fill in every field. Passwords need at least 6 characters.');
       }
+      if (!/^\d{10}$/.test(form.phone)) return setError('Enter a 10-digit mobile number.');
       setBusy(true);
       try {
-        const id = await store.register({ name: form.name.trim(), location: form.location.trim(), phone: form.phone.trim(), password: form.password });
+        const id = await store.register({ name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password });
         setForm((f) => ({ ...f, id }));
         setMode('login');
         setSuccess(`Registered. Your hospital ID is ${id}. Keep it safe; you sign in with it.`);
@@ -46,8 +48,10 @@ export default function LoginScreen({ store }) {
     <View style={s.root}>
       <View style={[s.left, !showVisual && { width: '100%', maxWidth: 560, alignSelf: 'center' }]}>
         <View style={[s.row, { gap: 11 }]}>
-          <HaemNetMark size={30} />
+          <HaemNetMark size={30} color={color.text} accent={color.red} />
           <Text style={s.brand}>HaemNet</Text>
+          <View style={{ flex: 1 }} />
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </View>
 
         <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -65,8 +69,8 @@ export default function LoginScreen({ store }) {
             <>
               <Field label="Hospital name" icon={<Hospital size={16} color={color.faint} />} value={form.name} onChangeText={set('name')} placeholder="Apollo Hospital" />
               <Field label="Full address" icon={<MapPin size={16} color={color.faint} />} value={form.location} onChangeText={set('location')} placeholder="21 Greams Lane, Chennai 600006" />
-              <Field label="Blood bank in-charge phone" icon={<Phone size={16} color={color.faint} />} value={form.phone}
-                onChangeText={(t) => set('phone')(t.replace(/[^0-9+ ]/g, ''))} placeholder="+91 98765 43210" keyboardType="phone-pad" />
+              <Field label="Blood bank in-charge phone (+91)" icon={<Phone size={16} color={color.faint} />} value={form.phone}
+                onChangeText={(t) => set('phone')(t.replace(/\D/g, '').slice(0, 10))} placeholder="9876543210" keyboardType="number-pad" maxLength={10} />
             </>
           )}
           {mode === 'login' && (
@@ -138,20 +142,20 @@ function NetworkVisual() {
     <View style={s.right}>
       <Svg width="100%" height="100%" viewBox="0 0 800 720" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute' }}>
         {[120, 220, 320].map((r) => (
-          <Circle key={r} cx="400" cy="360" r={r} fill="none" stroke="#E7EBF2" strokeWidth="1" strokeDasharray="3 8" />
+          <Circle key={r} cx="400" cy="360" r={r} fill="none" stroke={color.border} strokeWidth="1" strokeDasharray="3 8" />
         ))}
         {hospitals.map(([x, y], i) => (
-          <Line key={i} x1="400" y1="360" x2={x} y2={y} stroke={i === 2 ? '#BFE0D2' : '#C9D6EB'} strokeWidth="1.2" strokeDasharray="4 7" />
+          <Line key={i} x1="400" y1="360" x2={x} y2={y} stroke={i === 2 ? color.green : color.blue} opacity="0.45" strokeWidth="1.2" strokeDasharray="4 7" />
         ))}
         {nodes.map((n, i) => (
-          <Circle key={i} cx={n.x} cy={n.y} r={n.near ? 3.2 : 2.6} fill={n.near ? color.blue : n.green ? color.green : '#CBD5E3'} opacity={n.near ? 0.85 : 0.9} />
+          <Circle key={i} cx={n.x} cy={n.y} r={n.near ? 3.2 : 2.6} fill={n.near ? color.blue : n.green ? color.green : color.slateLight} opacity={n.near ? 0.85 : 0.9} />
         ))}
         {hospitals.map(([x, y], i) => (
-          <Circle key={`h${i}`} cx={x} cy={y} r="6" fill={i === 2 ? color.green : color.blue} stroke="#F7F9FC" strokeWidth="2" />
+          <Circle key={`h${i}`} cx={x} cy={y} r="6" fill={i === 2 ? color.green : color.blue} stroke={color.surface2} strokeWidth="2" />
         ))}
-        <Circle cx="400" cy="360" r="30" fill="#FFFFFF" stroke="#E4E8EF" />
+        <Circle cx="400" cy="360" r="30" fill={color.surface} stroke={color.border} />
       </Svg>
-      <View style={s.hub}><HaemNetMark size={24} /></View>
+      <View style={s.hub}><HaemNetMark size={24} color={color.text} accent={color.red} /></View>
 
       <View style={s.props}>
         <Prop icon={<Network size={16} color={color.violet} />} title="Match in one query"
@@ -194,7 +198,7 @@ const s = StyleSheet.create({
   switchLink: { color: color.blue, fontWeight: '600' },
   footer: { fontFamily: font.body, fontSize: 12, color: color.muted },
 
-  right: { flex: 1, backgroundColor: '#F7F9FC', borderLeftWidth: 1, borderLeftColor: color.borderSoft, overflow: 'hidden', justifyContent: 'flex-end' },
+  right: { flex: 1, backgroundColor: color.surface2, borderLeftWidth: 1, borderLeftColor: color.borderSoft, overflow: 'hidden', justifyContent: 'flex-end' },
   hub: { position: 'absolute', left: '50%', top: '50%', marginLeft: -12, marginTop: -12 },
   props: { margin: 48, backgroundColor: color.surface, borderRadius: 12, borderWidth: 1, borderColor: color.border, paddingVertical: 6 },
   prop: { flexDirection: 'row', gap: 14, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: color.divider },

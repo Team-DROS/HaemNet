@@ -1,0 +1,56 @@
+name: Android debug APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend/donor-mobile
+    env:
+      CI: "1"
+      EXPO_PUBLIC_API_URL: https://haemnet-api.onrender.com
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/donor-mobile/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Build installable APK
+        run: ./gradlew assembleDebug
+        working-directory: frontend/donor-mobile/android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: haemnet-donor-debug-apk
+          path: frontend/donor-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

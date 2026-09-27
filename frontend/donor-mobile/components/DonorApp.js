@@ -8,20 +8,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { bg, palette, mono, radius, shadow } from './theme';
+import { API_URL, REQUEST_TIMEOUT_MS } from './config';
+import { clearSession, loadSession, saveSession } from './session';
 
 const ThemeContext = createContext(null);
 
 const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
 const POLL_MS = 15000;
-const WAKE_TIMEOUT_MS = 90000; // Render free instances can take a minute to wake.
+const WAKE_TIMEOUT_MS = REQUEST_TIMEOUT_MS; // Render free instances can take a minute to wake.
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Others'];
 // The AI voice agent speaks these three languages. Anything else falls back to English on the server.
 const LANGUAGES = ['English', 'Hindi', 'Tamil'];
 
-// Configure EXPO_PUBLIC_API_URL per environment (EAS/local .env).
-const SERVER_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+// Resolved once in config.js: EXPO_PUBLIC_API_URL in development, and never
+// localhost or plain HTTP in a release build.
+const SERVER_BASE_URL = API_URL;
 
 const withCountryCode = (p) => (p.startsWith('+91') ? p : `+91${p}`);
 const localDigits = (p) => (p || '').replace(/^\+91/, '').replace(/[^0-9]/g, '').slice(-10);
@@ -40,6 +43,14 @@ function minutesAgo(value) {
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   return `${Math.floor(mins / 60)} h ago`;
+}
+
+// Permission denied for good ("don't ask again"): the only way back is Settings.
+function explainBlockedPermission(title, message) {
+  Alert.alert(title, message, [
+    { text: 'Not now', style: 'cancel' },
+    { text: 'Open settings', onPress: () => Linking.openSettings().catch(() => {}) },
+  ]);
 }
 
 function openDirections(target) {
@@ -134,7 +145,6 @@ function DonorExperience({ theme, onToggleTheme }) {
   // ─── AUTHENTICATION ───
   // Donors sign in with their phone number and a 6-digit SMS code. The server
   // returns a donor token that every donor endpoint requires.
-  const SESSION_KEY = '@donor_session';
   const userRef = useRef(null);
   userRef.current = currentUser;
 
@@ -156,23 +166,29 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const checkLoginStatus = async () => {
     try {
-      await AsyncStorage.removeItem('@current_user'); // pre-OTP builds kept an unverified session here
-      const saved = await AsyncStorage.getItem(SESSION_KEY);
-      if (saved) {
-        const session = JSON.parse(saved);
-        if (session?.token && session?.id) {
-          setCurrentUser(session);
-          setIsLoggedIn(true);
-        }
+      // Secure storage, migrating sessions saved in plain storage by v1.1 and earlier.
+      const session = await loadSession();
+      if (session) {
+        setCurrentUser(session);
+        setIsLoggedIn(true);
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Sign in', 'Could not check your sign-in status.');
     }
   };
 
   const serverError = (err, fallback) => {
+    const status = err.response?.status;
     const detail = err.response?.data?.detail;
-    return typeof detail === 'string' ? detail : (err.response ? fallback : 'Cannot reach HaemNet. Check your connection.');
+    if (typeof detail === 'string' && detail.length < 200) return detail;
+    if (!err.response) {
+      return err.code === 'ECONNABORTED'
+        ? 'HaemNet is taking too long to respond. It may be waking up; try again in a minute.'
+        : 'Cannot reach HaemNet. Check your connection.';
+    }
+    if (status === 429) return 'Too many attempts. Wait a minute and try again.';
+    if (status >= 500) return 'HaemNet is having trouble right now. Try again shortly.';
+    return fallback;
   };
 
   const requestCode = async () => {
@@ -199,8 +215,9 @@ function DonorExperience({ theme, onToggleTheme }) {
     setAuthLoading(true);
     try {
       const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, code }, { timeout: WAKE_TIMEOUT_MS });
-      const session = { id: localDigits(res.data.phone), token: res.data.access_token };
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      const session = { id: localDigits(res.data?.phone), token: res.data?.access_token };
+      if (!session.token || session.id.length !== 10) throw new Error('Unexpected sign-in response');
+      await saveSession(session);
       setAuthStep('phone'); setCode(''); setDevCode(null); setAuthNotice('');
       setCurrentUser(session);
       setIsLoggedIn(true);
@@ -211,7 +228,7 @@ function DonorExperience({ theme, onToggleTheme }) {
   };
 
   const handleLogout = async (message) => {
-    await AsyncStorage.removeItem(SESSION_KEY);
+    await clearSession();
     setIsLoggedIn(false);
     setCurrentUser(null);
     setLoginId('');
@@ -336,7 +353,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       }
 
       setDonationLog(currentLog);
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Failed to load profile');
     }
     if (isRefresh) {
@@ -379,8 +396,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       setIsSaving(false); setIsRegistered(true); setIsEditing(false);
     } catch (err) {
       setIsSaving(false);
-      const errorMsg = err.response ? `server returned ${err.response.status}` : err.message;
-      setRegError(`Could not save your profile: ${errorMsg}`);
+      setRegError(`Could not save your profile: ${serverError(err, `the server returned ${err.response?.status}`)}`);
     }
   };
 
@@ -395,8 +411,8 @@ function DonorExperience({ theme, onToggleTheme }) {
       setIsRegistered(false); setIsEditing(false);
       Alert.alert('Profile deleted', 'You have been removed from the donor network.');
     } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to delete profile');
+      // Never log the raw error: axios errors carry request headers, including the token.
+      Alert.alert('Could not delete profile', serverError(err, 'The server could not delete your profile. Try again.'));
     }
   };
 
@@ -445,6 +461,7 @@ function DonorExperience({ theme, onToggleTheme }) {
   }, [donorPhone, isEditing, fetchRequests]);
 
   const respond = async (req, accept) => {
+    if (responding) return; // one answer at a time; ignores double taps
     setResponding(req.dispatch_id);
     setRespondMsg('');
     try {
@@ -479,18 +496,20 @@ function DonorExperience({ theme, onToggleTheme }) {
     try {
       let result;
       if (useCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Camera permission is required to take a photo.');
+          if (canAskAgain === false) explainBlockedPermission('Camera is turned off', 'Allow camera access for HaemNet Donor in Settings to take a profile photo.');
+          else Alert.alert('Permission needed', 'Camera permission is required to take a photo.');
           return;
         }
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5,
         });
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Gallery permission is required to pick a photo.');
+          if (canAskAgain === false) explainBlockedPermission('Photos are turned off', 'Allow photo access for HaemNet Donor in Settings to choose a profile photo.');
+          else Alert.alert('Permission needed', 'Gallery permission is required to pick a photo.');
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
@@ -500,7 +519,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setProfilePic(result.assets[0].uri);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to pick image');
     }
   };
@@ -518,9 +537,12 @@ function DonorExperience({ theme, onToggleTheme }) {
     setLocationLoading(true);
     setLocationError('');
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocationError('Location permission denied. Type your area below instead.');
+        setLocationError(canAskAgain === false
+          ? 'Location is turned off for HaemNet Donor. Allow it in Settings, or type your area below.'
+          : 'Location permission denied. Type your area below instead.');
+        if (canAskAgain === false) explainBlockedPermission('Location is turned off', 'Allow location for HaemNet Donor in Settings so hospitals within 10 km can find you.');
         setLocationLoading(false);
         return;
       }
@@ -965,7 +987,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 // ─── PIECES ───
 
 function RequestCard({ req, busy, onAccept, onDecline }) {
-  const { color, s } = useContext(ThemeContext);
+  const { s } = useContext(ThemeContext);
   const critical = req.urgency === 'critical';
   const ago = minutesAgo(req.created_at);
   return (
@@ -1001,7 +1023,7 @@ function RequestCard({ req, busy, onAccept, onDecline }) {
           {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>I can donate</Text>}
         </TouchableOpacity>
         <TouchableOpacity onPress={onDecline} disabled={busy} style={s.declineBtn} accessibilityRole="button">
-          <Text style={s.declineBtnText}>I can't make it</Text>
+          <Text style={s.declineBtnText}>{"I can't make it"}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1013,7 +1035,7 @@ function TripCard({ trip, onDirections, onDone }) {
   return (
     <View style={[s.tripCard, shadow]}>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
-        <Text style={[s.overline, { color: color.greenText }]}>You're confirmed</Text>
+        <Text style={[s.overline, { color: color.greenText }]}>{"You're confirmed"}</Text>
         <StatusPill tone="green">En route</StatusPill>
       </View>
       <Text style={s.tripHospital}>{trip.hospital_name}</Text>

@@ -262,7 +262,7 @@ function Availability({ store, history, range }) {
             </View>
           )}
           {rows.map((r) => (
-            <View key={r.g} style={[s.row, s.availRow, r.short && { backgroundColor: '#FFF8F7' }]}>
+            <View key={r.g} style={[s.row, s.availRow, r.short && { backgroundColor: color.redBand }]}>
               <Text style={[s.availGroup, r.short && { color: color.redText }]}>{bg(r.g)}</Text>
               <View style={{ flex: 1, gap: 4 }}>
                 <View style={{ width: `${(r.need / peak) * 100}%`, minWidth: r.need ? 3 : 0, height: 10, borderRadius: 3, backgroundColor: color.blue }} />
@@ -377,7 +377,7 @@ function HistoryTable({ history, now }) {
         const [label, tone] = STATUS_PILL[h.status] || ['—', 'muted'];
         const ttf = h.firstAcceptAt ? h.firstAcceptAt - h.createdAt : null;
         return (
-          <View key={h.id} style={[s.row, s.tr, h.status === 'active' && { backgroundColor: '#FFFBFA' }]}>
+          <View key={h.id} style={[s.row, s.tr, h.status === 'active' && { backgroundColor: color.redBand }]}>
             <Text style={[s.cellGroup, { flex: 0.7 }]}>{bg(h.bloodGroup)}</Text>
             <Text style={[s.cell, { flex: 0.6 }]}>{h.units}</Text>
             <Text style={[s.cellStrong, { flex: 1.5 }]} numberOfLines={1}>{h.patient || '—'}</Text>
@@ -403,15 +403,15 @@ const s = StyleSheet.create({
   axis: { fontFamily: font.body, fontSize: 11, color: color.muted },
   title: { fontFamily: font.display, fontSize: 15, fontWeight: '600', color: color.text },
 
-  kpis: { flexDirection: 'row', paddingHorizontal: 22, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E9ECF2' },
-  kpi: { flexGrow: 1, flexBasis: 0, paddingHorizontal: 20, borderRightWidth: 1, borderRightColor: '#E9ECF2', minWidth: 0 },
+  kpis: { flexDirection: 'row', paddingHorizontal: 22, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: color.border },
+  kpi: { flexGrow: 1, flexBasis: 0, paddingHorizontal: 20, borderRightWidth: 1, borderRightColor: color.border, minWidth: 0 },
 
   split: { flexDirection: 'row', backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: 11, overflow: 'hidden' },
   vDivider: { width: 1, backgroundColor: color.borderSoft },
   hDivider: { height: 1, backgroundColor: color.borderSoft },
   section: { padding: 20 },
 
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 160, borderBottomWidth: 1, borderBottomColor: '#E9ECF2' },
+  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 160, borderBottomWidth: 1, borderBottomColor: color.border },
   barCol: { flex: 1, height: '100%', justifyContent: 'flex-end' },
 
   funnelLabel: { fontFamily: font.body, fontSize: 12.5, color: color.text2 },

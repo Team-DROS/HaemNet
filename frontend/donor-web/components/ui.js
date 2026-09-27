@@ -95,14 +95,14 @@ export function Button({ children, onPress, variant = 'primary', disabled, icon,
 }
 
 const VARIANTS = {
-  primary: { base: { backgroundColor: color.text }, hover: { backgroundColor: '#1D2A40' }, text: { color: '#FFFFFF' } },
+  primary: { base: { backgroundColor: color.primary }, hover: { backgroundColor: color.primaryHover }, text: { color: '#FFFFFF' } },
   danger: { base: { backgroundColor: color.red }, hover: { backgroundColor: '#C22418' }, text: { color: '#FFFFFF' } },
   secondary: {
     base: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border },
     hover: { backgroundColor: color.surface2 }, text: { color: color.text2 },
   },
   outlineDanger: {
-    base: { backgroundColor: color.surface, borderWidth: 1, borderColor: '#F3C9C4' },
+    base: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.redBorder },
     hover: { backgroundColor: color.redBand }, text: { color: color.redText },
   },
   success: { base: { backgroundColor: color.green }, hover: { backgroundColor: '#0B8A5F' }, text: { color: '#FFFFFF' } },

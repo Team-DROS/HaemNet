@@ -4,7 +4,8 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Activity, Chart, HaemNetMark, LogOut, Map as MapIcon, Plus } from './Icons';
-import { color, font, loadWebFonts } from './theme';
+import { applyWebTheme, color, font, getSavedTheme, loadWebFonts } from './theme';
+import ThemeToggle from './ThemeToggle';
 import { Button, LiveDot } from './ui';
 import { useDispatchStore } from './useDispatchStore';
 import LoginScreen from './screens/LoginScreen';
@@ -27,6 +28,9 @@ export default function HospitalDashboard() {
   const { width } = useWindowDimensions();
   const [tab, setTab] = useState('command');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [theme, setTheme] = useState(getSavedTheme);
+  useEffect(() => applyWebTheme(theme), [theme]);
+  const toggleTheme = () => setTheme((value) => value === 'dark' ? 'light' : 'dark');
 
   if (store.booting) {
     return (
@@ -35,7 +39,7 @@ export default function HospitalDashboard() {
       </View>
     );
   }
-  if (!store.profile) return <LoginScreen store={store} />;
+  if (!store.profile) return <LoginScreen store={store} theme={theme} onToggleTheme={toggleTheme} />;
 
   const compactNav = width < 1180;
   const compactBody = width < 1320;
@@ -54,6 +58,7 @@ export default function HospitalDashboard() {
             <Text style={s.subtitle} numberOfLines={1}>{store.profile.name || store.profile.id}</Text>
           </View>
           <View style={[s.row, { gap: 12 }]}>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
             {critical > 0 && (
               <View style={s.critChip}>
                 <LiveDot tone="red" size={6} />
@@ -99,7 +104,7 @@ function Sidebar({ compact, tab, setTab, store, openCount }) {
   return (
     <View style={[s.sidebar, compact && { width: 68 }]}>
       <View style={[s.brand, compact && { justifyContent: 'center', paddingHorizontal: 0 }]}>
-        <HaemNetMark size={26} />
+        <HaemNetMark size={26} color={color.text} accent={color.red} />
         {!compact && <Text style={s.brandText}>HaemNet</Text>}
       </View>
 

@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "HaemNet Donor",
+    "owner": "umasuthan",
     "slug": "donor-mobile",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -48,7 +49,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1e32720d-1259-4b34-9de9-fb9fa00ff4f0"
+        "projectId": "20aa94d4-5db2-49b8-b6f4-fa87e226806b"
       }
     }
   }

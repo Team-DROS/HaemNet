@@ -4,7 +4,7 @@
 
 import { Platform } from 'react-native';
 
-export const color = {
+const light = {
   canvas: '#F5F7FA',
   surface: '#FFFFFF',
   surface2: '#F8FAFC',
@@ -16,6 +16,7 @@ export const color = {
   divider: '#F1F3F7',
 
   text: '#0F1A2B',
+  primary: '#0F1A2B', primaryHover: '#1D2A40',
   text2: '#58637A',
   muted: '#8B95A7',
   faint: '#AEB6C4',
@@ -28,6 +29,39 @@ export const color = {
   amber: '#E49412', amberText: '#A96206', amberSurface: '#FFF8EB',
   slate: '#94A3B5', slateLight: '#CDD4DF',
 };
+
+const dark = {
+  canvas: '#0B1220', surface: '#141E2E', surface2: '#1B283A',
+  selected: '#25354C', track: '#243248',
+  border: '#334257', borderSoft: '#2B394D', divider: '#263449',
+  text: '#F3F6FB', primary: '#385DC3', primaryHover: '#466DD8', text2: '#C5D0DF', muted: '#A6B3C5', faint: '#8999AE', disabled: '#718096',
+  red: '#F66B61', redText: '#FFAAA2', redSurface: '#432629', redBorder: '#714041', redBand: '#322126',
+  green: '#30C895', greenText: '#74E4B9', greenSurface: '#173D35', greenBand: '#19332F',
+  blue: '#719BFF', blueText: '#A9C1FF', blueSurface: '#223552',
+  violet: '#AE94FF', violetText: '#C8B8FF', violetSurface: '#342B50',
+  amber: '#F3B84E', amberText: '#FFD48A', amberSurface: '#493724',
+  slate: '#A4B4C9', slateLight: '#72849A',
+};
+
+// CSS variables keep styles created at module load in sync with the web theme.
+// Native builds retain the existing light palette.
+export const color = Object.fromEntries(
+  Object.entries(light).map(([key, value]) => [key, Platform.OS === 'web' ? `var(--hn-${key}, ${value})` : value]),
+);
+
+export function getSavedTheme() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return 'light';
+  try { return window.localStorage.getItem('haemnet-theme') === 'dark' ? 'dark' : 'light'; }
+  catch { return 'light'; }
+}
+
+export function applyWebTheme(theme) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const palette = theme === 'dark' ? dark : light;
+  Object.entries(palette).forEach(([key, value]) => document.documentElement.style.setProperty(`--hn-${key}`, value));
+  document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
+  try { window.localStorage.setItem('haemnet-theme', theme); } catch { /* storage may be unavailable */ }
+}
 
 const webOnly = (value, fallback) => (Platform.OS === 'web' ? value : fallback);
 

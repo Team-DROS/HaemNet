@@ -246,12 +246,21 @@ async def test_hospital_round_trip_and_health(db):
     assert (await mongo_repo.db_health())["status"] == "connected"
 
 
-# ── sign-in email binding ─────────────────────────────────────────
+# ── donor passwords ───────────────────────────────────────────────
 
-async def test_login_email_binding_round_trip_and_cleared_with_the_donor(db):
-    assert await mongo_repo.db_get_login_email("+919000000001") is None
-    await mongo_repo.db_set_login_email("+919000000001", "donor@example.com")
-    assert await mongo_repo.db_get_login_email("+919000000001") == "donor@example.com"
+async def test_donor_password_is_created_once_and_cleared_with_the_donor(db):
+    assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
+    assert await mongo_repo.db_create_donor_password("+919000000001", "$2b$hash1") is True
+    assert await mongo_repo.db_create_donor_password("+919000000001", "$2b$hash2") is False
+    assert await mongo_repo.db_get_donor_password_hash("+919000000001") == "$2b$hash1"
     await seed_donor()
     assert await mongo_repo.delete_donor("+919000000001") is True
-    assert await mongo_repo.db_get_login_email("+919000000001") is None
+    assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
+
+
+async def test_admin_reset_clears_only_the_password(db):
+    await seed_donor()
+    await mongo_repo.db_create_donor_password("+919000000001", "$2b$hash1")
+    assert await mongo_repo.db_clear_donor_password("+919000000001") is True
+    assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
+    assert await mongo_repo.get_donor_by_phone("+919000000001") is not None

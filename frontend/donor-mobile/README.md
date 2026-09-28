@@ -1,6 +1,6 @@
 # HaemNet Donor (Android)
 
-The donor app: sign in with a phone number and an emailed code, keep a donor profile,
+The donor app: sign in with a phone number and password, keep a donor profile,
 see nearby emergency blood requests and accept or decline them.
 
 | | |
@@ -148,23 +148,24 @@ explicitly blocked in `app.json`. See [PRIVACY.md](PRIVACY.md).
 
 ## Sign-in
 
-1. The donor enters the mobile number hospitals should call and an email address.
-2. HaemNet emails a 6-digit code (valid 5 minutes, 5 guesses).
-3. Entering the code signs the donor in for 30 days. The first sign-in links
-   the email to the number; later sign-ins for that number must use the same
-   email.
+1. **Create account**: the mobile number hospitals should call, plus a
+   password (8 characters or more), typed twice.
+2. **Sign in**: the same number and password. The donor stays signed in for
+   30 days; the token is kept in the Android Keystore.
+3. **Forgot password**: the HaemNet team runs
+   `python -m backend.tools.reset_donor_password <number>` after checking it
+   is the real owner, and the donor creates the account again. The profile
+   and donation history are kept.
 
-SMS codes were removed in 1.2.0: the Twilio trial could not deliver SMS to
-Indian numbers. Twilio is still used for the AI voice calls.
+SMS and email codes were removed in 1.2.0: the Twilio trial could not deliver
+SMS to Indian numbers, and free email services were not worth the setup.
+Twilio is still used for the AI voice calls.
 
 ## Known limitations
 
-- Sign-in codes are emailed through Brevo (free plan: 300 emails a day). If a
-  code does not arrive, check Spam and Promotions; a sender on a Gmail address
-  is more likely to be filtered than one on your own verified domain.
-- The first sign-in links an email to a phone number. The number itself is
-  not proven (no SMS), so someone could claim a number before its owner does.
-  Deleting the profile in the app removes the link.
+- The phone number is not verified (no SMS), so someone could create an
+  account for a number before its owner does. If that happens, the team can
+  reset it with the tool above.
 - The production API runs on Render's free tier and sleeps when idle. The first
   request after a sleep can take close to a minute.
 - New requests are found by polling every 15 seconds while the app is open.

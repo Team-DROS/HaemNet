@@ -27,7 +27,7 @@ const LANGUAGES = ['English', 'Hindi', 'Tamil'];
 const SERVER_BASE_URL = API_URL;
 
 const withCountryCode = (p) => (p.startsWith('+91') ? p : `+91${p}`);
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const MIN_PASSWORD = 8;
 const localDigits = (p) => (p || '').replace(/^\+91/, '').replace(/[^0-9]/g, '').slice(-10);
 
 // Server timestamps are UTC; older rows may lack the zone suffix.
@@ -88,17 +88,14 @@ function DonorExperience({ theme, onToggleTheme }) {
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
-  const [authStep, setAuthStep] = useState('phone'); // 'phone' | 'code'
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   const [loginId, setLoginId] = useState('');
-  const [loginEmail, setLoginEmail] = useState('');
-  const [sentTo, setSentTo] = useState(''); // masked address the code went to
-  const [code, setCode] = useState('');
-  const [devCode, setDevCode] = useState(null); // only returned by a development server
-  const [resendAt, setResendAt] = useState(0);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [clock, setClock] = useState(Date.now());
 
   // ─── PROFILE STATE ───
   const [name, setName] = useState('');
@@ -137,18 +134,13 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
 
   useEffect(() => { checkLoginStatus(); }, []);
-  useEffect(() => {
-    if (authStep !== 'code') return undefined;
-    const t = setInterval(() => setClock(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [authStep]);
   useEffect(() => { if (isLoggedIn && currentUser) loadProfile(); }, [isLoggedIn, currentUser]);
   useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
 
   // ─── AUTHENTICATION ───
-  // Donors sign in with their phone number and a 6-digit code sent to their
-  // email. The first sign-in links the email to the number. The server
-  // returns a donor token that every donor endpoint requires.
+  // Donors create an account with their phone number and a password, then
+  // sign in with the same pair. The server returns a donor token that every
+  // donor endpoint requires.
   const userRef = useRef(null);
   userRef.current = currentUser;
 
@@ -195,40 +187,38 @@ function DonorExperience({ theme, onToggleTheme }) {
     return fallback;
   };
 
-  const requestCode = async () => {
+  const switchAuthMode = (mode) => {
+    setAuthMode(mode);
     setAuthError(''); setAuthNotice('');
-    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
-    const email = loginEmail.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(email)) return setAuthError('Enter a valid email address.');
-    setAuthLoading(true);
-    try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId, email }, { timeout: WAKE_TIMEOUT_MS });
-      setDevCode(res.data.dev_code || null);
-      setSentTo(typeof res.data.email === 'string' ? res.data.email : email);
-      setCode('');
-      setAuthStep('code');
-      setResendAt(Date.now() + 30000);
-      setClock(Date.now());
-    } catch (err) {
-      setAuthError(serverError(err, 'Could not send the code.'));
-    }
-    setAuthLoading(false);
+    setPassword(''); setConfirmPassword('');
   };
 
-  const verifyCode = async () => {
-    setAuthError('');
-    if (!/^\d{6}$/.test(code)) return setAuthError('Enter the 6-digit code from the email.');
+  const submitAuth = async () => {
+    setAuthError(''); setAuthNotice('');
+    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
+    if (authMode === 'register') {
+      if (password.length < MIN_PASSWORD) return setAuthError(`Use at least ${MIN_PASSWORD} characters for your password.`);
+      if (password !== confirmPassword) return setAuthError('The two passwords do not match.');
+    } else if (!password) {
+      return setAuthError('Enter your password.');
+    }
     setAuthLoading(true);
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, email: loginEmail.trim().toLowerCase(), code }, { timeout: WAKE_TIMEOUT_MS });
+      const path = authMode === 'register' ? 'register' : 'login';
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/${path}`, { phone: loginId, password }, { timeout: WAKE_TIMEOUT_MS });
       const session = { id: localDigits(res.data?.phone), token: res.data?.access_token };
       if (!session.token || session.id.length !== 10) throw new Error('Unexpected sign-in response');
       await saveSession(session);
-      setAuthStep('phone'); setCode(''); setDevCode(null); setAuthNotice('');
+      setPassword(''); setConfirmPassword(''); setAuthNotice('');
       setCurrentUser(session);
       setIsLoggedIn(true);
     } catch (err) {
-      setAuthError(serverError(err, 'That code did not work.'));
+      if (err.response?.status === 409) {
+        setAuthMode('login'); setConfirmPassword('');
+        setAuthNotice('This number already has an account. Sign in with your password.');
+      } else {
+        setAuthError(serverError(err, authMode === 'register' ? 'Could not create your account.' : 'Could not sign you in.'));
+      }
     }
     setAuthLoading(false);
   };
@@ -238,8 +228,8 @@ function DonorExperience({ theme, onToggleTheme }) {
     setIsLoggedIn(false);
     setCurrentUser(null);
     setLoginId('');
-    setCode('');
-    setAuthStep('phone');
+    setPassword(''); setConfirmPassword('');
+    setAuthMode('login');
     setIsRegistered(false);
     setRequests([]);
     setActiveTrip(null);
@@ -639,72 +629,74 @@ function DonorExperience({ theme, onToggleTheme }) {
         <View style={s.authHero}>
           <Text style={s.authHeroEyebrow}>THE DONOR NETWORK</Text>
           <Text style={s.authHeroTitle}>Be there when someone needs you.</Text>
-          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes your number and one email code.</Text>
+          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes your number and a password.</Text>
           <View style={s.heroSteps}>
-            <Text style={s.heroStep}>01  Verify</Text>
+            <Text style={s.heroStep}>01  Sign up</Text>
             <Text style={s.heroStep}>02  Join</Text>
             <Text style={s.heroStep}>03  Help</Text>
           </View>
         </View>
 
-        <Text style={s.h1}>{authStep === 'phone' ? 'Sign in or join' : 'Enter your code'}</Text>
+        <Text style={s.h1}>{authMode === 'login' ? 'Sign in' : 'Create your account'}</Text>
         <Text style={s.lede}>
-          {authStep === 'phone'
-            ? 'Use the mobile number hospitals should call, and an email you can open now. We email you a code to sign in.'
-            : `Sent to ${sentTo}. It expires in 5 minutes. Check Spam or Promotions if it is not in your inbox.`}
+          {authMode === 'login'
+            ? 'Use the mobile number and password you joined with.'
+            : 'Use the mobile number hospitals should call, and choose a password.'}
         </Text>
 
-        {authNotice && authStep === 'phone' ? <Notice tone="amber">{authNotice}</Notice> : null}
+        {authNotice ? <Notice tone="amber">{authNotice}</Notice> : null}
 
-        {authStep === 'phone' ? (
-          <>
-            <Field label="Mobile number">
-              <View style={s.phoneRow}>
-                <Text style={s.phonePrefix}>+91</Text>
-                <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
-                  placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
-                  style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
-              </View>
-            </Field>
-            <Field label="Email" hint="Your sign-in code is sent here. The first sign-in links this email to your number.">
-              <TextInput value={loginEmail} onChangeText={(v) => { setLoginEmail(v.replace(/\s/g, '')); if (authError) setAuthError(''); }}
-                placeholder="you@example.com" placeholderTextColor={color.faint} keyboardType="email-address"
-                autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress"
-                maxLength={254} onSubmitEditing={requestCode} style={s.input} accessibilityLabel="Email" />
-            </Field>
-          </>
-        ) : (
-          <Field label="6-digit code">
-            <TextInput value={code} onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
-              placeholder="000000" placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
-              textContentType="oneTimeCode" autoComplete="one-time-code" autoFocus onSubmitEditing={verifyCode}
-              style={[s.input, s.codeInput]} accessibilityLabel="6-digit code" />
+        <Field label="Mobile number">
+          <View style={s.phoneRow}>
+            <Text style={s.phonePrefix}>+91</Text>
+            <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
+              placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
+              autoComplete="tel" textContentType="telephoneNumber"
+              style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
+          </View>
+        </Field>
+        <Field label="Password" hint={authMode === 'register' ? `At least ${MIN_PASSWORD} characters.` : null}>
+          <View style={s.phoneRow}>
+            <TextInput value={password} onChangeText={(v) => { setPassword(v.slice(0, 72)); if (authError) setAuthError(''); }}
+              placeholder={authMode === 'register' ? 'Choose a password' : 'Your password'} placeholderTextColor={color.faint}
+              secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false}
+              autoComplete={authMode === 'register' ? 'password-new' : 'password'}
+              textContentType={authMode === 'register' ? 'newPassword' : 'password'}
+              onSubmitEditing={authMode === 'login' ? submitAuth : undefined}
+              style={s.inputBare} accessibilityLabel="Password" />
+            <TouchableOpacity onPress={() => setShowPassword((v) => !v)} accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} style={{ paddingHorizontal: 14 }}>
+              <Text style={s.switchLink}>{showPassword ? 'Hide' : 'Show'}</Text>
+            </TouchableOpacity>
+          </View>
+        </Field>
+        {authMode === 'register' ? (
+          <Field label="Confirm password">
+            <TextInput value={confirmPassword} onChangeText={(v) => { setConfirmPassword(v.slice(0, 72)); if (authError) setAuthError(''); }}
+              placeholder="Type it again" placeholderTextColor={color.faint}
+              secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false}
+              autoComplete="password-new" textContentType="newPassword" onSubmitEditing={submitAuth}
+              style={s.input} accessibilityLabel="Confirm password" />
           </Field>
-        )}
-
-        {devCode && authStep === 'code' ? (
-          <Notice tone="neutral">Development server: email is not configured, so your code is {devCode}.</Notice>
         ) : null}
+
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
-        <PrimaryButton onPress={authStep === 'phone' ? requestCode : verifyCode} busy={authLoading} style={{ marginTop: 8 }}>
-          {authStep === 'phone' ? 'Email me a code' : 'Verify and continue'}
+        <PrimaryButton onPress={submitAuth} busy={authLoading} style={{ marginTop: 8 }}>
+          {authMode === 'login' ? 'Sign in' : 'Create account'}
         </PrimaryButton>
 
-        {authStep === 'code' && (
-          <View style={[s.row, { justifyContent: 'space-between', marginTop: 18 }]}>
-            <TouchableOpacity onPress={() => { setAuthStep('phone'); setAuthError(''); setDevCode(null); }} accessibilityRole="button">
-              <Text style={s.switchLink}>Change number or email</Text>
-            </TouchableOpacity>
-            {clock < resendAt ? (
-              <Text style={s.switchText}>Resend in {Math.ceil((resendAt - clock) / 1000)}s</Text>
-            ) : (
-              <TouchableOpacity onPress={requestCode} disabled={authLoading} accessibilityRole="button">
-                <Text style={s.switchLink}>Resend code</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+        <View style={[s.row, { justifyContent: 'center', marginTop: 18 }]}>
+          <Text style={s.switchText}>{authMode === 'login' ? 'New to HaemNet? ' : 'Already joined? '}</Text>
+          <TouchableOpacity onPress={() => switchAuthMode(authMode === 'login' ? 'register' : 'login')} accessibilityRole="button">
+            <Text style={s.switchLink}>{authMode === 'login' ? 'Create an account' : 'Sign in'}</Text>
+          </TouchableOpacity>
+        </View>
+        {authMode === 'login' ? (
+          <Text style={[s.switchText, { textAlign: 'center', marginTop: 10, fontSize: 13 }]}>
+            Forgot your password? Ask the HaemNet team to reset it, then create your account again with the same number.
+          </Text>
+        ) : null}
 
         <View style={s.authFacts}>
           <Fact title="Only when it matters" body="You are contacted only when your group is needed within 10 km." />
@@ -1212,7 +1204,6 @@ const createStyles = (color) => StyleSheet.create({
 
   label: { color: color.text, fontSize: 13, fontWeight: '600', marginBottom: 8 },
   hint: { color: color.muted, fontSize: 12, marginTop: 6 },
-  codeInput: { fontFamily: mono, fontSize: 24, letterSpacing: 8, textAlign: 'center', paddingVertical: 14 },
   input: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.border, borderRadius: radius.input, paddingHorizontal: 14, paddingVertical: 12, color: color.text, fontSize: 15 },
   inputBare: { flex: 1, paddingHorizontal: 12, paddingVertical: 12, color: color.text, fontSize: 15 },
   phoneRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: color.border, borderRadius: radius.input, backgroundColor: color.surface, overflow: 'hidden' },

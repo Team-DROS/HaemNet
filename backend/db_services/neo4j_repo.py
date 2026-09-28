@@ -424,28 +424,43 @@ DETACH DELETE d
 RETURN count(d) AS deleted_count
 """
 
-_GET_LOGIN_EMAIL_QUERY = "MATCH (l:DonorLogin {phone: $phone}) RETURN l.email AS email"
-_SET_LOGIN_EMAIL_QUERY = """
+_GET_PASSWORD_QUERY = "MATCH (l:DonorLogin {phone: $phone}) RETURN l.password_hash AS password_hash"
+_CREATE_PASSWORD_QUERY = """
 MERGE (l:DonorLogin {phone: $phone})
-ON CREATE SET l.created_at = datetime()
-SET l.email = $email, l.updated_at = datetime()
+ON CREATE SET l.password_hash = $password_hash, l.created_at = datetime(), l.fresh = true
+ON MATCH SET l.fresh = false
+WITH l, l.fresh AS created
+REMOVE l.fresh
+RETURN created
 """
-_DELETE_LOGIN_EMAIL_QUERY = "MATCH (l:DonorLogin {phone: $phone}) DELETE l"
+_DELETE_LOGIN_QUERY = "MATCH (l:DonorLogin {phone: $phone}) DELETE l RETURN count(l) AS deleted"
 
 
-async def db_get_login_email(phone: str) -> Optional[str]:
-    """Email address bound to this donor phone for sign-in codes, if any."""
+async def db_get_donor_password_hash(phone: str) -> Optional[str]:
+    """bcrypt hash of this donor's sign-in password, if one has been set."""
     driver = _get_driver()
     async with driver.session() as session:
-        result = await session.run(_GET_LOGIN_EMAIL_QUERY, phone=phone)
+        result = await session.run(_GET_PASSWORD_QUERY, phone=phone)
         record = await result.single()
-    return record["email"] if record else None
+    return record["password_hash"] if record else None
 
 
-async def db_set_login_email(phone: str, email: str) -> None:
+async def db_create_donor_password(phone: str, password_hash: str) -> bool:
+    """Store the first password for this phone. False if one already exists."""
     driver = _get_driver()
     async with driver.session() as session:
-        await session.run(_SET_LOGIN_EMAIL_QUERY, phone=phone, email=email)
+        result = await session.run(_CREATE_PASSWORD_QUERY, phone=phone, password_hash=password_hash)
+        record = await result.single()
+    return bool(record and record["created"])
+
+
+async def db_clear_donor_password(phone: str) -> bool:
+    """Forget the password so the owner can create a new one (admin reset)."""
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(_DELETE_LOGIN_QUERY, phone=phone)
+        record = await result.single()
+    return bool(record and record["deleted"])
 
 
 @retry(
@@ -461,7 +476,7 @@ async def delete_donor(phone: str) -> bool:
     """
     driver = _get_driver()
     async with driver.session() as session:
-        await session.run(_DELETE_LOGIN_EMAIL_QUERY, phone=phone)
+        await session.run(_DELETE_LOGIN_QUERY, phone=phone)
         result = await session.run(_DELETE_DONOR_QUERY, phone=phone)
         record = await result.single()
 

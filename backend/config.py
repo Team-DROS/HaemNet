@@ -42,17 +42,6 @@ class Settings(BaseSettings):
     
     sentry_dsn: str = ""
 
-    # ── Email (donor sign-in codes) ─────────────────────────────
-    # Brevo's HTTPS API is used in production because Render free instances
-    # block outbound SMTP ports (25, 465, 587). SMTP is kept for local use.
-    brevo_api_key: str = ""
-    email_from: str = ""          # a sender address verified in Brevo
-    email_from_name: str = "HaemNet"
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
-
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
     sarvam_api_key: str = ""
     sarvam_base_url: str = "https://api.sarvam.ai"
@@ -98,10 +87,10 @@ class Settings(BaseSettings):
         Reject configuration that would be insecure or broken outside development.
 
         Only the essentials are mandatory: a real JWT secret and a reachable,
-        non-local database. Twilio, Sarvam and email are optional so the
-        dashboard can go live before those accounts exist; without them AI
-        calls or donor sign-in codes are disabled and the app says so at
-        startup and in `python -m backend.tools.check_config`.
+        non-local database. Twilio and Sarvam are optional so the dashboard
+        can go live before those accounts exist; without them AI calls are
+        disabled and the app says so at startup and in
+        `python -m backend.tools.check_config`.
         """
         if self.app_env.lower() in {"production", "staging"}:
             required = {
@@ -126,19 +115,6 @@ class Settings(BaseSettings):
     @property
     def twilio_configured(self) -> bool:
         return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_phone_number)
-
-    @property
-    def email_provider(self) -> str:
-        """'brevo', 'smtp' or '' when donor sign-in email is not configured."""
-        if self.brevo_api_key and self.email_from:
-            return "brevo"
-        if self.smtp_host and self.email_from:
-            return "smtp"
-        return ""
-
-    @property
-    def email_configured(self) -> bool:
-        return bool(self.email_provider)
 
     @property
     def sarvam_configured(self) -> bool:

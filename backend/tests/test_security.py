@@ -9,7 +9,6 @@ from starlette.websockets import WebSocketDisconnect
 from backend.api import auth, routes
 from backend.api.websockets import manager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
-from backend.services import otp
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
 
 
@@ -96,152 +95,89 @@ def test_successful_login_clears_failures(client, monkeypatch):
     assert auth.hospital_from_token(ok.json()["access_token"]) == HOSPITAL
 
 
-# ── donor email sign-in ───────────────────────────────────────────
+# ── donor phone + password sign-in ────────────────────────────────
 
 PHONE = "+919000000001"
-EMAIL = "donor@example.com"
-
-
-@pytest.fixture
-def dev_email(monkeypatch):
-    """Development server with no email provider: codes come back in the response."""
-    monkeypatch.setattr(auth.settings, "brevo_api_key", "")
-    monkeypatch.setattr(auth.settings, "smtp_host", "")
-    monkeypatch.setattr(auth.settings, "app_env", "development")
 
 
 @pytest.fixture
 def logins(monkeypatch):
-    """In-memory stand-in for the phone -> email binding and donor lookup."""
+    """In-memory stand-in for the donor password store and donor lookup."""
     store = {}
 
-    async def get_email(phone):
+    async def get_hash(phone):
         return store.get(phone)
 
-    async def set_email(phone, email):
-        store[phone] = email
+    async def create(phone, password_hash):
+        if phone in store:
+            return False
+        store[phone] = password_hash
+        return True
 
     async def no_donor(phone):
         return None
 
-    monkeypatch.setattr(auth, "db_get_login_email", get_email)
-    monkeypatch.setattr(auth, "db_set_login_email", set_email)
+    monkeypatch.setattr(auth, "db_get_donor_password_hash", get_hash)
+    monkeypatch.setattr(auth, "db_create_donor_password", create)
     monkeypatch.setattr(auth, "get_donor_by_phone", no_donor)
     return store
 
 
-def _request(client, phone="90000 00001", email=EMAIL):
-    return client.post("/api/donor/auth/request", json={"phone": phone, "email": email})
+def _register(client, phone="90000 00001", password="blood-saves-1"):
+    return client.post("/api/donor/auth/register", json={"phone": phone, "password": password})
 
 
-def _verify(client, code, phone="9000000001", email=EMAIL):
-    return client.post("/api/donor/auth/verify", json={"phone": phone, "email": email, "code": code})
+def _login(client, phone="9000000001", password="blood-saves-1"):
+    return client.post("/api/donor/auth/login", json={"phone": phone, "password": password})
 
 
-def test_email_code_round_trip_issues_donor_token_and_binds_email(client, dev_email, logins):
-    sent = _request(client, email="  Donor@Example.com ").json()
-    assert sent["phone"] == PHONE
-    assert sent["email"] == "d***@example.com"
-    res = _verify(client, sent["dev_code"])
+def test_register_then_login_issues_donor_tokens(client, logins):
+    res = _register(client)
     assert res.status_code == 200
     body = res.json()
-    assert body["registered"] is False
+    assert body["phone"] == PHONE and body["registered"] is False
     assert auth.donor_from_token(body["access_token"]) == PHONE
     assert auth.hospital_from_token(body["access_token"]) is None
-    assert logins[PHONE] == EMAIL
 
-
-def test_code_only_works_for_the_email_it_was_sent_to(client, dev_email, logins):
-    code = _request(client).json()["dev_code"]
-    assert _verify(client, code, email="someone@else.com").status_code == 401
-    assert _verify(client, code).status_code == 200
-
-
-def test_bound_number_refuses_a_different_email(client, dev_email, logins):
-    logins[PHONE] = EMAIL
-    res = _request(client, email="attacker@example.com")
-    assert res.status_code == 409
-    assert "dev_code" not in res.text
-    assert _request(client).status_code == 200
-
-
-def test_email_code_is_single_use(client, dev_email, logins):
-    code = _request(client).json()["dev_code"]
-    assert _verify(client, code).status_code == 200
-    assert _verify(client, code).status_code == 401
-
-
-def test_otp_burns_after_five_wrong_guesses():
-    key = otp.login_key(PHONE, EMAIL)
-    code = otp.issue_code(key, now=0)
-    wrong = "000000" if code != "000000" else "111111"
-    for _ in range(5):
-        assert otp.verify_code(key, wrong, now=1) is False
-    assert otp.verify_code(key, code, now=2) is False
-
-
-def test_otp_expires_and_resend_is_rate_limited():
-    key = otp.login_key(PHONE, EMAIL)
-    code = otp.issue_code(key, now=0)
-    with pytest.raises(otp.OtpError):
-        otp.issue_code(key, now=10)
-    assert otp.verify_code(key, code, now=otp.CODE_TTL_SECONDS + 1) is False
-    for i in range(4):
-        otp.issue_code(key, now=100 + i * 60)
-    with pytest.raises(otp.OtpError):
-        otp.issue_code(key, now=400)
-
-
-def test_one_inbox_cannot_be_flooded_through_many_numbers():
-    for _ in range(8):
-        otp.check_email_quota(EMAIL, now=0)
-    with pytest.raises(otp.OtpError):
-        otp.check_email_quota(EMAIL, now=1)
-
-
-def test_request_rejects_bad_numbers_and_emails(client, dev_email, logins):
-    assert _request(client, phone="12345").status_code == 422
-    assert _request(client, email="not-an-email").status_code == 422
-    assert _request(client, email="a@b").status_code == 422
-
-
-def test_otp_is_never_returned_outside_development(client, monkeypatch, logins):
-    monkeypatch.setattr(auth.settings, "brevo_api_key", "")
-    monkeypatch.setattr(auth.settings, "smtp_host", "")
-    monkeypatch.setattr(auth.settings, "app_env", "production")
-    res = _request(client)
-    assert res.status_code == 503
-    assert "dev_code" not in res.text
-
-
-def test_configured_email_sends_code_and_hides_it(client, monkeypatch, logins):
-    monkeypatch.setattr(auth.settings, "brevo_api_key", "xkeysib-test")
-    monkeypatch.setattr(auth.settings, "email_from", "noreply@example.com")
-    monkeypatch.setattr(auth.settings, "app_env", "production")
-    outbox = []
-
-    async def fake_send(to, code, minutes):
-        outbox.append((to, code, minutes))
-
-    monkeypatch.setattr(auth, "send_sign_in_code", fake_send)
-    res = _request(client)
+    res = _login(client)
     assert res.status_code == 200
-    assert "dev_code" not in res.json()
-    assert outbox and outbox[0][0] == EMAIL and len(outbox[0][1]) == 6
-    assert _verify(client, outbox[0][1]).status_code == 200
+    assert auth.donor_from_token(res.json()["access_token"]) == PHONE
 
 
-def test_provider_failure_is_a_clear_502(client, monkeypatch, logins):
-    monkeypatch.setattr(auth.settings, "brevo_api_key", "xkeysib-test")
-    monkeypatch.setattr(auth.settings, "email_from", "noreply@example.com")
+def test_password_is_stored_hashed(client, logins):
+    _register(client)
+    assert logins[PHONE].startswith("$2") and "blood-saves-1" not in logins[PHONE]
 
-    async def broken(to, code, minutes):
-        raise auth.EmailError("Brevo HTTP 401")
 
-    monkeypatch.setattr(auth, "send_sign_in_code", broken)
-    res = _request(client)
-    assert res.status_code == 502
-    assert "Brevo" not in res.text
+def test_second_registration_for_a_number_is_refused(client, logins):
+    assert _register(client).status_code == 200
+    res = _register(client, password="another-password")
+    assert res.status_code == 409
+    assert _login(client, password="another-password").status_code == 401
+
+
+def test_wrong_password_and_unknown_number_look_the_same(client, logins):
+    _register(client)
+    wrong = _login(client, password="not-the-password")
+    unknown = _login(client, phone="9000000002")
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json()["detail"] == unknown.json()["detail"]
+
+
+def test_login_is_throttled_after_ten_failures(client, logins):
+    _register(client)
+    for _ in range(10):
+        assert _login(client, password="nope-nope-nope").status_code == 401
+    res = _login(client)  # even the right password waits now
+    assert res.status_code == 429
+    assert "Retry-After" in res.headers
+
+
+def test_register_validates_number_and_password(client, logins):
+    assert _register(client, phone="12345").status_code == 422
+    assert _register(client, password="short").status_code == 422
+    assert _register(client, password="x" * 73).status_code == 422
+    assert PHONE not in logins
 
 
 # ── dashboard WebSocket isolation ─────────────────────────────────

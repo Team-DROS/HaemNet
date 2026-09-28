@@ -77,7 +77,9 @@ async def lifespan(app: FastAPI):
     )
     _warn_if_uvloop()
     if not settings.twilio_configured:
-        logger.warning("Twilio is not configured: AI voice calls and donor SMS sign-in codes are disabled.")
+        logger.warning("Twilio is not configured: AI voice calls are disabled.")
+    if not settings.email_configured:
+        logger.warning("Email is not configured: donor sign-in codes cannot be sent.")
     if not settings.sarvam_configured:
         logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
     try:
@@ -92,10 +94,12 @@ async def lifespan(app: FastAPI):
     from backend.services.twilio_service import close as close_twilio
     from backend.services.push_service import close as close_push
     from backend.services.sarvam_service import close as close_sarvam
+    from backend.services.email_service import close as close_email
 
     await close_twilio()
     await close_sarvam()
     await close_push()
+    await close_email()
     await close_db()
     await close_mongodb()
     logger.info("🛑  Blood Dispatch Backend shut down cleanly.")

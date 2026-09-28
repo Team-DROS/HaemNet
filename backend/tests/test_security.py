@@ -96,68 +96,152 @@ def test_successful_login_clears_failures(client, monkeypatch):
     assert auth.hospital_from_token(ok.json()["access_token"]) == HOSPITAL
 
 
-# ── donor SMS sign-in ─────────────────────────────────────────────
+# ── donor email sign-in ───────────────────────────────────────────
+
+PHONE = "+919000000001"
+EMAIL = "donor@example.com"
+
 
 @pytest.fixture
-def no_twilio(monkeypatch):
-    monkeypatch.setattr(auth.settings, "twilio_account_sid", "")
+def dev_email(monkeypatch):
+    """Development server with no email provider: codes come back in the response."""
+    monkeypatch.setattr(auth.settings, "brevo_api_key", "")
+    monkeypatch.setattr(auth.settings, "smtp_host", "")
     monkeypatch.setattr(auth.settings, "app_env", "development")
 
 
-def test_otp_round_trip_issues_donor_token(client, monkeypatch, no_twilio):
-    async def fake_lookup(phone):
+@pytest.fixture
+def logins(monkeypatch):
+    """In-memory stand-in for the phone -> email binding and donor lookup."""
+    store = {}
+
+    async def get_email(phone):
+        return store.get(phone)
+
+    async def set_email(phone, email):
+        store[phone] = email
+
+    async def no_donor(phone):
         return None
 
-    monkeypatch.setattr(auth, "get_donor_by_phone", fake_lookup)
-    sent = client.post("/api/donor/auth/request", json={"phone": "90000 00001"}).json()
-    assert sent["phone"] == "+919000000001"
-    res = client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": sent["dev_code"]})
+    monkeypatch.setattr(auth, "db_get_login_email", get_email)
+    monkeypatch.setattr(auth, "db_set_login_email", set_email)
+    monkeypatch.setattr(auth, "get_donor_by_phone", no_donor)
+    return store
+
+
+def _request(client, phone="90000 00001", email=EMAIL):
+    return client.post("/api/donor/auth/request", json={"phone": phone, "email": email})
+
+
+def _verify(client, code, phone="9000000001", email=EMAIL):
+    return client.post("/api/donor/auth/verify", json={"phone": phone, "email": email, "code": code})
+
+
+def test_email_code_round_trip_issues_donor_token_and_binds_email(client, dev_email, logins):
+    sent = _request(client, email="  Donor@Example.com ").json()
+    assert sent["phone"] == PHONE
+    assert sent["email"] == "d***@example.com"
+    res = _verify(client, sent["dev_code"])
     assert res.status_code == 200
     body = res.json()
     assert body["registered"] is False
-    assert auth.donor_from_token(body["access_token"]) == "+919000000001"
+    assert auth.donor_from_token(body["access_token"]) == PHONE
     assert auth.hospital_from_token(body["access_token"]) is None
+    assert logins[PHONE] == EMAIL
 
 
-def test_otp_code_is_single_use(client, monkeypatch, no_twilio):
-    async def fake_lookup(phone):
-        return None
+def test_code_only_works_for_the_email_it_was_sent_to(client, dev_email, logins):
+    code = _request(client).json()["dev_code"]
+    assert _verify(client, code, email="someone@else.com").status_code == 401
+    assert _verify(client, code).status_code == 200
 
-    monkeypatch.setattr(auth, "get_donor_by_phone", fake_lookup)
-    code = client.post("/api/donor/auth/request", json={"phone": "9000000001"}).json()["dev_code"]
-    assert client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": code}).status_code == 200
-    assert client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": code}).status_code == 401
+
+def test_bound_number_refuses_a_different_email(client, dev_email, logins):
+    logins[PHONE] = EMAIL
+    res = _request(client, email="attacker@example.com")
+    assert res.status_code == 409
+    assert "dev_code" not in res.text
+    assert _request(client).status_code == 200
+
+
+def test_email_code_is_single_use(client, dev_email, logins):
+    code = _request(client).json()["dev_code"]
+    assert _verify(client, code).status_code == 200
+    assert _verify(client, code).status_code == 401
 
 
 def test_otp_burns_after_five_wrong_guesses():
-    code = otp.issue_code("+919000000001", now=0)
+    key = otp.login_key(PHONE, EMAIL)
+    code = otp.issue_code(key, now=0)
     wrong = "000000" if code != "000000" else "111111"
     for _ in range(5):
-        assert otp.verify_code("+919000000001", wrong, now=1) is False
-    assert otp.verify_code("+919000000001", code, now=2) is False
+        assert otp.verify_code(key, wrong, now=1) is False
+    assert otp.verify_code(key, code, now=2) is False
 
 
 def test_otp_expires_and_resend_is_rate_limited():
-    code = otp.issue_code("+919000000001", now=0)
+    key = otp.login_key(PHONE, EMAIL)
+    code = otp.issue_code(key, now=0)
     with pytest.raises(otp.OtpError):
-        otp.issue_code("+919000000001", now=10)
-    assert otp.verify_code("+919000000001", code, now=otp.CODE_TTL_SECONDS + 1) is False
+        otp.issue_code(key, now=10)
+    assert otp.verify_code(key, code, now=otp.CODE_TTL_SECONDS + 1) is False
     for i in range(4):
-        otp.issue_code("+919000000001", now=100 + i * 60)
+        otp.issue_code(key, now=100 + i * 60)
     with pytest.raises(otp.OtpError):
-        otp.issue_code("+919000000001", now=400)
+        otp.issue_code(key, now=400)
 
 
-def test_otp_request_rejects_bad_numbers(client, no_twilio):
-    assert client.post("/api/donor/auth/request", json={"phone": "12345"}).status_code == 422
+def test_one_inbox_cannot_be_flooded_through_many_numbers():
+    for _ in range(8):
+        otp.check_email_quota(EMAIL, now=0)
+    with pytest.raises(otp.OtpError):
+        otp.check_email_quota(EMAIL, now=1)
 
 
-def test_otp_is_never_returned_outside_development(client, monkeypatch):
-    monkeypatch.setattr(auth.settings, "twilio_account_sid", "")
+def test_request_rejects_bad_numbers_and_emails(client, dev_email, logins):
+    assert _request(client, phone="12345").status_code == 422
+    assert _request(client, email="not-an-email").status_code == 422
+    assert _request(client, email="a@b").status_code == 422
+
+
+def test_otp_is_never_returned_outside_development(client, monkeypatch, logins):
+    monkeypatch.setattr(auth.settings, "brevo_api_key", "")
+    monkeypatch.setattr(auth.settings, "smtp_host", "")
     monkeypatch.setattr(auth.settings, "app_env", "production")
-    res = client.post("/api/donor/auth/request", json={"phone": "9000000001"})
+    res = _request(client)
     assert res.status_code == 503
     assert "dev_code" not in res.text
+
+
+def test_configured_email_sends_code_and_hides_it(client, monkeypatch, logins):
+    monkeypatch.setattr(auth.settings, "brevo_api_key", "xkeysib-test")
+    monkeypatch.setattr(auth.settings, "email_from", "noreply@example.com")
+    monkeypatch.setattr(auth.settings, "app_env", "production")
+    outbox = []
+
+    async def fake_send(to, code, minutes):
+        outbox.append((to, code, minutes))
+
+    monkeypatch.setattr(auth, "send_sign_in_code", fake_send)
+    res = _request(client)
+    assert res.status_code == 200
+    assert "dev_code" not in res.json()
+    assert outbox and outbox[0][0] == EMAIL and len(outbox[0][1]) == 6
+    assert _verify(client, outbox[0][1]).status_code == 200
+
+
+def test_provider_failure_is_a_clear_502(client, monkeypatch, logins):
+    monkeypatch.setattr(auth.settings, "brevo_api_key", "xkeysib-test")
+    monkeypatch.setattr(auth.settings, "email_from", "noreply@example.com")
+
+    async def broken(to, code, minutes):
+        raise auth.EmailError("Brevo HTTP 401")
+
+    monkeypatch.setattr(auth, "send_sign_in_code", broken)
+    res = _request(client)
+    assert res.status_code == 502
+    assert "Brevo" not in res.text
 
 
 # ── dashboard WebSocket isolation ─────────────────────────────────

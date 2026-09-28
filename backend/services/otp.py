@@ -1,5 +1,8 @@
 """
-One-time passcodes for donor sign-in.
+One-time passcodes for donor sign-in (sent by email).
+
+A code is issued for a (phone, email) pair: the key is built by `login_key`,
+so a code emailed for one pairing cannot sign in with a different one.
 
 Codes are 6 digits, valid for 5 minutes, allow 5 guesses, and are stored
 only as an HMAC (keyed with JWT_SECRET) so a memory dump does not reveal
@@ -23,8 +26,13 @@ CODE_TTL_SECONDS = 5 * 60
 MAX_ATTEMPTS = 5
 RESEND_COOLDOWN_SECONDS = 30
 
-# At most 5 codes per number per hour.
+# At most 5 codes per key (phone + email) per hour, and at most 8 emails
+# per address per hour however many numbers ask, so the endpoint cannot be
+# used to flood someone's inbox.
 _hourly = SlidingWindowLimiter(max_events=5, window_seconds=3600)
+_per_email = SlidingWindowLimiter(max_events=8, window_seconds=3600)
+
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
 
 
 class OtpError(Exception):
@@ -58,6 +66,27 @@ def normalise_phone(raw: str) -> Optional[str]:
     if len(digits) == 12 and digits.startswith("91"):
         return f"+{digits}"
     return None
+
+
+def normalise_email(raw: str) -> Optional[str]:
+    """Lower-cased address, or None if it does not look like an email."""
+    email = (raw or "").strip().lower()
+    if len(email) > 254 or not _EMAIL_RE.match(email):
+        return None
+    return email
+
+
+def login_key(phone: str, email: str) -> str:
+    return f"{phone}|{email}"
+
+
+def check_email_quota(email: str, now: Optional[float] = None) -> None:
+    """Raise OtpError when this address has received too many codes."""
+    now = time.monotonic() if now is None else now
+    if not _per_email.allowed(email, now):
+        raise OtpError("Too many codes sent to this email. Try again later.",
+                       retry_after=_per_email.retry_after(email, now))
+    _per_email.hit(email, now)
 
 
 def _digest(phone: str, code: str) -> str:
@@ -100,3 +129,4 @@ def reset() -> None:
     """Forget every pending code (used by tests)."""
     _pending.clear()
     _hourly.clear()
+    _per_email.clear()

@@ -46,7 +46,7 @@ async def check_database() -> Result:
 
 async def check_twilio() -> List[Result]:
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
-        return [(WARN, "Twilio", "not configured: AI voice calls and SMS sign-in codes are disabled")]
+        return [(WARN, "Twilio", "not configured: AI voice calls are disabled")]
 
     results: List[Result] = []
     auth = (settings.twilio_account_sid, settings.twilio_auth_token)
@@ -88,6 +88,34 @@ async def check_twilio() -> List[Result]:
         except Exception as exc:  # noqa: BLE001
             results.append((FAIL, "Twilio number", str(exc)))
     return results
+
+
+async def check_email() -> Result:
+    """Donor sign-in codes go out by email; without it donors cannot sign in."""
+    provider = settings.email_provider
+    production = settings.app_env.lower() in {"production", "staging"}
+    if not provider:
+        return ((FAIL if production else WARN), "Email",
+                "not configured: set BREVO_API_KEY and EMAIL_FROM so donors can sign in")
+    if provider == "smtp":
+        note = " (Render free instances block SMTP; use Brevo there)" if production else ""
+        return WARN if production else OK, "Email", f"SMTP via {settings.smtp_host}:{settings.smtp_port}{note}"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            headers = {"api-key": settings.brevo_api_key, "accept": "application/json"}
+            resp = await client.get("https://api.brevo.com/v3/senders", headers=headers)
+        if resp.status_code == 401:
+            return FAIL, "Email (Brevo)", f"API key rejected, key {_tail(settings.brevo_api_key)}"
+        resp.raise_for_status()
+        senders = resp.json().get("senders", [])
+        match = next((x for x in senders if (x.get("email") or "").lower() == settings.email_from.lower()), None)
+        if not match:
+            return FAIL, "Email (Brevo)", f"{settings.email_from} is not a sender on this Brevo account"
+        if not match.get("active", True):
+            return FAIL, "Email (Brevo)", f"{settings.email_from} is not verified yet (check its inbox)"
+        return OK, "Email (Brevo)", f"sender {settings.email_from} verified, key {_tail(settings.brevo_api_key)}"
+    except Exception as exc:  # noqa: BLE001
+        return FAIL, "Email (Brevo)", str(exc)
 
 
 async def check_sarvam() -> Result:
@@ -150,6 +178,7 @@ async def main() -> int:
     results: List[Result] = []
     results.extend(check_app_settings())
     results.append(await check_database())
+    results.append(await check_email())
     results.extend(await check_twilio())
     results.append(await check_sarvam())
     results.append(await check_geocoding())

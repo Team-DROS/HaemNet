@@ -41,3 +41,10 @@ def test_development_allows_local_everything():
 def test_twilio_counts_as_configured_only_when_complete():
     assert make(twilio_account_sid="AC1", twilio_auth_token="t", twilio_phone_number="").twilio_configured is False
     assert make(twilio_account_sid="AC1", twilio_auth_token="t", twilio_phone_number="+1202").twilio_configured is True
+
+
+def test_email_provider_prefers_brevo_and_needs_a_sender():
+    assert make(brevo_api_key="k", email_from="").email_configured is False
+    assert make(brevo_api_key="k", email_from="a@b.co").email_provider == "brevo"
+    assert make(smtp_host="smtp.gmail.com", email_from="a@b.co").email_provider == "smtp"
+    assert make(brevo_api_key="k", smtp_host="smtp.gmail.com", email_from="a@b.co").email_provider == "brevo"

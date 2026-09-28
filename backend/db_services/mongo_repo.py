@@ -15,6 +15,8 @@ dispatches  _id = dispatch UUID. Holds units, urgency, address, first
             acceptance, close time and whether every unit was donated.
 calls       _id = "<dispatch_id>:<donor_id>", one per donor dialled, carrying
             the call status, ETA, distance and Twilio call SID.
+donor_logins _id = donor phone (E.164). The email address that receives this
+            donor's sign-in codes, bound on first successful sign-in.
 
 Timestamps are stored as UTC datetimes and returned as ISO strings, which is
 what the Neo4j layer returned and what the apps parse.
@@ -38,6 +40,7 @@ DONORS = "donors"
 HOSPITALS = "hospitals"
 DISPATCHES = "dispatches"
 CALLS = "calls"
+DONOR_LOGINS = "donor_logins"
 
 # Statuses that mean the donor said yes, and the wider set that means the
 # donor engaged at all. Shared with the history aggregation.
@@ -264,7 +267,23 @@ async def update_donation_date(donor_id: str, donated_at: Optional[datetime] = N
     return False
 
 
+async def db_get_login_email(phone: str) -> Optional[str]:
+    doc = await get_database()[DONOR_LOGINS].find_one({"_id": phone}, {"email": 1})
+    return (doc or {}).get("email")
+
+
+async def db_set_login_email(phone: str, email: str) -> None:
+    now = _now()
+    await get_database()[DONOR_LOGINS].update_one(
+        {"_id": phone},
+        {"$set": {"email": email, "updated_at": now}, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+
 async def delete_donor(phone: str) -> bool:
+    # Forget the sign-in email too, so the number can join again with another address.
+    await get_database()[DONOR_LOGINS].delete_one({"_id": phone})
     result = await get_database()[DONORS].delete_one({"phone": phone})
     if result.deleted_count:
         logger.info("Donor deleted: phone=%s", phone)

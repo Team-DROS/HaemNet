@@ -92,7 +92,7 @@ cd frontend/donor-mobile
 npm install
 npx expo start
 ```
-Set `EXPO_PUBLIC_API_URL` in `frontend/donor-mobile/.env` to a backend address the phone can reach (your computer's LAN IP, not `localhost`). Donors sign in with their phone number and an SMS code; on a development backend without Twilio the code is shown in the app.
+Set `EXPO_PUBLIC_API_URL` in `frontend/donor-mobile/.env` to a backend address the phone can reach (your computer's LAN IP, not `localhost`). Donors sign in with their phone number and a code sent to their email; on a development backend without an email provider the code is shown in the app.
 
 ### Web Dashboard Setup
 ```bash

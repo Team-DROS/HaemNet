@@ -424,6 +424,30 @@ DETACH DELETE d
 RETURN count(d) AS deleted_count
 """
 
+_GET_LOGIN_EMAIL_QUERY = "MATCH (l:DonorLogin {phone: $phone}) RETURN l.email AS email"
+_SET_LOGIN_EMAIL_QUERY = """
+MERGE (l:DonorLogin {phone: $phone})
+ON CREATE SET l.created_at = datetime()
+SET l.email = $email, l.updated_at = datetime()
+"""
+_DELETE_LOGIN_EMAIL_QUERY = "MATCH (l:DonorLogin {phone: $phone}) DELETE l"
+
+
+async def db_get_login_email(phone: str) -> Optional[str]:
+    """Email address bound to this donor phone for sign-in codes, if any."""
+    driver = _get_driver()
+    async with driver.session() as session:
+        result = await session.run(_GET_LOGIN_EMAIL_QUERY, phone=phone)
+        record = await result.single()
+    return record["email"] if record else None
+
+
+async def db_set_login_email(phone: str, email: str) -> None:
+    driver = _get_driver()
+    async with driver.session() as session:
+        await session.run(_SET_LOGIN_EMAIL_QUERY, phone=phone, email=email)
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -437,6 +461,7 @@ async def delete_donor(phone: str) -> bool:
     """
     driver = _get_driver()
     async with driver.session() as session:
+        await session.run(_DELETE_LOGIN_EMAIL_QUERY, phone=phone)
         result = await session.run(_DELETE_DONOR_QUERY, phone=phone)
         record = await result.single()
 

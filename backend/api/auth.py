@@ -4,7 +4,7 @@ JWT authentication.
 Two kinds of token share one signing key and are told apart by a `role`
 claim:
   - hospital: issued by /api/auth/token (hospital ID + password)
-  - donor:    issued by /api/donor/auth/verify (phone + SMS code)
+  - donor:    issued by /api/donor/auth/verify (phone + emailed code)
 A donor token can never be used on hospital endpoints, and the reverse.
 """
 
@@ -18,8 +18,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2Pas
 from pydantic import BaseModel
 import bcrypt
 from backend.config import settings
-from backend.db_services import db_get_hospital_by_id, db_create_hospital, get_donor_by_phone
+from backend.db_services import (
+    db_create_hospital,
+    db_get_hospital_by_id,
+    db_get_login_email,
+    db_set_login_email,
+    get_donor_by_phone,
+)
 from backend.services import otp
+from backend.services.email_service import EmailError, mask_email, send_sign_in_code
 from backend.services.rate_limit import SlidingWindowLimiter
 
 logger = logging.getLogger(__name__)
@@ -127,7 +134,7 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
 async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depends(donor_bearer)) -> str:
     phone = donor_from_token(creds.credentials) if creds else None
     if phone is None:
-        raise _unauthorized("Sign in with your phone number to continue")
+        raise _unauthorized("Sign in again to continue")
     return phone
 
 @router.post("/register")
@@ -172,57 +179,92 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer", "user": public_hospital(hospital)}
 
 
-# ── Donor sign-in (phone + SMS code) ──────────────────────────────
+# ── Donor sign-in (phone + emailed code) ──────────────────────────
+#
+# The donor gives the mobile number hospitals should call and an email
+# address. A 6-digit code is emailed; entering it issues a donor token for
+# that phone. The first successful sign-in binds the email to the phone, and
+# later sign-ins for that phone only work with the same email, so knowing
+# someone's number is not enough to take over their donor profile.
+# (SMS codes were dropped: the Twilio trial could not deliver to Indian
+# numbers. Twilio is still used for the AI voice calls.)
 
 class OtpRequest(BaseModel):
     phone: str
+    email: str
 
 
 class OtpVerify(BaseModel):
     phone: str
+    email: str
     code: str
 
 
-def _twilio_configured() -> bool:
-    return bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number)
+def _normalise_pair(phone_raw: str, email_raw: str) -> tuple:
+    phone = otp.normalise_phone(phone_raw)
+    if not phone:
+        raise HTTPException(status_code=422, detail="Enter a valid mobile number")
+    email = otp.normalise_email(email_raw)
+    if not email:
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    return phone, email
+
+
+_WRONG_EMAIL = ("This number is already linked to a different email address. "
+                "Use that email, or ask the HaemNet team to reset it.")
 
 
 @donor_router.post("/request")
 async def request_donor_code(payload: OtpRequest):
-    """Text a 6-digit sign-in code to the donor's phone."""
-    phone = otp.normalise_phone(payload.phone)
-    if not phone:
-        raise HTTPException(status_code=422, detail="Enter a valid mobile number")
+    """Email a 6-digit sign-in code for this phone and email pairing."""
+    phone, email = _normalise_pair(payload.phone, payload.email)
+
+    if not settings.email_configured and settings.app_env.lower() != "development":
+        raise HTTPException(status_code=503, detail="Email sign-in is not configured")
+
+    bound = await db_get_login_email(phone)
+    if bound and bound != email:
+        raise HTTPException(status_code=409, detail=_WRONG_EMAIL)
+
     try:
-        code = otp.issue_code(phone)
+        otp.check_email_quota(email)
+        code = otp.issue_code(otp.login_key(phone, email))
     except otp.OtpError as exc:
         raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)})
 
-    body = f"{code} is your HaemNet sign-in code. It expires in 5 minutes. Do not share it."
-    response = {"status": "sent", "phone": phone, "expires_in": otp.CODE_TTL_SECONDS}
-    if _twilio_configured():
-        from backend.services.twilio_service import send_sms  # imported lazily: keeps auth light
-
+    response = {
+        "status": "sent",
+        "phone": phone,
+        "email": mask_email(email),
+        "expires_in": otp.CODE_TTL_SECONDS,
+    }
+    if settings.email_configured:
         try:
-            await send_sms(phone, body)
-        except Exception as exc:
-            logger.error("Could not send sign-in code to %s: %s", phone, exc)
-            raise HTTPException(status_code=502, detail="Could not send the code. Try again shortly.")
-    elif settings.app_env.lower() == "development":
-        # No SMS provider locally: hand the code back so the app can be tested.
-        logger.warning("Twilio not configured; returning dev sign-in code for %s", phone)
-        response["dev_code"] = code
+            await send_sign_in_code(email, code, otp.CODE_TTL_SECONDS // 60)
+        except EmailError as exc:
+            logger.error("Could not email sign-in code to %s: %s", mask_email(email), exc)
+            raise HTTPException(status_code=502, detail="Could not send the code email. Try again shortly.")
     else:
-        raise HTTPException(status_code=503, detail="SMS sign-in is not configured")
+        # Development only (checked above): no email provider, so hand the
+        # code back so the app can be tested end to end.
+        logger.warning("Email not configured; returning dev sign-in code for %s", phone)
+        response["dev_code"] = code
     return response
 
 
 @donor_router.post("/verify")
 async def verify_donor_code(payload: OtpVerify):
     """Exchange a correct code for a donor token (valid 30 days)."""
-    phone = otp.normalise_phone(payload.phone)
-    if not phone or not otp.verify_code(phone, payload.code):
+    phone, email = _normalise_pair(payload.phone, payload.email)
+    if not otp.verify_code(otp.login_key(phone, email), payload.code):
         raise HTTPException(status_code=401, detail="That code is incorrect or has expired")
+
+    bound = await db_get_login_email(phone)
+    if bound and bound != email:  # bound by someone else between request and verify
+        raise HTTPException(status_code=409, detail=_WRONG_EMAIL)
+    if not bound:
+        await db_set_login_email(phone, email)
+
     token = create_access_token(
         {"sub": phone, "role": ROLE_DONOR}, expires_delta=timedelta(days=DONOR_TOKEN_EXPIRE_DAYS)
     )
@@ -230,4 +272,10 @@ async def verify_donor_code(payload: OtpVerify):
         registered = bool(await get_donor_by_phone(phone))
     except Exception:
         registered = False
-    return {"access_token": token, "token_type": "bearer", "phone": phone, "registered": registered}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "phone": phone,
+        "email": mask_email(email),
+        "registered": registered,
+    }

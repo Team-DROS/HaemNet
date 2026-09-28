@@ -12,12 +12,30 @@ Everything here is a one-time setup of about an hour. After that, pushing to
 | Service | Used for | Free tier |
 | --- | --- | --- |
 | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) | donors, hospitals, dispatches, call sessions | M0 cluster, 512 MB |
-| [Twilio](https://www.twilio.com/) | the AI voice calls and the donor sign-in codes | trial credit; trial accounts can only call verified numbers |
+| [Twilio](https://www.twilio.com/) | the AI voice calls | trial credit; trial accounts can only call verified numbers |
+| [Brevo](https://www.brevo.com/) | emailing donor sign-in codes | 300 emails a day |
 | [Sarvam AI](https://www.sarvam.ai/) | speech to text and text to speech in English, Hindi and Tamil | pay as you go |
 | [Render](https://render.com/) | hosting the API and the dashboard | free instances that sleep when idle |
 
-A trial Twilio account can only call and text numbers you have verified in
-the Twilio console, so verify the phones you will demo with.
+A trial Twilio account can only call numbers you have verified in the Twilio
+console, so verify the phones you will demo with.
+
+Donor sign-in codes go by email, not SMS: a Twilio trial could not deliver
+SMS to Indian numbers, and Indian carriers filter unregistered (non-DLT)
+senders. Render free instances block outbound SMTP (ports 25, 465, 587), so
+the API sends through Brevo's HTTPS API:
+
+1. Sign up at brevo.com (free plan).
+2. **Senders, Domains & Dedicated IPs → Senders → Add a sender**: use an
+   address you can open (your Gmail is fine) and click the link Brevo emails you.
+3. **SMTP & API → API Keys → Generate a new API key**.
+4. In Render, on `haemnet-api`, set `BREVO_API_KEY` to that key and
+   `EMAIL_FROM` to the verified sender address.
+5. From the Render shell, `python -m backend.tools.check_config` should show
+   "Email (Brevo): sender … verified".
+
+A sender on a free mail domain (Gmail, Yahoo) works but is more likely to
+land in Spam. For real donors, verify your own domain in Brevo.
 
 ## 2. MongoDB Atlas
 

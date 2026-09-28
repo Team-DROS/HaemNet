@@ -244,3 +244,14 @@ async def test_hospital_round_trip_and_health(db):
     assert fetched["name"] == "Apollo" and fetched["password_hash"] == "hashed"
     assert await mongo_repo.db_get_hospital_by_id("HOSP-9999") is None
     assert (await mongo_repo.db_health())["status"] == "connected"
+
+
+# ── sign-in email binding ─────────────────────────────────────────
+
+async def test_login_email_binding_round_trip_and_cleared_with_the_donor(db):
+    assert await mongo_repo.db_get_login_email("+919000000001") is None
+    await mongo_repo.db_set_login_email("+919000000001", "donor@example.com")
+    assert await mongo_repo.db_get_login_email("+919000000001") == "donor@example.com"
+    await seed_donor()
+    assert await mongo_repo.delete_donor("+919000000001") is True
+    assert await mongo_repo.db_get_login_email("+919000000001") is None

@@ -26,14 +26,15 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "eslint": "^9.0.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "typescript": "~5.9.2"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "node --experimental-detect-module --test tests/",
+    "test": "node --experimental-detect-module --test tests/*.test.js",
     "lint": "expo lint",
     "doctor": "npx expo-doctor@latest",
     "check": "npm run lint && npm test && npx expo-doctor@latest && expo export --platform android --output-dir .expo-export-check"

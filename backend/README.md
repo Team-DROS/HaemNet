@@ -87,11 +87,11 @@ Hospitals and donors sign in differently, and their tokens are not interchangeab
 | Who | How | Token lifetime |
 | --- | --- | --- |
 | Hospital staff | `POST /api/auth/token` with hospital ID and password (form fields `username`, `password`). 10 failed attempts per ID in 15 minutes returns `429`. | 24 hours |
-| Donor | `POST /api/donor/auth/request {phone}` texts a 6-digit code, then `POST /api/donor/auth/verify {phone, code}` returns the token. Codes last 5 minutes, allow 5 guesses, can be resent after 30 seconds and at most 5 times an hour. | 30 days |
+| Donor | `POST /api/donor/auth/register {phone, password}` creates the account (`409` if the number already has one), `POST /api/donor/auth/login {phone, password}` signs in. Both return the token. Passwords need 8 to 72 characters and are stored as bcrypt hashes in `donor_logins`, apart from the profile. 10 failed sign-ins per number in 15 minutes return `429`; at most 5 new-account attempts per number an hour. | 30 days |
 
-When Twilio is not configured and `APP_ENV=development`, the request endpoint returns the code as `dev_code` so the app can be tested locally. In any other environment it refuses (`503`) instead.
+There is no password recovery by SMS or email. When a donor forgets the password, confirm it is the real owner (for example by calling the number) and run `python -m backend.tools.reset_donor_password <phone>`; the donor then creates the account again with the same number. The profile, history and cooldown are kept. Deleting the donor profile also removes the password.
 
-OTP state and rate limits live in process memory. If you run more than one backend instance, move them to a shared store first.
+Rate limits live in process memory. If you run more than one backend instance, move them to a shared store first.
 
 ## API overview
 

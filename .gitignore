@@ -42,5 +42,9 @@ database/README.md
 *.md
 !README.md
 !DEPLOY.md
+!frontend/donor-mobile/README.md
+!frontend/donor-mobile/PRIVACY.md
+!frontend/donor-mobile/tests/
+!frontend/donor-mobile/tests/*.js
 !backend/README.md
 !design/README.md

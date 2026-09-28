@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     )
     _warn_if_uvloop()
     if not settings.twilio_configured:
-        logger.warning("Twilio is not configured: AI voice calls and donor SMS sign-in codes are disabled.")
+        logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:
         logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
     try:

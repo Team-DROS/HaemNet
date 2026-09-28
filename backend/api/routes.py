@@ -380,7 +380,7 @@ async def log_donation(
 async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depends(get_current_donor)):
     """
     Called by the mobile app to register a new donor or update an existing one.
-    The phone must be the one the donor verified by SMS.
+    The phone must be the one the donor signed in with.
     """
     _require_same_donor(payload.phone, donor_phone)
     try:

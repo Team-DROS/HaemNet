@@ -6,7 +6,7 @@
 #
 # Before the first deploy you need:
 #   * a MongoDB Atlas connection string (free M0 tier is enough)
-#   * Twilio account SID, auth token and phone number
+#   * Twilio account SID, auth token and phone number (AI voice calls)
 #   * a Sarvam AI API key
 #
 # After the API is live, set these three by hand (they need the real URLs):

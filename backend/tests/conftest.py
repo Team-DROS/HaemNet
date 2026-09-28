@@ -139,7 +139,7 @@ def donor_headers(phone="+919000000001"):
 def _reset_limits():
     """Rate limiters and pending codes are process-wide; isolate each test."""
     from backend.api import auth
-    from backend.services import otp
-    otp.reset()
     auth._login_failures.clear()
+    auth._donor_failures.clear()
+    auth._donor_signups.clear()
     yield

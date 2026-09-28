@@ -12,12 +12,15 @@ Everything here is a one-time setup of about an hour. After that, pushing to
 | Service | Used for | Free tier |
 | --- | --- | --- |
 | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) | donors, hospitals, dispatches, call sessions | M0 cluster, 512 MB |
-| [Twilio](https://www.twilio.com/) | the AI voice calls and the donor sign-in codes | trial credit; trial accounts can only call verified numbers |
+| [Twilio](https://www.twilio.com/) | the AI voice calls | trial credit; trial accounts can only call verified numbers |
 | [Sarvam AI](https://www.sarvam.ai/) | speech to text and text to speech in English, Hindi and Tamil | pay as you go |
 | [Render](https://render.com/) | hosting the API and the dashboard | free instances that sleep when idle |
 
-A trial Twilio account can only call and text numbers you have verified in
-the Twilio console, so verify the phones you will demo with.
+A trial Twilio account can only call numbers you have verified in the Twilio
+console, so verify the phones you will demo with.
+
+Donors sign in with their mobile number and a password, so no SMS or email
+service is needed.
 
 ## 2. MongoDB Atlas
 
@@ -121,6 +124,6 @@ cannot reach the server.
 - Free Render instances sleep after 15 minutes of no traffic. The first
   request then takes several seconds and live updates stop while asleep, so
   use a paid instance for anything real.
-- The sign-in code limits and the login throttle are kept in each instance's
+- The donor and hospital login throttles are kept in each instance's
   memory. If you scale to more than one instance, move them to a shared store
   (Redis or a Mongo collection) first.

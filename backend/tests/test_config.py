@@ -41,3 +41,4 @@ def test_development_allows_local_everything():
 def test_twilio_counts_as_configured_only_when_complete():
     assert make(twilio_account_sid="AC1", twilio_auth_token="t", twilio_phone_number="").twilio_configured is False
     assert make(twilio_account_sid="AC1", twilio_auth_token="t", twilio_phone_number="+1202").twilio_configured is True
+

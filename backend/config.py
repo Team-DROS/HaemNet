@@ -87,9 +87,9 @@ class Settings(BaseSettings):
         Reject configuration that would be insecure or broken outside development.
 
         Only the essentials are mandatory: a real JWT secret and a reachable,
-        non-local database. Twilio and Sarvam are optional so the dashboard can
-        go live before the telephony account exists; without them AI calls and
-        SMS sign-in codes are disabled and the app says so at startup and in
+        non-local database. Twilio and Sarvam are optional so the dashboard
+        can go live before those accounts exist; without them AI calls are
+        disabled and the app says so at startup and in
         `python -m backend.tools.check_config`.
         """
         if self.app_env.lower() in {"production", "staging"}:

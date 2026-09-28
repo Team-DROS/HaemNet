@@ -46,7 +46,7 @@ async def check_database() -> Result:
 
 async def check_twilio() -> List[Result]:
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
-        return [(WARN, "Twilio", "not configured: AI voice calls and SMS sign-in codes are disabled")]
+        return [(WARN, "Twilio", "not configured: AI voice calls are disabled")]
 
     results: List[Result] = []
     auth = (settings.twilio_account_sid, settings.twilio_auth_token)

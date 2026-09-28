@@ -3,7 +3,7 @@
     "name": "HaemNet Donor",
     "owner": "umasuthan",
     "slug": "donor-mobile",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -22,8 +22,18 @@
       "package": "com.pranko007.donormobile",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ],
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,17 +44,20 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow HaemNet App to use your location to find nearby hospitals during emergencies.",
-          "locationWhenInUsePermission": "Allow HaemNet App to use your location to find nearby hospitals during emergencies."
+          "locationWhenInUsePermission": "HaemNet Donor uses your location while the app is open to match you with hospitals within 10 km that need your blood group.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow HaemNet App to access your photos for your profile picture.",
-          "cameraPermission": "Allow HaemNet App to access your camera for your profile picture."
+          "photosPermission": "HaemNet Donor lets you choose a profile photo from your gallery. Photos stay on your phone.",
+          "cameraPermission": "HaemNet Donor lets you take a profile photo with your camera. Photos stay on your phone.",
+          "microphonePermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},

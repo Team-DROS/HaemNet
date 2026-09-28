@@ -9,7 +9,6 @@ from starlette.websockets import WebSocketDisconnect
 from backend.api import auth, routes
 from backend.api.websockets import manager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
-from backend.services import otp
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
 
 
@@ -96,68 +95,89 @@ def test_successful_login_clears_failures(client, monkeypatch):
     assert auth.hospital_from_token(ok.json()["access_token"]) == HOSPITAL
 
 
-# ── donor SMS sign-in ─────────────────────────────────────────────
+# ── donor phone + password sign-in ────────────────────────────────
+
+PHONE = "+919000000001"
+
 
 @pytest.fixture
-def no_twilio(monkeypatch):
-    monkeypatch.setattr(auth.settings, "twilio_account_sid", "")
-    monkeypatch.setattr(auth.settings, "app_env", "development")
+def logins(monkeypatch):
+    """In-memory stand-in for the donor password store and donor lookup."""
+    store = {}
 
+    async def get_hash(phone):
+        return store.get(phone)
 
-def test_otp_round_trip_issues_donor_token(client, monkeypatch, no_twilio):
-    async def fake_lookup(phone):
+    async def create(phone, password_hash):
+        if phone in store:
+            return False
+        store[phone] = password_hash
+        return True
+
+    async def no_donor(phone):
         return None
 
-    monkeypatch.setattr(auth, "get_donor_by_phone", fake_lookup)
-    sent = client.post("/api/donor/auth/request", json={"phone": "90000 00001"}).json()
-    assert sent["phone"] == "+919000000001"
-    res = client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": sent["dev_code"]})
+    monkeypatch.setattr(auth, "db_get_donor_password_hash", get_hash)
+    monkeypatch.setattr(auth, "db_create_donor_password", create)
+    monkeypatch.setattr(auth, "get_donor_by_phone", no_donor)
+    return store
+
+
+def _register(client, phone="90000 00001", password="blood-saves-1"):
+    return client.post("/api/donor/auth/register", json={"phone": phone, "password": password})
+
+
+def _login(client, phone="9000000001", password="blood-saves-1"):
+    return client.post("/api/donor/auth/login", json={"phone": phone, "password": password})
+
+
+def test_register_then_login_issues_donor_tokens(client, logins):
+    res = _register(client)
     assert res.status_code == 200
     body = res.json()
-    assert body["registered"] is False
-    assert auth.donor_from_token(body["access_token"]) == "+919000000001"
+    assert body["phone"] == PHONE and body["registered"] is False
+    assert auth.donor_from_token(body["access_token"]) == PHONE
     assert auth.hospital_from_token(body["access_token"]) is None
 
-
-def test_otp_code_is_single_use(client, monkeypatch, no_twilio):
-    async def fake_lookup(phone):
-        return None
-
-    monkeypatch.setattr(auth, "get_donor_by_phone", fake_lookup)
-    code = client.post("/api/donor/auth/request", json={"phone": "9000000001"}).json()["dev_code"]
-    assert client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": code}).status_code == 200
-    assert client.post("/api/donor/auth/verify", json={"phone": "9000000001", "code": code}).status_code == 401
+    res = _login(client)
+    assert res.status_code == 200
+    assert auth.donor_from_token(res.json()["access_token"]) == PHONE
 
 
-def test_otp_burns_after_five_wrong_guesses():
-    code = otp.issue_code("+919000000001", now=0)
-    wrong = "000000" if code != "000000" else "111111"
-    for _ in range(5):
-        assert otp.verify_code("+919000000001", wrong, now=1) is False
-    assert otp.verify_code("+919000000001", code, now=2) is False
+def test_password_is_stored_hashed(client, logins):
+    _register(client)
+    assert logins[PHONE].startswith("$2") and "blood-saves-1" not in logins[PHONE]
 
 
-def test_otp_expires_and_resend_is_rate_limited():
-    code = otp.issue_code("+919000000001", now=0)
-    with pytest.raises(otp.OtpError):
-        otp.issue_code("+919000000001", now=10)
-    assert otp.verify_code("+919000000001", code, now=otp.CODE_TTL_SECONDS + 1) is False
-    for i in range(4):
-        otp.issue_code("+919000000001", now=100 + i * 60)
-    with pytest.raises(otp.OtpError):
-        otp.issue_code("+919000000001", now=400)
+def test_second_registration_for_a_number_is_refused(client, logins):
+    assert _register(client).status_code == 200
+    res = _register(client, password="another-password")
+    assert res.status_code == 409
+    assert _login(client, password="another-password").status_code == 401
 
 
-def test_otp_request_rejects_bad_numbers(client, no_twilio):
-    assert client.post("/api/donor/auth/request", json={"phone": "12345"}).status_code == 422
+def test_wrong_password_and_unknown_number_look_the_same(client, logins):
+    _register(client)
+    wrong = _login(client, password="not-the-password")
+    unknown = _login(client, phone="9000000002")
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json()["detail"] == unknown.json()["detail"]
 
 
-def test_otp_is_never_returned_outside_development(client, monkeypatch):
-    monkeypatch.setattr(auth.settings, "twilio_account_sid", "")
-    monkeypatch.setattr(auth.settings, "app_env", "production")
-    res = client.post("/api/donor/auth/request", json={"phone": "9000000001"})
-    assert res.status_code == 503
-    assert "dev_code" not in res.text
+def test_login_is_throttled_after_ten_failures(client, logins):
+    _register(client)
+    for _ in range(10):
+        assert _login(client, password="nope-nope-nope").status_code == 401
+    res = _login(client)  # even the right password waits now
+    assert res.status_code == 429
+    assert "Retry-After" in res.headers
+
+
+def test_register_validates_number_and_password(client, logins):
+    assert _register(client, phone="12345").status_code == 422
+    assert _register(client, password="short").status_code == 422
+    assert _register(client, password="x" * 73).status_code == 422
+    assert PHONE not in logins
 
 
 # ── dashboard WebSocket isolation ─────────────────────────────────

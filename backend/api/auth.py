@@ -4,7 +4,7 @@ JWT authentication.
 Two kinds of token share one signing key and are told apart by a `role`
 claim:
   - hospital: issued by /api/auth/token (hospital ID + password)
-  - donor:    issued by /api/donor/auth/verify (phone + SMS code)
+  - donor:    issued by /api/donor/auth/register or /login (phone + password)
 A donor token can never be used on hospital endpoints, and the reverse.
 """
 
@@ -18,8 +18,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2Pas
 from pydantic import BaseModel
 import bcrypt
 from backend.config import settings
-from backend.db_services import db_get_hospital_by_id, db_create_hospital, get_donor_by_phone
-from backend.services import otp
+from backend.db_services import (
+    db_create_donor_password,
+    db_create_hospital,
+    db_get_donor_password_hash,
+    db_get_hospital_by_id,
+    get_donor_by_phone,
+)
+from backend.services.phone import normalise_phone
 from backend.services.rate_limit import SlidingWindowLimiter
 
 logger = logging.getLogger(__name__)
@@ -127,7 +133,7 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
 async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depends(donor_bearer)) -> str:
     phone = donor_from_token(creds.credentials) if creds else None
     if phone is None:
-        raise _unauthorized("Sign in with your phone number to continue")
+        raise _unauthorized("Sign in again to continue")
     return phone
 
 @router.post("/register")
@@ -172,57 +178,44 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer", "user": public_hospital(hospital)}
 
 
-# ── Donor sign-in (phone + SMS code) ──────────────────────────────
+# ── Donor sign-in (phone + password) ──────────────────────────────
+#
+# A donor creates an account with the mobile number hospitals should call
+# and a password, then signs in with the same pair. Passwords are stored as
+# bcrypt hashes in `donor_logins`, apart from the donor profile. There is no
+# SMS or email step: the number itself is not verified, which is noted in
+# the donor app README. A forgotten password is reset by an admin with
+# `python -m backend.tools.reset_donor_password <phone>`.
 
-class OtpRequest(BaseModel):
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_BYTES = 72  # bcrypt ignores anything longer
+
+# Failed donor sign-ins: 10 per number per 15 minutes, then 429.
+_donor_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
+# New accounts: 5 per number per hour (stops scripted squatting on numbers).
+_donor_signups = SlidingWindowLimiter(max_events=5, window_seconds=3600)
+
+
+class DonorCredentials(BaseModel):
     phone: str
+    password: str
 
 
-class OtpVerify(BaseModel):
-    phone: str
-    code: str
-
-
-def _twilio_configured() -> bool:
-    return bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number)
-
-
-@donor_router.post("/request")
-async def request_donor_code(payload: OtpRequest):
-    """Text a 6-digit sign-in code to the donor's phone."""
-    phone = otp.normalise_phone(payload.phone)
+def _donor_phone(raw: str) -> str:
+    phone = normalise_phone(raw)
     if not phone:
-        raise HTTPException(status_code=422, detail="Enter a valid mobile number")
-    try:
-        code = otp.issue_code(phone)
-    except otp.OtpError as exc:
-        raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": str(exc.retry_after)})
-
-    body = f"{code} is your HaemNet sign-in code. It expires in 5 minutes. Do not share it."
-    response = {"status": "sent", "phone": phone, "expires_in": otp.CODE_TTL_SECONDS}
-    if _twilio_configured():
-        from backend.services.twilio_service import send_sms  # imported lazily: keeps auth light
-
-        try:
-            await send_sms(phone, body)
-        except Exception as exc:
-            logger.error("Could not send sign-in code to %s: %s", phone, exc)
-            raise HTTPException(status_code=502, detail="Could not send the code. Try again shortly.")
-    elif settings.app_env.lower() == "development":
-        # No SMS provider locally: hand the code back so the app can be tested.
-        logger.warning("Twilio not configured; returning dev sign-in code for %s", phone)
-        response["dev_code"] = code
-    else:
-        raise HTTPException(status_code=503, detail="SMS sign-in is not configured")
-    return response
+        raise HTTPException(status_code=422, detail="Enter a valid 10-digit mobile number")
+    return phone
 
 
-@donor_router.post("/verify")
-async def verify_donor_code(payload: OtpVerify):
-    """Exchange a correct code for a donor token (valid 30 days)."""
-    phone = otp.normalise_phone(payload.phone)
-    if not phone or not otp.verify_code(phone, payload.code):
-        raise HTTPException(status_code=401, detail="That code is incorrect or has expired")
+def _check_new_password(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=422, detail=f"Use at least {MIN_PASSWORD_LENGTH} characters for the password")
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise HTTPException(status_code=422, detail="That password is too long (72 characters at most)")
+
+
+async def _donor_session(phone: str) -> dict:
     token = create_access_token(
         {"sub": phone, "role": ROLE_DONOR}, expires_delta=timedelta(days=DONOR_TOKEN_EXPIRE_DAYS)
     )
@@ -231,3 +224,36 @@ async def verify_donor_code(payload: OtpVerify):
     except Exception:
         registered = False
     return {"access_token": token, "token_type": "bearer", "phone": phone, "registered": registered}
+
+
+@donor_router.post("/register")
+async def register_donor_account(payload: DonorCredentials):
+    """Create a donor account (phone + password) and sign it in."""
+    phone = _donor_phone(payload.phone)
+    _check_new_password(payload.password)
+    if not _donor_signups.allowed(phone):
+        raise HTTPException(status_code=429, detail="Too many attempts. Try again later.",
+                            headers={"Retry-After": str(_donor_signups.retry_after(phone))})
+    _donor_signups.hit(phone)
+
+    created = await db_create_donor_password(phone, get_password_hash(payload.password))
+    if not created:
+        raise HTTPException(status_code=409, detail="This number already has an account. Sign in instead.")
+    logger.info("Donor account created for …%s", phone[-4:])
+    return await _donor_session(phone)
+
+
+@donor_router.post("/login")
+async def login_donor(payload: DonorCredentials):
+    """Exchange phone + password for a donor token (valid 30 days)."""
+    phone = _donor_phone(payload.phone)
+    if not _donor_failures.allowed(phone):
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.",
+                            headers={"Retry-After": str(_donor_failures.retry_after(phone))})
+
+    stored = await db_get_donor_password_hash(phone)
+    if not stored or not verify_password(payload.password, stored):
+        _donor_failures.hit(phone)
+        raise HTTPException(status_code=401, detail="Wrong mobile number or password")
+    _donor_failures.reset(phone)
+    return await _donor_session(phone)

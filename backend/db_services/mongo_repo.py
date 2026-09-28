@@ -15,6 +15,9 @@ dispatches  _id = dispatch UUID. Holds units, urgency, address, first
             acceptance, close time and whether every unit was donated.
 calls       _id = "<dispatch_id>:<donor_id>", one per donor dialled, carrying
             the call status, ETA, distance and Twilio call SID.
+donor_logins _id = donor phone (E.164). The bcrypt hash of the donor's
+            sign-in password. Kept apart from `donors` so profile reads
+            never carry it.
 
 Timestamps are stored as UTC datetimes and returned as ISO strings, which is
 what the Neo4j layer returned and what the apps parse.
@@ -28,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pymongo import ASCENDING, GEOSPHERE, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from backend.db_services.mongodb import close as close_client, get_database, ping
 from backend.schemas.models import Coordinates, DonorNode
@@ -38,6 +42,7 @@ DONORS = "donors"
 HOSPITALS = "hospitals"
 DISPATCHES = "dispatches"
 CALLS = "calls"
+DONOR_LOGINS = "donor_logins"
 
 # Statuses that mean the donor said yes, and the wider set that means the
 # donor engaged at all. Shared with the history aggregation.
@@ -264,7 +269,32 @@ async def update_donation_date(donor_id: str, donated_at: Optional[datetime] = N
     return False
 
 
+async def db_get_donor_password_hash(phone: str) -> Optional[str]:
+    doc = await get_database()[DONOR_LOGINS].find_one({"_id": phone}, {"password_hash": 1})
+    return (doc or {}).get("password_hash")
+
+
+async def db_create_donor_password(phone: str, password_hash: str) -> bool:
+    """Store the first password for this phone. False if one already exists."""
+    now = _now()
+    try:
+        await get_database()[DONOR_LOGINS].insert_one(
+            {"_id": phone, "password_hash": password_hash, "created_at": now, "updated_at": now}
+        )
+        return True
+    except DuplicateKeyError:
+        return False
+
+
+async def db_clear_donor_password(phone: str) -> bool:
+    """Forget the password so the owner can create a new one (admin reset)."""
+    result = await get_database()[DONOR_LOGINS].delete_one({"_id": phone})
+    return bool(result.deleted_count)
+
+
 async def delete_donor(phone: str) -> bool:
+    # Forget the password too, so the number can join again from scratch.
+    await get_database()[DONOR_LOGINS].delete_one({"_id": phone})
     result = await get_database()[DONORS].delete_one({"phone": phone})
     if result.deleted_count:
         logger.info("Donor deleted: phone=%s", phone)

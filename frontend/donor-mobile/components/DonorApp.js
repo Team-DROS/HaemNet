@@ -27,6 +27,7 @@ const LANGUAGES = ['English', 'Hindi', 'Tamil'];
 const SERVER_BASE_URL = API_URL;
 
 const withCountryCode = (p) => (p.startsWith('+91') ? p : `+91${p}`);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const localDigits = (p) => (p || '').replace(/^\+91/, '').replace(/[^0-9]/g, '').slice(-10);
 
 // Server timestamps are UTC; older rows may lack the zone suffix.
@@ -89,6 +90,8 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
   const [authStep, setAuthStep] = useState('phone'); // 'phone' | 'code'
   const [loginId, setLoginId] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [sentTo, setSentTo] = useState(''); // masked address the code went to
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState(null); // only returned by a development server
   const [resendAt, setResendAt] = useState(0);
@@ -143,7 +146,8 @@ function DonorExperience({ theme, onToggleTheme }) {
   useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
 
   // ─── AUTHENTICATION ───
-  // Donors sign in with their phone number and a 6-digit SMS code. The server
+  // Donors sign in with their phone number and a 6-digit code sent to their
+  // email. The first sign-in links the email to the number. The server
   // returns a donor token that every donor endpoint requires.
   const userRef = useRef(null);
   userRef.current = currentUser;
@@ -158,7 +162,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       });
     } catch (err) {
       if (err.response?.status === 401 && token) {
-        await handleLogout('Your session expired. Sign in again with your phone number.');
+        await handleLogout('Your session expired. Sign in again.');
       }
       throw err;
     }
@@ -194,15 +198,17 @@ function DonorExperience({ theme, onToggleTheme }) {
   const requestCode = async () => {
     setAuthError(''); setAuthNotice('');
     if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
+    const email = loginEmail.trim().toLowerCase();
+    if (!EMAIL_PATTERN.test(email)) return setAuthError('Enter a valid email address.');
     setAuthLoading(true);
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId }, { timeout: WAKE_TIMEOUT_MS });
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/request`, { phone: loginId, email }, { timeout: WAKE_TIMEOUT_MS });
       setDevCode(res.data.dev_code || null);
+      setSentTo(typeof res.data.email === 'string' ? res.data.email : email);
       setCode('');
       setAuthStep('code');
       setResendAt(Date.now() + 30000);
       setClock(Date.now());
-      setAuthNotice(`We sent a 6-digit code to +91 ${loginId}.`);
     } catch (err) {
       setAuthError(serverError(err, 'Could not send the code.'));
     }
@@ -211,10 +217,10 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const verifyCode = async () => {
     setAuthError('');
-    if (!/^\d{6}$/.test(code)) return setAuthError('Enter the 6-digit code from the SMS.');
+    if (!/^\d{6}$/.test(code)) return setAuthError('Enter the 6-digit code from the email.');
     setAuthLoading(true);
     try {
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, code }, { timeout: WAKE_TIMEOUT_MS });
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/verify`, { phone: loginId, email: loginEmail.trim().toLowerCase(), code }, { timeout: WAKE_TIMEOUT_MS });
       const session = { id: localDigits(res.data?.phone), token: res.data?.access_token };
       if (!session.token || session.id.length !== 10) throw new Error('Unexpected sign-in response');
       await saveSession(session);
@@ -374,7 +380,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
     if (!finalBloodGroup) return setRegError('Specify your blood group.');
 
-    const finalPhone = withCountryCode(currentUser.id); // always the SMS-verified number
+    const finalPhone = withCountryCode(currentUser.id); // always the number the donor signed in with
 
     setIsSaving(true);
     const profile = {
@@ -633,7 +639,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         <View style={s.authHero}>
           <Text style={s.authHeroEyebrow}>THE DONOR NETWORK</Text>
           <Text style={s.authHeroTitle}>Be there when someone needs you.</Text>
-          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes one verified number.</Text>
+          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes your number and one email code.</Text>
           <View style={s.heroSteps}>
             <Text style={s.heroStep}>01  Verify</Text>
             <Text style={s.heroStep}>02  Join</Text>
@@ -644,43 +650,51 @@ function DonorExperience({ theme, onToggleTheme }) {
         <Text style={s.h1}>{authStep === 'phone' ? 'Sign in or join' : 'Enter your code'}</Text>
         <Text style={s.lede}>
           {authStep === 'phone'
-            ? 'Use the mobile number hospitals should call. We text you a code to confirm it is yours.'
-            : `Sent to +91 ${loginId}. It expires in 5 minutes.`}
+            ? 'Use the mobile number hospitals should call, and an email you can open now. We email you a code to sign in.'
+            : `Sent to ${sentTo}. It expires in 5 minutes. Check Spam or Promotions if it is not in your inbox.`}
         </Text>
 
         {authNotice && authStep === 'phone' ? <Notice tone="amber">{authNotice}</Notice> : null}
 
         {authStep === 'phone' ? (
-          <Field label="Mobile number">
-            <View style={s.phoneRow}>
-              <Text style={s.phonePrefix}>+91</Text>
-              <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
-                placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10} onSubmitEditing={requestCode}
-                style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
-            </View>
-          </Field>
+          <>
+            <Field label="Mobile number">
+              <View style={s.phoneRow}>
+                <Text style={s.phonePrefix}>+91</Text>
+                <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
+                  placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
+                  style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
+              </View>
+            </Field>
+            <Field label="Email" hint="Your sign-in code is sent here. The first sign-in links this email to your number.">
+              <TextInput value={loginEmail} onChangeText={(v) => { setLoginEmail(v.replace(/\s/g, '')); if (authError) setAuthError(''); }}
+                placeholder="you@example.com" placeholderTextColor={color.faint} keyboardType="email-address"
+                autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress"
+                maxLength={254} onSubmitEditing={requestCode} style={s.input} accessibilityLabel="Email" />
+            </Field>
+          </>
         ) : (
           <Field label="6-digit code">
             <TextInput value={code} onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
               placeholder="000000" placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
-              textContentType="oneTimeCode" autoComplete="sms-otp" autoFocus onSubmitEditing={verifyCode}
+              textContentType="oneTimeCode" autoComplete="one-time-code" autoFocus onSubmitEditing={verifyCode}
               style={[s.input, s.codeInput]} accessibilityLabel="6-digit code" />
           </Field>
         )}
 
         {devCode && authStep === 'code' ? (
-          <Notice tone="neutral">Development server: SMS is not configured, so your code is {devCode}.</Notice>
+          <Notice tone="neutral">Development server: email is not configured, so your code is {devCode}.</Notice>
         ) : null}
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
         <PrimaryButton onPress={authStep === 'phone' ? requestCode : verifyCode} busy={authLoading} style={{ marginTop: 8 }}>
-          {authStep === 'phone' ? 'Continue with phone' : 'Verify and continue'}
+          {authStep === 'phone' ? 'Email me a code' : 'Verify and continue'}
         </PrimaryButton>
 
         {authStep === 'code' && (
           <View style={[s.row, { justifyContent: 'space-between', marginTop: 18 }]}>
             <TouchableOpacity onPress={() => { setAuthStep('phone'); setAuthError(''); setDevCode(null); }} accessibilityRole="button">
-              <Text style={s.switchLink}>Change number</Text>
+              <Text style={s.switchLink}>Change number or email</Text>
             </TouchableOpacity>
             {clock < resendAt ? (
               <Text style={s.switchText}>Resend in {Math.ceil((resendAt - clock) / 1000)}s</Text>
@@ -818,7 +832,7 @@ function DonorExperience({ theme, onToggleTheme }) {
             <TextInput value={name} onChangeText={handleNameChange} placeholder="Ramesh Patel" placeholderTextColor={color.faint} style={s.input} />
           </Field>
 
-          <Field label="Phone number" hint="Verified by SMS. Hospitals' AI caller rings this number.">
+          <Field label="Phone number" hint="The number you signed in with. Hospitals' AI caller rings this number.">
             <View style={[s.phoneRow, { backgroundColor: color.surface2 }]}>
               <Text style={s.phonePrefix}>+91</Text>
               <TextInput value={phone} editable={false} style={[s.inputBare, { fontFamily: mono, color: color.text2 }]}
@@ -875,7 +889,7 @@ function DonorExperience({ theme, onToggleTheme }) {
           <View style={s.welcomeBanner}>
             <Text style={s.welcomeEyebrow}>HAEMNET DONOR · {bg(displayGroup)}</Text>
             <Text style={s.welcomeTitle}>Your readiness matters.</Text>
-            <Text style={s.welcomeBody}>When a nearby hospital needs your blood group, the request appears here and we call your verified number.</Text>
+            <Text style={s.welcomeBody}>When a nearby hospital needs your blood group, the request appears here and we call your number.</Text>
           </View>
           <Text style={s.greeting}>Hi {firstName || 'there'}</Text>
           <Text style={s.greetingSub}>

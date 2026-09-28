@@ -1,13 +1,13 @@
 # HaemNet Donor (Android)
 
-The donor app: sign in with a phone number and SMS code, keep a donor profile,
+The donor app: sign in with a phone number and an emailed code, keep a donor profile,
 see nearby emergency blood requests and accept or decline them.
 
 | | |
 | --- | --- |
 | App name | HaemNet Donor |
 | Android package | `com.pranko007.donormobile` |
-| Version | 1.1.0 (versionCode managed by EAS, see Versioning) |
+| Version | 1.2.0 (versionCode managed by EAS, see Versioning) |
 | Supported Android | **Android 7.0 (API 24) and newer.** Android 6 and older cannot install it. |
 | Expo SDK / React Native | 54 / 0.81.5 |
 | Expo account / project | `umasuthan` / `donor-mobile` ([project page](https://expo.dev/accounts/umasuthan/projects/donor-mobile)) |
@@ -100,7 +100,7 @@ This message is Android's generic installer error. Get the real reason with adb:
 ```bash
 adb devices                                   # phone must show as "device" (enable USB debugging)
 adb shell getprop ro.build.version.sdk        # must be 24 or higher
-adb install -r HaemNet-Donor-v1.1.0-preview.apk
+adb install -r HaemNet-Donor-v1.2.0-preview.apk
 adb shell pm list packages | grep donormobile # is an older copy installed?
 adb shell dumpsys package com.pranko007.donormobile | grep -E "versionCode|versionName|signatures"
 ```
@@ -146,13 +146,25 @@ renamed the file, or opening the GitHub Actions `.zip` instead of the APK inside
 The app does not request background location or the microphone; both are
 explicitly blocked in `app.json`. See [PRIVACY.md](PRIVACY.md).
 
+## Sign-in
+
+1. The donor enters the mobile number hospitals should call and an email address.
+2. HaemNet emails a 6-digit code (valid 5 minutes, 5 guesses).
+3. Entering the code signs the donor in for 30 days. The first sign-in links
+   the email to the number; later sign-ins for that number must use the same
+   email.
+
+SMS codes were removed in 1.2.0: the Twilio trial could not deliver SMS to
+Indian numbers. Twilio is still used for the AI voice calls.
+
 ## Known limitations
 
-- SMS sign-in uses a Twilio **trial** account: codes are only delivered to
-  numbers verified in the Twilio console. Other numbers get "Could not send the
-  code". The Twilio sender is a US number; Indian carriers may filter SMS from
-  international long codes without DLT registration, so production needs an
-  Indian-compliant sender.
+- Sign-in codes are emailed through Brevo (free plan: 300 emails a day). If a
+  code does not arrive, check Spam and Promotions; a sender on a Gmail address
+  is more likely to be filtered than one on your own verified domain.
+- The first sign-in links an email to a phone number. The number itself is
+  not proven (no SMS), so someone could claim a number before its owner does.
+  Deleting the profile in the app removes the link.
 - The production API runs on Render's free tier and sleeps when idle. The first
   request after a sleep can take close to a minute.
 - New requests are found by polling every 15 seconds while the app is open.

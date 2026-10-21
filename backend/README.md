@@ -126,4 +126,38 @@ Connect to `/ws/dashboard` and send the hospital token as the first message with
 The server replies `{"type": "auth_ok", "hospital_id": "HOSP-1234"}` and then streams only that hospital's dispatch events (donor status updates, `dispatch_fulfilled`, `dispatch_closed`). A bad or missing token gets `auth_error` and close code `4401`. Send `ping` to receive `{"type": "pong"}`. The token is sent as a message, not in the URL, so it never appears in access logs.
 
 ## Deployment
+
+### Voice consent experiment and rollback
+
+`VOICE_INTENT_MODE=legacy` (default) runs the original keyword-based
+`VoiceSession` in `services/voice_pipeline.py`. Its known mixed-language and
+tentative-response limitations remain. `VOICE_INTENT_MODE=ai` selects the new
+`AIVoiceSession` for subsequent calls. Restart the backend after changing it.
+The model is configurable with `VOICE_INTENT_MODEL=sarvam-105b` and uses the
+existing `SARVAM_API_KEY` and base URL; chat access must be enabled for that key.
+
+AI mode sends bounded transcripts and recent conversation to Sarvam's chat
+API. It waits for one second of low audio energy after speech, asks a second
+confirmation question for initial agreement, and only returns acceptance for
+an explicit affirmative answer after Twilio acknowledges question playback.
+Refusal cancels; invalid model output, timeouts, empty speech and uncertain
+answers never grant acceptance. After three unclear turns or idle/overlong
+speech limits, it can end without a decision. It never automatically falls
+back to keywords during a call. An unconfirmed call currently retains its
+existing donor status; no new database status is introduced in this experiment.
+
+Roll back by setting `VOICE_INTENT_MODE=legacy` and restarting the backend.
+Changing the setting does not undo already recorded donor decisions. Speech
+recognition, translation and TTS retain their existing implementation and
+models; chat classification cannot repair an incorrect transcript.
+
+The energy detector is a basic endpoint detector, not a trained VAD. Long pauses
+inside a sentence, noise and speaker echo still require real-device evaluation.
+Speaking while the agent plays audio is discarded: wait for the question to end.
+Before rollout, verify English, Hindi, Tamil and mixed-language refusals,
+tentative answers, yes-then-no, silence and noisy audio on controlled calls.
+The public HTTPS `SERVER_BASE_URL` must route callbacks and WSS audio to this
+backend. A localhost URL cannot receive Twilio callbacks. No live donor calls
+are needed for the automated tests.
+
 This backend is designed to be dockerized and deployed to platforms like Render or Google Cloud Run. Ensure that your deployment platform supports WebSocket connections for the Twilio audio streams and the frontend dashboard.

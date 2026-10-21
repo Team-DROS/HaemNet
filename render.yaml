@@ -50,6 +50,10 @@ services:
         sync: false
       - key: SARVAM_BASE_URL
         value: https://api.sarvam.ai
+      - key: VOICE_INTENT_MODE
+        value: ai
+      - key: VOICE_INTENT_MODEL
+        value: sarvam-105b
       - key: SENTRY_DSN
         sync: false
       - key: SERVER_BASE_URL

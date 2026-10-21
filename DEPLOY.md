@@ -96,6 +96,24 @@ is in the reserved `+9190000…` test range, so nothing real is ever called.
 
 ## 6. Twilio callbacks
 
+### AI consent rollout
+
+Set `VOICE_INTENT_MODE=ai` and `VOICE_INTENT_MODEL=sarvam-105b` on the API
+service, then deploy the new commit. The blueprint includes these settings;
+existing services managed outside the blueprint need the variables added in
+Render's Environment panel. Keep `SERVER_BASE_URL` set to the deployed API's
+public HTTPS origin (never a temporary local tunnel).
+
+Verify `GET /` reports `voice_intent_mode: ai` and
+`voice_intent_model: sarvam-105b`, and `/api/health` is healthy. Check deployment
+logs for the voice mode and successful startup. Before broader use, verify one
+controlled call: a refusal must decline, a tentative answer must not accept,
+and a first yes must ask for a separate confirmation.
+
+Rollback: set `VOICE_INTENT_MODE=legacy` and redeploy/restart the API service.
+The original implementation is retained. This does not reverse earlier donor
+decisions. Do not copy local `.env` files or tunnel URLs into deployment settings.
+
 The backend tells Twilio where to send call events using `SERVER_BASE_URL`, so
 once that is set to the public https URL there is nothing to configure in the
 Twilio console. The audio stream uses `wss://<your API host>/ws/twilio/audio-stream`.

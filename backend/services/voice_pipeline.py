@@ -31,6 +31,17 @@ logger = logging.getLogger(__name__)
 
 active_sessions: Dict[str, "VoiceSession"] = {}
 
+
+def create_voice_session(**kwargs):
+    """Select once per call so a rollout never changes an active call's engine."""
+    from backend.config import settings
+    if settings.voice_intent_mode == "ai":
+        from backend.services.ai_voice_pipeline import AIVoiceSession
+        logger.info("Starting AI voice session")
+        return AIVoiceSession(**kwargs)
+    logger.info("Starting legacy voice session")
+    return VoiceSession(**kwargs)
+
 # ── Intent keywords (multi-lingual) ──────────────────────────────
 
 _ACCEPT_KEYWORDS = {

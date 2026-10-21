@@ -8,7 +8,7 @@ file sitting next to this module or via real env vars in production.
 from __future__ import annotations
 
 import json
-from typing import List
+from typing import List, Literal
 from pydantic import field_validator, model_validator
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
     sarvam_api_key: str = ""
     sarvam_base_url: str = "https://api.sarvam.ai"
+    # Roll out explicitly; legacy preserves the original keyword pipeline.
+    voice_intent_mode: Literal["legacy", "ai"] = "legacy"
+    voice_intent_model: str = "sarvam-105b"
 
     # ── App Settings ─────────────────────────────────────────────
     app_env: str = "development"

@@ -76,6 +76,8 @@ async def lifespan(app: FastAPI):
         settings.app_env, settings.db_backend,
     )
     _warn_if_uvloop()
+    logger.info("Voice interpretation mode=%s model=%s", settings.voice_intent_mode,
+                settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords")
     if not settings.twilio_configured:
         logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:
@@ -142,4 +144,6 @@ async def root():
         "version": "0.1.0",
         "docs": "/docs",
         "health": "/api/health",
+        "voice_intent_mode": settings.voice_intent_mode,
+        "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,
     }

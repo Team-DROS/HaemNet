@@ -9,6 +9,7 @@ Routes:
 from __future__ import annotations
 
 import json
+import asyncio
 import base64
 import logging
 from typing import Optional
@@ -212,7 +213,7 @@ async def twilio_audio_stream(websocket: WebSocket):
     WebSocket endpoint for Twilio to stream live call audio.
     Twilio sends JSON messages with Base64 audio chunks.
     """
-    from backend.services.voice_pipeline import active_sessions, VoiceSession
+    from backend.services.voice_pipeline import active_sessions, create_voice_session
 
     await websocket.accept()
     logger.info("Audio stream WebSocket connected")
@@ -222,9 +223,45 @@ async def twilio_audio_stream(websocket: WebSocket):
     dispatch_id = ""
     donor_id = ""
 
+    async def send_audio(audio):
+        # Only the AI engine uses playback acknowledgements; preserve legacy flow.
+        mark = session.playback_started() if hasattr(session, "playback_started") else None
+        await websocket.send_text(json.dumps({
+            "event": "media", "streamSid": stream_sid,
+            "media": {"payload": base64.b64encode(audio).decode("utf-8")},
+        }))
+        if mark:
+            await websocket.send_text(json.dumps({
+                "event": "mark", "streamSid": stream_sid, "mark": {"name": mark},
+            }))
+        return mark
+
+    async def finish_audio(audio):
+        mark = await send_audio(audio)
+        if mark:
+            async def wait_for_playback():
+                while True:
+                    event = json.loads(await websocket.receive_text())
+                    if event.get("event") == "stop":
+                        return
+                    if event.get("event") == "mark" and event.get("mark", {}).get("name") == mark:
+                        return
+            try:
+                await asyncio.wait_for(wait_for_playback(), timeout=20)
+            except asyncio.TimeoutError:
+                logger.warning("Closing voice playback acknowledgement timed out")
+
     try:
         while True:
-            data_str = await websocket.receive_text()
+            if session is not None and hasattr(session, "playback_started"):
+                # A lost mark or stalled stream must not leave a call open forever.
+                try:
+                    data_str = await asyncio.wait_for(websocket.receive_text(), timeout=35)
+                except asyncio.TimeoutError:
+                    logger.warning("AI voice stream idle; ending without another decision")
+                    break
+            else:
+                data_str = await websocket.receive_text()
             msg = json.loads(data_str)
             
             if msg["event"] == "start":
@@ -250,7 +287,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                 hospital_id = dispatch.get("hospital_id", "") if dispatch else ""
                 blood_group = dispatch.get("blood_group", "") if dispatch else ""
 
-                session = VoiceSession(
+                session = create_voice_session(
                     call_sid=call_sid, 
                     dispatch_id=dispatch_id,
                     donor_id=donor_id,
@@ -265,14 +302,17 @@ async def twilio_audio_stream(websocket: WebSocket):
                 # Send the greeting immediately when stream starts
                 greeting_audio, _ = await session.handle_audio_chunk(b"")
                 if greeting_audio:
-                    out_msg = {
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {"payload": base64.b64encode(greeting_audio).decode("utf-8")}
-                    }
-                    await websocket.send_text(json.dumps(out_msg))
+                    await send_audio(greeting_audio)
+                elif hasattr(session, "playback_started"):
+                    break
+
+            elif msg["event"] == "mark":
+                if session is not None and hasattr(session, "playback_finished"):
+                    session.playback_finished(msg.get("mark", {}).get("name", ""))
                     
             elif msg["event"] == "media":
+                if session is None or msg.get("media", {}).get("track", "inbound") != "inbound":
+                    continue
                 audio_bytes = base64.b64decode(msg["media"]["payload"])
                 
                 # Process through the voice pipeline.
@@ -280,12 +320,16 @@ async def twilio_audio_stream(websocket: WebSocket):
 
                 # If the pipeline produced a TTS response, send it back.
                 if response_audio:
-                    out_msg = {
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {"payload": base64.b64encode(response_audio).decode("utf-8")}
-                    }
-                    await websocket.send_text(json.dumps(out_msg))
+                    await send_audio(response_audio)
+
+                if intent == "unconfirmed":
+                    # Do not record silence, errors or ambiguity as a donor decision.
+                    closing = await session._speak(
+                        "We could not confirm your response. This request has not been accepted. Goodbye."
+                    )
+                    if closing:
+                        await finish_audio(closing)
+                    break
 
                 # If an intent was resolved, update the dispatch state.
                 if intent in ("accepted", "declined"):
@@ -337,12 +381,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                         closing_audio = await session.generate_closing_message(accepted=False)
                         
                     if closing_audio:
-                        out_msg = {
-                            "event": "media",
-                            "streamSid": stream_sid,
-                            "media": {"payload": base64.b64encode(closing_audio).decode("utf-8")}
-                        }
-                        await websocket.send_text(json.dumps(out_msg))
+                        await finish_audio(closing_audio)
                         
                     break
 

@@ -24,7 +24,10 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
     if (visible) { setError(null); setWarning(null); if (store.availability.status !== 'ready') store.refreshAvailability(); }
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const available = store.availability.data?.groups?.[form.bloodGroup];
+  const counts = store.availability.data?.groups;
+  const selectedGroups = form.bloodGroup === 'All positive' ? BLOOD_GROUPS.filter((g) => g.endsWith('+'))
+    : form.bloodGroup === 'All negative' ? BLOOD_GROUPS.filter((g) => g.endsWith('-')) : [form.bloodGroup];
+  const available = counts ? selectedGroups.reduce((total, g) => total + (counts[g] || 0), 0) : undefined;
 
   const submit = async () => {
     setError(null); setWarning(null);
@@ -62,7 +65,7 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }}>
             <Text style={s.label}>Blood group</Text>
             <View style={s.groups}>
-              {BLOOD_GROUPS.map((g) => {
+              {[...BLOOD_GROUPS, 'All positive', 'All negative'].map((g) => {
                 const active = form.bloodGroup === g;
                 return (
                   <Pressable key={g} onPress={() => set('bloodGroup')(g)} accessibilityRole="button" accessibilityState={{ selected: active }}

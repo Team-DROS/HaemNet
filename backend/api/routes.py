@@ -138,11 +138,10 @@ async def trigger_dispatch(
             lat, lng = coords
 
     # Step 1 — find eligible donors
-    donors = await find_eligible_donors(
-        blood_group=payload.blood_group,
-        lat=lat,
-        lng=lng,
-    )
+    from backend.services.blood_groups import request_groups
+    donors = []
+    for group in request_groups(payload.blood_group):
+        donors.extend(await find_eligible_donors(blood_group=group, lat=lat, lng=lng))
 
     if not donors:
         return DispatchResponse(

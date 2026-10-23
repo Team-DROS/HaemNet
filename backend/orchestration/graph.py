@@ -69,11 +69,12 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     from backend.db_services import find_eligible_donors
     from backend.services.geo import haversine_km
 
-    donors: List[DonorNode] = await find_eligible_donors(
-        blood_group=state["blood_group"],
-        lat=state["lat"],
-        lng=state["lng"],
-    )
+    from backend.services.blood_groups import request_groups
+    donors: List[DonorNode] = []
+    for group in request_groups(state["blood_group"]):
+        donors.extend(await find_eligible_donors(
+            blood_group=group, lat=state["lat"], lng=state["lng"],
+        ))
 
     donor_states = {}
     for d in donors:

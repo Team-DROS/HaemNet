@@ -1,163 +1,185 @@
-# HaemNet Backend
+# HaemNet backend
 
-The backend of HaemNet is the brain of the emergency blood dispatch system. It is responsible for orchestrating real-time AI voice calls, communicating with the graph database, and managing the live WebSocket dashboard for hospitals.
+FastAPI backend for hospital dispatches, donor accounts, multilingual voice
+calls, and live hospital updates. MongoDB is the default data store; the
+original Neo4j repository remains an optional legacy implementation.
 
-## Tech Stack
-- **Framework:** Python FastAPI
-- **AI Orchestration:** LangGraph (StateGraph) & LangChain
-- **Telephony & Voice AI:** Twilio + Sarvam AI (Streaming WebSockets)
-- **Database Connectivity:** Neo4j Python Driver
-- **Concurrency:** `asyncio` for parallel outbound dialing
+## Responsibilities
 
-## System Architecture
+| Area | Implementation |
+| --- | --- |
+| HTTP API | FastAPI routes and Pydantic request/response models |
+| Hospital sign-in | Hospital ID/password, bcrypt, role-scoped JWT |
+| Donor sign-in | Phone/password accounts, bcrypt, separate donor JWT role |
+| Recruitment | MongoDB geospatial search, blood-group selection, cooldown |
+| Dispatch launch | LangGraph and concurrent `asyncio` Twilio requests |
+| Voice transport | Twilio callbacks and bidirectional audio WebSocket |
+| AI interpretation | Sarvam-105B structured output and explicit confirmation |
+| Dashboard events | Authenticated, hospital-scoped WebSocket connections |
+| Operational history | MongoDB dispatch and call records; analytics endpoints |
 
-### 1. The Dispatch Engine (`orchestration/graph.py`)
-At the core of the backend is a state machine built with LangGraph. When a hospital triggers an emergency dispatch, the graph:
-1. Initiates concurrent Twilio calls to all eligible donors.
-2. Tracks the state of each call (`RINGING` -> `ANSWERED` -> `ACCEPTED`/`DECLINED`).
-3. Streams the ongoing state changes back to the frontend via WebSockets.
+## Dispatch orchestration versus conversation control
 
-### 2. Conversational Voice AI (`api/callbacks.py` & `services/`)
-When a donor answers the phone, Twilio connects via WebSocket to our FastAPI server. The backend intercepts the raw audio stream, pipes it through Sarvam AI for low-latency Speech-to-Text and Text-to-Speech in the donor's native language (e.g., Hindi, Tamil, English), and streams the AI's response back to Twilio.
+`orchestration/graph.py` defines `query_donors -> initiate_calls`, with
+a conditional routing node. The graph launches calls; it does not wait
+durably for every conversation or resume from a persisted LangGraph checkpoint.
+Later outcomes are handled by `api/callbacks.py`, the voice session, and the
+dispatch store.
 
-### 3. Spatial & Temporal Constraints (`db_services/`)
-The backend interfaces with Neo4j to enforce strict medical guidelines:
-- **Spatial:** Donors must be within a 10km radius of the hospital's coordinates.
-- **Temporal:** Donors are mathematically locked out of the query if their `last_donated_date` is less than 56 days ago.
+Recruitment supports individual groups plus `All positive` and
+`All negative`, expanded by `services/blood_groups.py`. Each group search
+applies a default 10 km radius and 56-day cooldown. This recruits donors;
+it does not perform clinical compatibility testing.
 
-## Getting Started
+## Voice interpretation and rollback
 
-### Prerequisites
-- Python 3.9+
-- Neo4j AuraDB credentials
-- Twilio Account SID, Auth Token, and Phone Number
-- Sarvam AI API Key
+| Setting | Behavior |
+| --- | --- |
+| `VOICE_INTENT_MODE=ai` | `services/ai_voice_pipeline.py`: model interpretation and separate confirmation |
+| `VOICE_INTENT_MODE=legacy` | Original keyword session in `services/voice_pipeline.py` |
+| `VOICE_INTENT_MODEL=sarvam-105b` | Chat model used by `services/voice_intent.py` |
 
-### Installation
+The Python configuration defaults to `legacy`. The Render blueprint selects
+`ai` explicitly. Select the mode in the environment and restart the backend;
+each new call selects one session implementation.
 
-1. Create a virtual environment and install dependencies:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+In AI mode:
 
-2. Configure your environment variables:
-   Copy `.env.example` to `.env` and fill in your API keys.
+1. Decode Twilio's 8 kHz mu-law audio and wait for a speech pause.
+2. Transcribe the buffered WAV through Sarvam STT.
+3. Send the transcript and bounded recent conversation to Sarvam's chat API.
+4. Validate structured output: intent, explicit consent, and confirmation.
+5. Ask a separate confirmation question for initial agreement.
+6. Wait for Twilio's playback acknowledgement before interpreting its answer.
+7. Save acceptance only for explicit affirmative confirmation; refusal declines.
+   Invalid responses, API failures, silence, and ambiguity never grant acceptance.
+8. Generate the backend-selected reply using translation/TTS as needed.
 
-3. Run the development server from the repository root (the code imports `backend.*`):
-   ```bash
-   uvicorn backend.main:app --reload
-   ```
-   The API will be available at `http://localhost:8000` and the interactive docs at `http://localhost:8000/docs`.
+Current speech integrations are STT `saarika:v2.5`, translation `mayura:v1`,
+and TTS `bulbul:v3`. The new interpreter does not replace these speech models.
+It uses the existing `SARVAM_API_KEY`; that key must have chat access.
 
-4. Run the tests (no Neo4j, Twilio or Sarvam needed; everything external is faked):
-   ```bash
-   python -m pytest backend/tests -q
-   ```
+The endpoint detector uses an energy threshold, not a trained VAD. Overlong
+or unclear speech and idle limits can end a call without a decision. Such a
+call retains its previous donor status. Audio during agent playback is
+discarded. Test noise, echo, and long pauses on controlled calls.
 
-## Data layer
+Set `VOICE_INTENT_MODE=legacy` and restart to roll back. The legacy
+classifier's known mixed-language/keyword limitations remain. AI failures
+never switch a call to legacy automatically. Changing modes does not reverse
+already saved donor decisions.
 
-Two interchangeable implementations sit behind `backend/db_services`:
+## Run from the repository root
 
-| `DB_BACKEND` | Module | Notes |
-| --- | --- | --- |
-| `mongodb` (default) | `db_services/mongo_repo.py` | Collections `donors`, `hospitals`, `dispatches`, `calls`. Donor locations are GeoJSON points with a 2dsphere index, so the 10 km match is one `$geoNear` stage. Indexes are created at startup. |
-| `neo4j` | `db_services/neo4j_repo.py` | The original graph implementation, unchanged. |
-
-Both expose the same functions, so routes, the dispatch store, auth and the
-orchestration graph never know which one is running. `GET /api/health` reports
-the active backend and whether it is reachable.
-
-Run the server with `--loop asyncio`. PyMongo's async client hangs on uvloop,
-which uvicorn selects by default; both Dockerfiles already pass the flag, and
-the app logs an error if it detects uvloop.
-
-Helper commands:
+Use Python 3.11 (the Docker/CI runtime):
 
 ```bash
-python -m backend.tools.seed_demo     # demo hospital + 96 donors (never in production)
-python -m backend.tools.check_config  # database, Twilio, Sarvam, geocoding and security settings
+python -m venv .venv
+# Activate .venv, then:
+pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 --loop asyncio
 ```
+
+First create a root `.env` from `.env.example`. Minimum local settings are
+a JWT signing secret and a reachable MongoDB configuration. Add Twilio and
+Sarvam keys for actual calls. The settings loader reads `.env` relative to
+the process working directory, not automatically relative to this module.
+
+Use `--loop asyncio` for the PyMongo async client. Both Dockerfiles specify
+it. Open `http://localhost:8000/docs` for the exact API schema.
+
+## Storage
+
+| `DB_BACKEND` | Implementation | Notes |
+| --- | --- | --- |
+| `mongodb` (default) | `db_services/mongo_repo.py` | Async PyMongo, GeoJSON locations, startup indexes |
+| `neo4j` | `db_services/neo4j_repo.py` | Retained original data layer |
+
+Collections are `donors`, `hospitals`, `dispatches`, `calls`, and
+`donor_logins`. See [the database guide](../database/README.md).
 
 ## Authentication
 
-Hospitals and donors sign in differently, and their tokens are not interchangeable (a `role` claim is checked on every request).
-
-| Who | How | Token lifetime |
+| Account | Sign-in | Token lifetime |
 | --- | --- | --- |
-| Hospital staff | `POST /api/auth/token` with hospital ID and password (form fields `username`, `password`). 10 failed attempts per ID in 15 minutes returns `429`. | 24 hours |
-| Donor | `POST /api/donor/auth/register {phone, password}` creates the account (`409` if the number already has one), `POST /api/donor/auth/login {phone, password}` signs in. Both return the token. Passwords need 8 to 72 characters and are stored as bcrypt hashes in `donor_logins`, apart from the profile. 10 failed sign-ins per number in 15 minutes return `429`; at most 5 new-account attempts per number an hour. | 30 days |
+| Hospital | `POST /api/auth/token`, form fields `username` and `password` | 24 hours |
+| Donor | `POST /api/donor/auth/register` or `/login`, JSON `phone` and `password` | 30 days |
 
-There is no password recovery by SMS or email. When a donor forgets the password, confirm it is the real owner (for example by calling the number) and run `python -m backend.tools.reset_donor_password <phone>`; the donor then creates the account again with the same number. The profile, history and cooldown are kept. Deleting the donor profile also removes the password.
+Hospital registration issues an ID. Donor passwords are bcrypt-hashed in
+`donor_logins`, separate from profiles. Donor phone numbers are account
+identifiers, not OTP-verified ownership. Hospital and donor tokens use
+different roles.
 
-Rate limits live in process memory. If you run more than one backend instance, move them to a shared store first.
+Failed login limits are 10 attempts per identifier in 15 minutes; donor
+account creation is limited to 5 attempts per number per hour. These limits
+are process-local, so multiple instances need a shared limiter.
+
+Password recovery is an operator workflow: after verifying ownership, run
+`python -m backend.tools.reset_donor_password <phone>`. The donor can then
+create the login again; their profile and donation history are retained.
 
 ## API overview
 
-Hospital endpoints (hospital token):
+| Method and path | Purpose |
+| --- | --- |
+| `POST /api/auth/register` | Hospital registration |
+| `POST /api/dispatch` | Hospital recruitment and call launch |
+| `GET /api/dispatches/active` | Restore the hospital's open dispatches |
+| `POST /api/dispatches/{id}/close` | Close a dispatch |
+| `GET /api/dispatches/history?days=30` | Server-backed outcome history |
+| `GET /api/network/availability` | Eligible donor counts near the hospital |
+| `POST /api/donate` | Record actual donation and update fulfillment |
+| `POST /api/donor/register` | Create/update the signed-in donor's profile |
+| `GET / DELETE /api/donor/profile/{phone}` | Read/delete the donor's own profile |
+| `GET /api/donor/requests/{phone}` | Requests for the signed-in donor |
+| `POST /api/donor/respond` | Donor app acceptance/decline |
+| `GET /api/health` | Database connectivity and active data layer |
+| `GET /` | Service identity and configured voice mode/model |
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/dispatch` | Match donors and start the AI calls. The dispatch is always recorded against the signed-in hospital. |
-| `GET` | `/api/dispatches/active` | Open dispatches with live donor states (restores the console after a reload). |
-| `POST` | `/api/dispatches/{id}/close` | Stop a request. |
-| `GET` | `/api/dispatches/history?days=30` | Outcome counts per request for analytics (1 to 365 days, no donor details). |
-| `GET` | `/api/network/availability` | Eligible donors per blood group within 10 km of the hospital. |
-| `POST` | `/api/donate` | Record a donation. Closes the request as fulfilled once all units are in. |
+In-app responses are separate from the two-turn voice consent flow.
+See `/docs` for payloads and auth requirements.
 
-Donor endpoints (donor token; a donor can only reach their own records):
+### Hospital WebSocket
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/donor/register` | Create or update the profile for the verified phone. |
-| `GET` / `DELETE` | `/api/donor/profile/{phone}` | Read or delete the profile. |
-| `GET` | `/api/donor/requests/{phone}` | Open requests this donor was matched to, with distance and ETA. |
-| `POST` | `/api/donor/respond` | Accept or decline `{dispatch_id, accept}`. Accepting marks the donor en route. |
-
-### Dashboard WebSocket
-
-Connect to `/ws/dashboard` and send the hospital token as the first message within 10 seconds:
+Connect to `/ws/dashboard` and send the hospital token within 10 seconds:
 
 ```json
 {"type": "auth", "token": "<hospital access token>"}
 ```
 
-The server replies `{"type": "auth_ok", "hospital_id": "HOSP-1234"}` and then streams only that hospital's dispatch events (donor status updates, `dispatch_fulfilled`, `dispatch_closed`). A bad or missing token gets `auth_error` and close code `4401`. Send `ping` to receive `{"type": "pong"}`. The token is sent as a message, not in the URL, so it never appears in access logs.
+The server acknowledges `auth_ok` and streams only that hospital's events.
+Authentication failures close with code `4401`. Send `ping` for `pong`.
+Connections are kept in memory per backend process, not in a distributed broker.
 
-## Deployment
+### Twilio callbacks
 
-### Voice consent experiment and rollback
+The backend constructs call URLs from `SERVER_BASE_URL`. It must be the
+public HTTPS origin of this backend, with the audio stream at
+`wss://<API host>/ws/twilio/audio-stream`. Keep temporary local tunnel
+addresses out of production settings. AI mode uses Twilio `mark` messages
+to distinguish question playback from a new donor answer.
 
-`VOICE_INTENT_MODE=legacy` (default) runs the original keyword-based
-`VoiceSession` in `services/voice_pipeline.py`. Its known mixed-language and
-tentative-response limitations remain. `VOICE_INTENT_MODE=ai` selects the new
-`AIVoiceSession` for subsequent calls. Restart the backend after changing it.
-The model is configurable with `VOICE_INTENT_MODEL=sarvam-105b` and uses the
-existing `SARVAM_API_KEY` and base URL; chat access must be enabled for that key.
+## Checks and helper commands
 
-AI mode sends bounded transcripts and recent conversation to Sarvam's chat
-API. It waits for one second of low audio energy after speech, asks a second
-confirmation question for initial agreement, and only returns acceptance for
-an explicit affirmative answer after Twilio acknowledges question playback.
-Refusal cancels; invalid model output, timeouts, empty speech and uncertain
-answers never grant acceptance. After three unclear turns or idle/overlong
-speech limits, it can end without a decision. It never automatically falls
-back to keywords during a call. An unconfirmed call currently retains its
-existing donor status; no new database status is introduced in this experiment.
+```bash
+python -m pytest backend/tests -q
+python -m backend.tools.check_config
+```
 
-Roll back by setting `VOICE_INTENT_MODE=legacy` and restarting the backend.
-Changing the setting does not undo already recorded donor decisions. Speech
-recognition, translation and TTS retain their existing implementation and
-models; chat classification cannot repair an incorrect transcript.
+Unit and voice-consent tests mock external services. MongoDB integration tests
+need a dedicated test MongoDB (`MONGODB_TEST_URI`) and use `haemnet_test`;
+they skip when it is unavailable. CI starts MongoDB.
 
-The energy detector is a basic endpoint detector, not a trained VAD. Long pauses
-inside a sentence, noise and speaker echo still require real-device evaluation.
-Speaking while the agent plays audio is discarded: wait for the question to end.
-Before rollout, verify English, Hindi, Tamil and mixed-language refusals,
-tentative answers, yes-then-no, silence and noisy audio on controlled calls.
-The public HTTPS `SERVER_BASE_URL` must route callbacks and WSS audio to this
-backend. A localhost URL cannot receive Twilio callbacks. No live donor calls
-are needed for the automated tests.
+The configuration checker probes configured providers, including a short TTS
+request; it is not proof of chat-model access or real-call behavior.
+Consent tests cover confirmation, refusal, uncertain replies, malformed model
+output, provider timeouts, playback gating, and audio boundaries. They do not
+establish multilingual model accuracy.
 
-This backend is designed to be dockerized and deployed to platforms like Render or Google Cloud Run. Ensure that your deployment platform supports WebSocket connections for the Twilio audio streams and the frontend dashboard.
+For isolated local demo data, `python -m backend.tools.seed_demo` creates a
+demo hospital and donor records. It refuses `APP_ENV=production`, but still
+writes to the configured database; use a separate development database.
+Do not initiate calls to generated donor numbers.
+
+For Render environment setup, live verification, and rollback, see
+[DEPLOY.md](../DEPLOY.md).

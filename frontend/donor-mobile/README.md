@@ -1,7 +1,9 @@
 # HaemNet Donor (Android)
 
-The donor app: sign in with a phone number and password, keep a donor profile,
-see nearby emergency blood requests and accept or decline them.
+The donor application for HaemNet: phone-and-password accounts, secure session
+storage, donor profiles, nearby requests, acceptance/decline, external map
+directions, and a 56-day cooldown view. Requests are polled while the app is
+open; the backend runs the AI phone conversations independently.
 
 | | |
 | --- | --- |
@@ -14,19 +16,24 @@ see nearby emergency blood requests and accept or decline them.
 | EAS project ID | `20aa94d4-5db2-49b8-b6f4-fa87e226806b` |
 | Production API | `https://haemnet-api.onrender.com` |
 
-The Expo project is linked to the personal fork
-`umasuthanpalaniappan/HaemNet`, because an Expo personal account cannot connect
-directly to the Team-DROS organisation repository. Releases are built from the
-fork after changes are merged into Team-DROS `main` and synced.
+The existing release workflow uses the Expo project above and the personal fork
+`umasuthanpalaniappan/HaemNet`. Confirm which repository the build actually
+uses, and sync the fork after changes land in Team-DROS `main`. Project access
+is managed by its owner; a local JavaScript preview does not require creating
+another Expo project.
 
 ## Local development
+
+For Fast Refresh, SDK-compatible Expo Go, development APKs, and crash logs, see
+[DEVELOPMENT.md](DEVELOPMENT.md). The project remains on **SDK 54**; a newer
+Expo Go installation does not upgrade the app.
 
 ```bash
 cd frontend/donor-mobile
 npm ci
 # Point the app at a backend your phone can reach (your computer's LAN IP, not localhost):
 echo "EXPO_PUBLIC_API_URL=http://192.168.1.5:8000" > .env
-npx expo start
+node node_modules/expo/bin/cli start --go --port 8082
 ```
 
 Checks before every release:
@@ -148,8 +155,8 @@ explicitly blocked in `app.json`. See [PRIVACY.md](PRIVACY.md).
 
 ## Sign-in
 
-1. **Create account**: the mobile number hospitals should call, plus a
-   password (8 characters or more), typed twice.
+1. **Create account**: the mobile number hospitals should call, plus an
+   8-to-72-character password, typed twice.
 2. **Sign in**: the same number and password. The donor stays signed in for
    30 days; the token is kept in the Android Keystore.
 3. **Forgot password**: the HaemNet team runs
@@ -161,6 +168,17 @@ SMS and email codes were removed in 1.2.0: the Twilio trial could not deliver
 SMS to Indian numbers, and free email services were not worth the setup.
 Twilio is still used for the AI voice calls.
 
+## How the mobile app relates to AI calls
+
+Voice processing runs on the backend, not on the phone. Twilio carries call
+audio; Sarvam provides speech and translation, and AI mode uses Sarvam-105B
+to interpret the response. Voice acceptance requires a separate confirmation.
+The mobile app's accept/decline buttons are a distinct response path.
+
+The app does not run a trained model on the device or need microphone
+permission to receive ordinary telephone calls. Backend voice changes do not
+require a new APK when the mobile API contract stays the same.
+
 ## Known limitations
 
 - The phone number is not verified (no SMS), so someone could create an
@@ -170,3 +188,7 @@ Twilio is still used for the AI voice calls.
   request after a sleep can take close to a minute.
 - New requests are found by polling every 15 seconds while the app is open.
   Push notifications are not wired end to end.
+- Directions open an external maps application. There is no embedded
+  `react-native-maps` screen or continuous live donor GPS tracking.
+- Native crash investigation still needs device logs and reproduction steps;
+  a successful JS export cannot prove that a release APK is crash-free.

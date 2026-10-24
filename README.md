@@ -2,108 +2,213 @@
 
 ![HaemNet Logo](assets/logo.png)
 
-An intelligent, real-time emergency blood dispatch system that leverages graph databases and AI-orchestrated voice calls to instantly connect hospitals with nearby eligible blood donors. 
+**Emergency blood donor coordination with multilingual AI voice calls.**
 
-## The Problem
-During medical emergencies, finding matching blood donors is a race against time. The traditional process involves manually searching through disjointed donor registries, individually calling potential donors, and dealing with language barriers or uncoordinated logistics. This manual, sequential approach costs precious time, often resulting in fatal delays. 
+HaemNet helps hospital teams find nearby donors, contact them concurrently,
+and follow their responses from a live dashboard. Donors manage profiles and
+respond to requests through an Expo mobile app. MongoDB stores donor records,
+dispatch history, and call state.
 
-## Our Solution
-The **HaemNet** is an automated, end-to-end platform that eliminates human delays in blood procurement. When a hospital requires an urgent blood donation, our system instantly identifies the closest eligible donors, concurrently calls them using conversational AI in their native language, and routes them to the hospital upon acceptance—all while providing the hospital with a live, real-time tracking dashboard.
+[![Backend CI](https://github.com/Team-DROS/HaemNet/actions/workflows/main.yml/badge.svg)](https://github.com/Team-DROS/HaemNet/actions/workflows/main.yml)
+[API health](https://haemnet-api.onrender.com/api/health) ·
+[API documentation](https://haemnet-api.onrender.com/docs) ·
+[Deployment guide](DEPLOY.md) · [MIT license](LICENSE)
 
-## Key Technologies & Innovations
+## What HaemNet does
 
-### 1. Geospatial Graph Engine (Neo4j)
-Finding the right donor requires complex relational and geospatial queries (e.g., finding donors with a specific blood type, within a 5km radius, who haven't donated in the last 90 days). We utilize **Neo4j**, a powerful graph database, to model donor relationships, medical history, and real-time geographic locations. This allows us to perform sub-millisecond graph traversals to instantly generate a hyper-targeted list of eligible donors for any emergency dispatch.
+- **Hospital command center:** create requests with blood group, units, urgency,
+  and location; monitor donor responses; record donations and request fulfillment.
+- **Nearby donor recruitment:** MongoDB geospatial queries select donors within
+  a default 10 km radius and outside the configured 56-day donation cooldown.
+- **Concurrent outreach:** LangGraph coordinates recruitment and launches calls
+  through Twilio, with English, Hindi, and Tamil voice workflows.
+- **Explicit voice consent:** AI mode interprets responses with Sarvam-105B and
+  asks a separate confirmation question before recording acceptance.
+- **Live operations:** authenticated WebSockets deliver hospital-specific
+  events; server history supports dashboard analytics.
+- **Donor mobile app:** phone-and-password accounts, secure session storage,
+  profiles, location capture, request responses, external map directions, and
+  a cooldown view. Both applications include light and dark themes.
 
-### 2. Conversational Voice AI (Sarvam AI)
-To ensure maximum conversion rates and accessibility, our system contacts donors via phone calls rather than easily ignored text messages. We integrated **Sarvam AI**'s state-of-the-art Speech-to-Text (STT) and Text-to-Speech (TTS) models tailored specifically for Indian languages.
-- **Multilingual Support:** The system automatically converses with donors in their preferred regional language (English, Hindi, Tamil).
-- **Low-Latency Streaming:** By connecting Twilio audio websockets directly to Sarvam AI, we achieve near real-time, human-like conversational latency.
+## How an emergency request works
 
-### 3. Cross-Platform Mobile Experience (Expo / React Native)
-The donor-facing mobile application is built using **Expo and React Native**, providing a seamless native experience on both iOS and Android from a single codebase.
-- **Live Routing:** When a donor accepts a request, they receive an immediate push notification with integrated map routing (`react-native-maps`) directing them to the hospital.
-- **Frictionless Onboarding:** The Expo framework enables fast, reliable updates and native device capabilities (like geolocation and image picking) critical for maintaining a live donor network.
+1. A signed-in hospital submits a request and its location or address.
+2. The backend searches for donors by group, distance, and cooldown. Individual
+   groups are supported alongside **All positive** and **All negative**, which
+   expand recruitment to the four blood groups of that Rh sign.
+3. LangGraph launches concurrent Twilio calls. MongoDB persists the dispatch
+   roster and call state.
+4. Twilio streams donor audio to FastAPI. Sarvam transcribes it; in AI mode,
+   Sarvam-105B interprets the completed response and recent conversation.
+5. Initial agreement prompts a separate confirmation. Explicit confirmation
+   records acceptance and starts directions delivery. A refusal records decline.
+6. Hospital staff record actual donations separately, updating the last
+   donation date and tracking whether the request's units have been fulfilled.
 
-## System Architecture & Approach
+Blood-group selection controls recruitment; it is not clinical cross-matching.
+The 56-day cooldown is an application rule, not a complete medical eligibility
+assessment.
+
+## AI voice pipeline
+
+```text
+Twilio donor audio
+  -> speech-pause detection and WAV conversion
+  -> Sarvam speech-to-text
+  -> Sarvam-105B: accepted / declined / unclear
+  -> backend confirmation rules and selected reply
+  -> translation when needed -> text-to-speech -> Twilio playback
+```
+
+| Responsibility | Current implementation |
+| --- | --- |
+| Speech recognition | Sarvam `saarika:v2.5` |
+| Response interpretation | Sarvam `sarvam-105b`, configurable with `VOICE_INTENT_MODEL` |
+| Translation | Sarvam `mayura:v1` |
+| Speech synthesis | Sarvam `bulbul:v3` |
+| Conversation control | Backend voice session, explicit confirmation, Twilio playback acknowledgements |
+| Dispatch orchestration | LangGraph `StateGraph` and Python `asyncio` |
+
+HaemNet is an **AI-assisted workflow using pretrained models**. It does not
+train or fine-tune a model. The model interprets language; backend code controls
+confirmation, persistence, and notifications. LangGraph starts dispatches;
+voice sessions and Twilio callbacks handle ongoing conversations. The current
+graph is not a durable autonomous agent managing every conversation turn.
+
+`VOICE_INTENT_MODE=ai` selects the new interpreter; `legacy` preserves the
+original keyword pipeline for rollback. The Python default remains `legacy`;
+the Render blueprint explicitly selects `ai`. Provider errors never cause
+automatic fallback to keyword acceptance in AI mode.
+
+## Architecture
 
 ![System Architecture](assets/architecture.png)
 
-Our approach relies on a heavily decoupled, event-driven architecture designed for high concurrency and real-time feedback.
+*The original illustration is preserved as a project reference. Any Neo4j
+labels or older workflow details reflect the earlier design; the current
+implementation described here uses MongoDB by default.*
 
-- **Orchestration Layer (LangGraph):** At the core of our FastAPI backend is an autonomous state graph built with **LangGraph**. It manages the lifecycle of every outbound donor call: `INITIATE → RINGING → ANSWERED → ACCEPTED/DECLINED → ROUTE_DONOR`.
-- **Concurrent Dispatch:** Instead of sequential calling, the system triggers simultaneous asynchronous voice calls to all matched donors. 
-- **Real-Time Dashboard (WebSockets):** Hospital administrators use a React-based web dashboard. As the AI interacts with donors over the phone, status updates (Ringing, Answered, Accepted) are streamed live to the dashboard via WebSockets, providing complete visibility into the dispatch operation.
-- **Fallback Mechanisms:** If a donor accepts a request but doesn't have the mobile app installed, the system automatically falls back to sending an SMS via Twilio with a web-based tracking link, ensuring no willing donor is lost due to technical friction.
+| Layer | Technology and role |
+| --- | --- |
+| Hospital dashboard | Expo Web, React Native Web, authenticated WebSockets |
+| Donor app | Expo SDK 54, React Native 0.81.5, Expo Router, SecureStore |
+| API | Python 3.11, FastAPI, Uvicorn with the `asyncio` loop |
+| Database | MongoDB / Atlas, PyMongo async API, GeoJSON `2dsphere` indexing |
+| Voice transport | Twilio outbound calls, status callbacks, bidirectional audio WebSockets |
+| AI services | Sarvam speech, translation, and chat APIs |
+| Hosting and checks | Docker backend, static dashboard, Render blueprint, GitHub Actions |
 
-## Technical Stack
+The original Neo4j repository remains selectable with `DB_BACKEND=neo4j`.
+It is an optional legacy implementation, not the default data store.
 
-| Component | Technology |
-|-----------|------------|
-| **Backend Framework** | Python, FastAPI, Uvicorn |
-| **Database** | Neo4j (Graph Database), AuraDB |
-| **AI Orchestration** | LangGraph, LangChain |
-| **Voice AI & Telephony** | Sarvam AI (saarika:v2.5, bulbul:v3), Twilio |
-| **Real-time Comms** | WebSockets (Python `websockets`) |
-| **Frontend (Mobile)** | Expo, React Native, React Native Maps |
-| **Frontend (Web)** | React, Expo Web / Next.js |
+## Explore the repository
 
-## Workflow Overview
+| Directory | Contents |
+| --- | --- |
+| [Backend](backend/README.md) | API, authentication, voice sessions, orchestration, tests |
+| [Frontend](frontend/README.md) | Hospital dashboard and separate donor mobile workspace |
+| [Donor app](frontend/donor-mobile/README.md) | Development, Android builds, sign-in, troubleshooting |
+| [Database](database/README.md) | Collections, indexes, recruitment queries, configuration |
+| [Design](design/README.md) | Visual tokens and original screen references |
+| [Deployment](DEPLOY.md) | Render setup, environment settings, verification, rollback |
 
-1. **Trigger:** A hospital initiates an urgent dispatch request specifying the required blood group, urgency, and hospital coordinates.
-2. **Query:** The backend queries Neo4j for eligible donors nearby.
-3. **Call:** LangGraph orchestrates concurrent Twilio calls to all matched donors.
-4. **Converse:** Sarvam AI models handle the dynamic, multi-lingual conversation, asking the donor if they are available to donate immediately.
-5. **Update:** Call statuses are streamed in real-time to the hospital's web dashboard via WebSockets.
-6. **Route:** Upon acceptance, the donor receives an Expo push notification (or SMS fallback) with navigation instructions to the hospital.
+For AI evaluation, start with
+[`sarvam_service.py`](backend/services/sarvam_service.py),
+[`voice_intent.py`](backend/services/voice_intent.py),
+[`ai_voice_pipeline.py`](backend/services/ai_voice_pipeline.py),
+[`graph.py`](backend/orchestration/graph.py), and
+[`test_voice_consent.py`](backend/tests/test_voice_consent.py).
 
-## Setup and Installation
+## Run locally
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- Neo4j AuraDB instance
-- Twilio Account
-- Sarvam AI API Key
+Use Python 3.11, a Node.js version compatible with Expo SDK 54, and MongoDB.
+Twilio and Sarvam credentials are required for actual voice calls.
 
-### Backend Setup
+### Backend
+
+From the repository root:
+
 ```bash
-python -m venv venv
-source venv/bin/activate            # Windows: venv\Scripts\activate
+python -m venv .venv
+# Activate .venv using your shell, then:
 pip install -r backend/requirements.txt
-# Configure backend/.env with your Neo4j, Twilio and Sarvam AI keys and a JWT_SECRET
-uvicorn backend.main:app --reload   # run from the repository root
-python -m pytest backend/tests -q   # tests need no external services
 ```
 
-The backend stores everything in MongoDB by default (`DB_BACKEND=mongodb`); set `DB_BACKEND=neo4j` to use the original Neo4j data layer instead. A local MongoDB is enough for development:
+Copy [`.env.example`](.env.example) to a root `.env`. Set `JWT_SECRET`,
+`DB_BACKEND=mongodb`, `MONGODB_URI`, and `MONGODB_DATABASE`. Enable AI
+mode and supply Sarvam/Twilio credentials for voice testing. Settings read
+`.env` relative to the process's working directory.
 
 ```bash
-docker run -d -p 27017:27017 --name haemnet-mongo mongo:7
-python -m backend.tools.seed_demo          # one hospital (HOSP-1001 / demo1234) and 96 donors
-python -m backend.tools.check_config       # verifies database, Twilio, Sarvam and settings
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 --loop asyncio
 ```
 
-See [backend/README.md](backend/README.md) for authentication, the API and the dashboard WebSocket protocol, and [DEPLOY.md](DEPLOY.md) for putting it online.
+Docs: `http://localhost:8000/docs`. Health: `/api/health`.
+Twilio requires a public HTTPS `SERVER_BASE_URL` reaching this backend and
+its WSS audio endpoint; localhost cannot receive Twilio callbacks.
 
-### Mobile App Setup
-```bash
-cd frontend/donor-mobile
-npm install
-npx expo start
+### Hospital dashboard
+
+In `frontend/donor-web/.env`:
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://localhost:8000
+EXPO_PUBLIC_WS_URL=ws://localhost:8000/ws/dashboard
 ```
-Set `EXPO_PUBLIC_API_URL` in `frontend/donor-mobile/.env` to a backend address the phone can reach (your computer's LAN IP, not `localhost`). Donors create an account with their phone number and a password, then sign in with the same pair.
 
-### Web Dashboard Setup
 ```bash
 cd frontend/donor-web
-npm install
-npx expo start --web
+npm ci
+node node_modules/expo/bin/cli start --web --port 8081
 ```
-Set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL` in `frontend/donor-web/.env`. Register a hospital from the sign-in screen; the server issues its hospital ID.
+
+Allow `http://localhost:8081` in backend `CORS_ORIGINS`. Register a hospital
+from the sign-in screen; the server issues its hospital ID.
+
+### Donor app
+
+Set `EXPO_PUBLIC_API_URL` in `frontend/donor-mobile/.env` to an API the
+phone can reach. For local development use the computer's LAN IP, not localhost.
+
+```bash
+cd frontend/donor-mobile
+npm ci
+node node_modules/expo/bin/cli start --go --port 8082
+```
+
+Use an Expo Go build compatible with **SDK 54**, or an installed development
+build with `--dev-client`. JS and style edits use Fast Refresh; native
+dependency and permission changes require a new native build.
+See the [mobile guide](frontend/donor-mobile/README.md).
+
+## Verification and current limits
+
+```bash
+python -m pytest backend/tests -q
+```
+
+Tests cover authentication, hospital isolation, dispatches, voice consent,
+and MongoDB operations. Database integration tests use a separate
+`haemnet_test` database and skip when no test MongoDB is available; CI
+provides MongoDB. Consent tests mock provider output and do not measure
+real-world speech or classification accuracy.
+
+- AI endpoint detection uses an audio-energy threshold and pauses, not a
+  trained VAD. Noise, echo, long pauses, and mixed speech need controlled
+  phone evaluation. Audio during agent playback is discarded in AI mode.
+- The existing STT model is retained; an interpreter cannot repair an
+  incorrect transcript.
+- Unconfirmed voice calls retain their existing donor state. In-app acceptance
+  is a separate interaction from the voice confirmation flow.
+- Push helpers exist, but mobile push registration and handling are not wired
+  end to end. The mobile app polls while open and launches external maps;
+  it does not provide live donor GPS tracking.
+- Donor numbers are not verified by OTP. Login throttles and dashboard
+  connections are held per process; multiple instances need shared coordination.
+- Hosting can sleep. A healthy API/database does not by itself validate
+  provider access, call audio, or donor consent on a real call.
 
 ## License
 
 Released under the [MIT License](LICENSE). Copyright (c) 2026 Team DROS.
-
-The `LICENSE` files inside `frontend/donor-mobile` and `frontend/donor-web` are the MIT notices of the Expo starter template those apps were created from; they cover that template code, and the rest of the project is under the root license.
+The frontend directories retain their Expo starter-template MIT notices.

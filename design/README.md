@@ -1,6 +1,9 @@
 # HaemNet Design System
 
-Light-first visual system and screen designs for the HaemNet hospital console and donor app.
+Original light-first visual system and screen references for the HaemNet hospital
+console and donor app. Both running applications now include light and dark themes.
+Runtime palettes live in each app's `components/theme.js`; this directory
+preserves the design intent and original reference screens.
 
 ## Contents
 
@@ -19,6 +22,11 @@ Light-first visual system and screen designs for the HaemNet hospital console an
 The `.dc.html` files are design-canvas sources, not runnable pages: they omit the canvas runtime
 (`support.js`) and are meant to be read as layout and styling references while implementing the
 React Native and React screens under `frontend/`.
+
+Opening the raw HTML may display sample donor data or unresolved template
+placeholders. These screens are not connected to MongoDB, the dispatch API,
+or Twilio. Older provider/database labels inside the references are historical;
+use the root README for the current architecture.
 
 ## Direction
 

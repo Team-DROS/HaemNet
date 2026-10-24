@@ -1,147 +1,141 @@
 # Deploying HaemNet
 
-Three pieces go live: the API, the hospital dashboard, and the donor app.
-This guide uses MongoDB Atlas for the database and Render for hosting,
-both of which have a free tier that is enough for a demo.
+HaemNet deploys as a FastAPI backend, a static hospital dashboard, and a
+separately built donor mobile application. The checked-in Render blueprint
+describes the backend and dashboard; mobile builds use Expo/EAS.
 
-Everything here is a one-time setup of about an hour. After that, pushing to
-`main` redeploys the API and the dashboard automatically.
+## Services and source
 
-## 1. What you need first
-
-| Service | Used for | Free tier |
+| Component | Source | Deployment configuration |
 | --- | --- | --- |
-| [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) | donors, hospitals, dispatches, call sessions | M0 cluster, 512 MB |
-| [Twilio](https://www.twilio.com/) | the AI voice calls | trial credit; trial accounts can only call verified numbers |
-| [Sarvam AI](https://www.sarvam.ai/) | speech to text and text to speech in English, Hindi and Tamil | pay as you go |
-| [Render](https://render.com/) | hosting the API and the dashboard | free instances that sleep when idle |
+| Backend | `backend/` | Root Dockerfile; `render.yaml` service `haemnet-api` |
+| Hospital dashboard | `frontend/donor-web/` | Expo static export; Render static service or existing frontend host |
+| Donor mobile | `frontend/donor-mobile/` | EAS development, preview APK, and production AAB profiles |
+| Database | MongoDB / Atlas | Connection supplied to the backend; not provisioned by the blueprint |
 
-A trial Twilio account can only call numbers you have verified in the Twilio
-console, so verify the phones you will demo with.
+The documented API address is `https://haemnet-api.onrender.com`. Use the
+actual service address if it differs. Confirm which repository/branch each
+service deploys; if a service builds a fork, sync the required changes first.
+Auto-deployment depends on the hosting service's repository settings, not just
+the presence of a blueprint.
 
-Donors sign in with their mobile number and a password, so no SMS or email
-service is needed.
+## Backend environment
 
-## 2. MongoDB Atlas
+Configure secrets in the hosting environment. Do not commit real `.env`
+files or put server secrets in `EXPO_PUBLIC_*` variables.
 
-1. Create a free M0 cluster in the region closest to your users (`ap-south-1`
-   for India).
-2. Database Access: add a user with "Read and write to any database". Use a
-   password without `@ : / ?` or URL-encode it.
-3. Network Access: while Render's free tier has no fixed outbound IP, allow
-   `0.0.0.0/0`. The database is still protected by the user and password.
-4. Copy the connection string. It looks like
-   `mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority`.
+| Variable | Purpose |
+| --- | --- |
+| `APP_ENV=production` | Production configuration checks |
+| `DB_BACKEND=mongodb` | Default data layer |
+| `MONGODB_URI` | Database connection string, including protected credentials |
+| `MONGODB_DATABASE=haemnet` | Application database name |
+| `JWT_SECRET` | Existing signing secret; preserve it across normal redeployments |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | Outbound calls and directions SMS |
+| `SARVAM_API_KEY` | Speech, translation, and chat-model access |
+| `SARVAM_BASE_URL=https://api.sarvam.ai` | Sarvam API origin |
+| `VOICE_INTENT_MODE=ai` | New model interpretation and explicit confirmation |
+| `VOICE_INTENT_MODEL=sarvam-105b` | Interpretation model |
+| `SERVER_BASE_URL` | This backend's public HTTPS origin |
+| `CORS_ORIGINS` | JSON array of allowed dashboard origins |
+| `SENTRY_DSN` | Optional error monitoring |
 
-The app creates its own collections and indexes on first start, including the
-2dsphere index that makes "donors within 10 km" a single query.
+The blueprint selects AI mode. The Python settings default remains `legacy`
+when the mode is omitted. Existing services outside blueprint management
+need the voice variables set explicitly.
 
-## 3. The API on Render
+Keep current MongoDB, JWT, Twilio, Sarvam, and frontend-origin settings when
+redeploying an existing service. A normal code deployment does not require
+new credentials or another database.
 
-1. Push this repository to GitHub (it is already there).
-2. In Render: **New → Blueprint**, select the repository. `render.yaml`
-   creates `haemnet-api` (Docker) and `haemnet-dashboard` (static site).
-3. Render asks for the secret values. Fill in:
+## Deploy the API
 
-   | Variable | Value |
-   | --- | --- |
-   | `MONGODB_URI` | the Atlas connection string |
-   | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | from the Twilio console |
-   | `TWILIO_PHONE_NUMBER` | your Twilio number in E.164, e.g. `+12025550123` |
-   | `SARVAM_API_KEY` | from the Sarvam dashboard |
-   | `SENTRY_DSN` | optional, leave empty to disable error reporting |
+1. Configure Atlas/database access and network connectivity for the backend.
+   Scope permissions and allowed networks to the deployment's requirements.
+   URL-encode credentials when constructing a connection string.
+2. Connect the hosting service to the intended GitHub repository and branch,
+   or create the two services using `render.yaml` for a new environment.
+3. Configure environment values. The root Dockerfile runs:
+   `uvicorn backend.main:app --host 0.0.0.0 --port $PORT --loop asyncio`.
+4. Ensure `SERVER_BASE_URL` is the deployed API's HTTPS origin, never localhost
+   or a temporary local tunnel address.
+5. Deploy the desired commit and inspect startup logs for database index
+   initialization and the active voice mode/model.
 
-   `JWT_SECRET` is generated for you. Leave `APP_ENV=production`.
-4. When the API first deploys you learn its URL. Set the two that depend on it
-   and redeploy:
-   - `SERVER_BASE_URL` = `https://haemnet-api.onrender.com`
-   - `CORS_ORIGINS` = `["https://haemnet-dashboard.onrender.com"]`
-5. On the dashboard service set:
-   - `EXPO_PUBLIC_API_URL` = `https://haemnet-api.onrender.com`
-   - `EXPO_PUBLIC_WS_URL` = `wss://haemnet-api.onrender.com/ws/dashboard`
+The PyMongo async setup uses the standard asyncio loop. Both Dockerfiles
+already specify `--loop asyncio`.
 
-Render's health check hits `/api/health`, which reports whether the database
-is reachable.
+## Deploy the hospital dashboard
 
-> The server must run with `--loop asyncio`. Both Dockerfiles already do.
-> PyMongo's async client hangs on uvloop, which uvicorn picks by default.
+Set these public build variables using the actual API host:
 
-## 4. Prove the keys work
-
-From the Render shell of `haemnet-api` (or locally with the same `.env`):
-
-```bash
-python -m backend.tools.check_config
+```dotenv
+EXPO_PUBLIC_API_URL=https://haemnet-api.onrender.com
+EXPO_PUBLIC_WS_URL=wss://haemnet-api.onrender.com/ws/dashboard
 ```
 
-It checks the database, the Twilio credentials and number capabilities, the
-Sarvam key (by synthesising one short sentence), geocoding, and the security
-settings. It prints only the last four characters of any secret, so the
-output is safe to share. Exit code 0 means everything needed is working.
+The blueprint builds from `frontend/donor-web/` with `npm ci` followed by
+an Expo web export to `dist`, and rewrites routes to `index.html`.
+Allow the dashboard's actual origin in the backend's `CORS_ORIGINS`.
+Frontend variables are bundled at build time; changing them requires a
+fresh export/deployment.
 
-## 5. First data
+## Voice callbacks and verification
 
-Create the first hospital from the dashboard's sign-in screen ("Register a
-hospital"); the server issues the hospital ID. Donors register themselves in
-the mobile app.
+Twilio receives per-call URLs generated from `SERVER_BASE_URL`.
+The audio endpoint is:
 
-For a demo database you can seed a hospital and 96 donors around a point:
-
-```bash
-python -m backend.tools.seed_demo --lat 13.0626 --lng 80.2519
+```text
+wss://<API host>/ws/twilio/audio-stream
 ```
 
-It refuses to run when `APP_ENV=production`, and every seeded donor's number
-is in the reserved `+9190000…` test range, so nothing real is ever called.
+Verify the deployment rather than assuming a successful Git push means it is live:
 
-## 6. Twilio callbacks
+- The hosting service shows the expected commit and successful startup.
+- `GET /` reports `voice_intent_mode: ai` and
+  `voice_intent_model: sarvam-105b`.
+- `GET /api/health` reports `status: healthy`, `database: mongodb`,
+  and `mongodb: connected`.
+- `GET /api/twilio/twiml` references the deployed WSS audio endpoint.
+- Dashboard sign-in and its authenticated WebSocket work from the allowed origin.
 
-### AI consent rollout
+`python -m backend.tools.check_config` checks configured services, including
+a short Sarvam TTS request. It does not validate Sarvam chat access or a real
+conversation. Test chat access from a secure backend shell with synthetic
+text and the existing environment key; do not print credentials or add an
+unauthenticated diagnostic endpoint.
 
-Set `VOICE_INTENT_MODE=ai` and `VOICE_INTENT_MODEL=sarvam-105b` on the API
-service, then deploy the new commit. The blueprint includes these settings;
-existing services managed outside the blueprint need the variables added in
-Render's Environment panel. Keep `SERVER_BASE_URL` set to the deployed API's
-public HTTPS origin (never a temporary local tunnel).
+Before wider use, coordinate a controlled call to an agreed test number.
+Verify refusal, tentative responses, silence, initial yes, and yes-then-no at
+confirmation. Only a separate explicit affirmative confirmation should record
+voice acceptance. Health checks and mocked tests do not prove audio accuracy.
 
-Verify `GET /` reports `voice_intent_mode: ai` and
-`voice_intent_model: sarvam-105b`, and `/api/health` is healthy. Check deployment
-logs for the voice mode and successful startup. Before broader use, verify one
-controlled call: a refusal must decline, a tentative answer must not accept,
-and a first yes must ask for a separate confirmation.
+## Rollback
 
-Rollback: set `VOICE_INTENT_MODE=legacy` and redeploy/restart the API service.
-The original implementation is retained. This does not reverse earlier donor
-decisions. Do not copy local `.env` files or tunnel URLs into deployment settings.
+Set `VOICE_INTENT_MODE=legacy` and restart/redeploy the existing backend.
+The original keyword session is retained; its known classification limitations
+remain. Rollback does not reverse decisions already recorded in the database.
+There is no automatic keyword fallback after an AI request fails.
 
-The backend tells Twilio where to send call events using `SERVER_BASE_URL`, so
-once that is set to the public https URL there is nothing to configure in the
-Twilio console. The audio stream uses `wss://<your API host>/ws/twilio/audio-stream`.
+## Donor mobile releases
 
-## 7. The donor app
+Follow the [mobile release guide](frontend/donor-mobile/README.md). The existing
+EAS profiles target `https://haemnet-api.onrender.com`; confirm the actual
+API origin before building. Preview creates an installable APK; production
+creates an AAB for store upload. A backend-only voice update does not require
+a new mobile binary.
 
-The app is built with Expo. For a build your team can install:
+Everyday JS/UI work uses an installed development build and Fast Refresh.
+Rebuild native binaries for SDK, native dependency, or permission changes.
 
-```bash
-cd frontend/donor-mobile
-npm install
-npx eas build --platform android --profile preview
-```
+## Operational boundaries
 
-`eas.json` already points the `preview` and `production` builds at
-`https://haemnet-api.onrender.com`, the name `render.yaml` gives the API. If
-Render assigns a different URL (for example because the name was taken),
-change `EXPO_PUBLIC_API_URL` in `eas.json` before building, otherwise the app
-cannot reach the server.
-
-## 8. After it is live
-
-- `GET /api/health` should report `"status": "healthy"`.
-- Register a hospital, trigger a request, and watch the console: donor events
-  arrive over the WebSocket within seconds.
-- Free Render instances sleep after 15 minutes of no traffic. The first
-  request then takes several seconds and live updates stop while asleep, so
-  use a paid instance for anything real.
-- The donor and hospital login throttles are kept in each instance's
-  memory. If you scale to more than one instance, move them to a shared store
-  (Redis or a Mongo collection) first.
+- Free-tier hosting may sleep; allow for cold starts and interrupted connections.
+- Login throttles, dashboard sockets, and active voice-session objects are
+  process-local. Persisted MongoDB call records do not make all runtime work
+  recoverable across instance restarts.
+- Server startup creates indexes. Schema/data migration, backup restoration,
+  and retention policies are separate operational tasks.
+- Demo seeding writes to the configured database. Use an isolated development
+  database; do not trigger calls to generated donor numbers.
+- Keep test calls explicit and use the telephony account's permitted numbers.

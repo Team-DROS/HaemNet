@@ -13,7 +13,7 @@ dispatch history, and call state.
 [Live website](https://haemnet-dashboard.onrender.com/) ·
 [API health](https://haemnet-api.onrender.com/api/health) ·
 [API documentation](https://haemnet-api.onrender.com/docs) ·
-[Deployment guide](DEPLOY.md) · [MIT license](LICENSE)
+[Deployment guide](DEPLOY.md)
 
 ## What HaemNet does
 
@@ -208,8 +208,3 @@ real-world speech or classification accuracy.
   connections are held per process; multiple instances need shared coordination.
 - Hosting can sleep. A healthy API/database does not by itself validate
   provider access, call audio, or donor consent on a real call.
-
-## License
-
-Released under the [MIT License](LICENSE). Copyright (c) 2026 Team DROS.
-The frontend directories retain their Expo starter-template MIT notices.

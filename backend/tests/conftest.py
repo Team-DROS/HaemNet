@@ -178,3 +178,10 @@ def _reset_contact_limit():
     from backend.api import contact
     contact._per_ip.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_call_quota():
+    from backend.services import call_guard
+    call_guard.reset_quotas()
+    yield

@@ -19,8 +19,10 @@ from backend.api.auth import donor_router as donor_auth_router
 from backend.api.auth import router as auth_router
 from backend.api.callbacks import router as callback_router
 from backend.api.contact import router as contact_router
+from backend.api.dispatches import router as dispatches_router
+from backend.api.donors import router as donors_router
+from backend.api.health import router as health_router
 from backend.api.hospital_platform import router as platform_router
-from backend.api.routes import router as api_router
 from backend.api.websockets import router as ws_router
 from backend.config import settings
 from backend.hardening import SecurityMiddleware
@@ -145,7 +147,9 @@ app.add_middleware(
 )
 
 # ── Mount Routers ─────────────────────────────────────────────────
-app.include_router(api_router)
+app.include_router(health_router)
+app.include_router(dispatches_router)
+app.include_router(donors_router)
 app.include_router(ws_router)
 app.include_router(callback_router)
 app.include_router(auth_router)

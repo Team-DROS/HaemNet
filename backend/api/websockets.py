@@ -64,6 +64,8 @@ class DashboardConnectionManager:
         self._owners: Dict[str, str] = {}  # dispatch_id -> hospital_id
         self._resolve_owner = owner_resolver
         self._lock = asyncio.Lock()
+        self._pubsub_task: Optional[asyncio.Task] = None
+        self._pubsub_ready = False
 
     # Ownership ------------------------------------------------------
 
@@ -125,6 +127,85 @@ class DashboardConnectionManager:
                 for ws in dead:
                     conns.pop(ws, None)
 
+    # Fan-out across instances --------------------------------------
+    #
+    # A Twilio callback can land on a different instance than the hospital's
+    # dashboard socket. With Redis, every event is published to one channel and
+    # each instance delivers it to its own sockets. If Redis is not configured,
+    # or this instance's subscriber is not up yet, the event is delivered
+    # locally only.
+
+    PUBSUB_CHANNEL = "haemnet:dashboard-events"
+
+    async def _emit(self, dispatch_id: str, payload: str) -> None:
+        from backend.services.redis_client import get_redis
+
+        client = get_redis()
+        if client is not None and self._pubsub_ready:
+            try:
+                await client.publish(self.PUBSUB_CHANNEL, json.dumps({"d": dispatch_id, "p": payload}))
+                return
+            except Exception as exc:
+                logger.warning("Redis publish failed (%s); delivering locally", type(exc).__name__)
+        await self._deliver(dispatch_id, payload)
+
+    async def start_pubsub(self) -> None:
+        """Begin delivering events published by any instance. No-op without Redis."""
+        from backend.services.redis_client import get_redis
+
+        if get_redis() is None or self._pubsub_task is not None:
+            return
+        ready = asyncio.Event()
+        self._pubsub_task = asyncio.create_task(self._pubsub_loop(ready))
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            logger.warning("Redis subscriber is not ready yet; events are local until it connects")
+
+    async def stop_pubsub(self) -> None:
+        task, self._pubsub_task = self._pubsub_task, None
+        self._pubsub_ready = False
+        if task:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def _pubsub_loop(self, ready: asyncio.Event) -> None:
+        from backend.services.redis_client import get_redis
+
+        delay = 1.0
+        while True:
+            pubsub = None
+            try:
+                pubsub = get_redis().pubsub()
+                await pubsub.subscribe(self.PUBSUB_CHANNEL)
+                self._pubsub_ready = True
+                ready.set()
+                delay = 1.0
+                async for message in pubsub.listen():
+                    if message.get("type") != "message":
+                        continue
+                    try:
+                        event = json.loads(message["data"])
+                        await self._deliver(event["d"], event["p"])
+                    except Exception as exc:  # one bad event must not stop the feed
+                        logger.warning("Dropped a malformed dashboard event (%s)", type(exc).__name__)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Redis subscriber lost (%s); retrying in %.0fs", type(exc).__name__, delay)
+            finally:
+                self._pubsub_ready = False
+                if pubsub is not None:
+                    try:
+                        await pubsub.aclose()
+                    except Exception:
+                        pass
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30)
+
     async def broadcast(self, dispatch_id: str, update: DonorStatusUpdate) -> None:
         """
         Send a donor status update to the owning hospital's dashboards.
@@ -135,7 +216,7 @@ class DashboardConnectionManager:
             "dispatch_id": dispatch_id,
             "timestamp": update.timestamp or datetime.now(timezone.utc).isoformat(),
         })
-        await self._deliver(dispatch_id, update.model_dump_json())
+        await self._emit(dispatch_id, update.model_dump_json())
 
     async def broadcast_raw(self, dispatch_id: str, data: dict) -> None:
         """Send a raw dict payload to the owning hospital's dashboards."""
@@ -144,7 +225,7 @@ class DashboardConnectionManager:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **data,
         }
-        await self._deliver(dispatch_id, json.dumps(data))
+        await self._emit(dispatch_id, json.dumps(data))
 
 
 # Singleton — import and use from anywhere in the backend.

@@ -89,7 +89,10 @@ async def lifespan(app: FastAPI):
         await ensure_indexes()
     except Exception as exc:  # the app still starts; /api/health reports the problem
         logger.error("Could not prepare database indexes: %s", exc)
+    from backend.api.websockets import manager as ws_manager
+    await ws_manager.start_pubsub()
     yield
+    await ws_manager.stop_pubsub()
     # Shutdown — close service clients.
     from backend.db_services import close as close_db
     from backend.db_services.mongodb import close as close_mongodb
@@ -97,6 +100,9 @@ async def lifespan(app: FastAPI):
     from backend.services.push_service import close as close_push
     from backend.services.sarvam_service import close as close_sarvam
 
+    from backend.services.redis_client import close as close_redis
+
+    await close_redis()
     await close_twilio()
     await close_sarvam()
     await close_push()

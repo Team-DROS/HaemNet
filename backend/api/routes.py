@@ -123,7 +123,7 @@ async def trigger_dispatch(
     from backend.api.hospital_platform import ensure_hospital_approved
     await ensure_hospital_approved(hospital_id)
     from backend.services.call_guard import cap_donors, check_daily_quota, record_dispatch
-    check_daily_quota(hospital_id)
+    await check_daily_quota(hospital_id)
 
     if payload.hospital_id != hospital_id:
         logger.warning(
@@ -173,7 +173,7 @@ async def trigger_dispatch(
     # Step 3 — run orchestration in the background so we return fast.
     # Bind ownership first so live events only reach this hospital.
     manager.bind(dispatch_id, hospital_id)
-    record_dispatch(hospital_id)
+    await record_dispatch(hospital_id)
     background_tasks.add_task(_run_dispatch_graph, dispatch_id, initial_state)
 
     logger.info(
@@ -563,7 +563,11 @@ async def deep_health_check():
         except Exception:
             checks["sarvam"] = False
     checks["twilio_configured"] = settings.twilio_configured
-    healthy = checks["database"] and checks.get("sarvam", True)
+    from backend.services.redis_client import ping as redis_ping
+    redis_ok = await redis_ping()
+    if redis_ok is not None:
+        checks["redis"] = redis_ok
+    healthy = checks["database"] and checks.get("sarvam", True) and checks.get("redis", True)
     return {"status": "healthy" if healthy else "degraded", "checks": checks}
 
 

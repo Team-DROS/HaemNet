@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     admin_password_hash: str = ""
     dashboard_url: str = "http://localhost:8081"
     upload_dir: str = "uploads"
+    # Private S3 or Cloudflare R2 bucket for licence documents. When S3_BUCKET is set it
+    # replaces local disk. For R2 set S3_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com
+    # and S3_REGION=auto. Leave the keys empty on AWS to use the instance role.
+    s3_bucket: str = ""
+    s3_endpoint_url: str = ""
+    s3_region: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_prefix: str = "hospital-documents/"
     max_upload_mb: int = 5
     smtp_host: str = ""
     smtp_port: int = 587

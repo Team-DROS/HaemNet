@@ -68,5 +68,3 @@ async def staff_login(payload: StaffLogin):
     user = public_hospital(hospital)
     user["staff"] = {"id": member["id"], "name": member["name"], "role": member["role"]}
     return {"access_token": token, "token_type": "bearer", "user": user}
-
-

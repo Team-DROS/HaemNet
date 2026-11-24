@@ -20,10 +20,18 @@ from backend.services.rate_limit import Limiter, enforce
 
 # ── errors map to HTTP in one place ───────────────────────────────
 
-@pytest.mark.parametrize("error,status", [
-    (BadRequestError("x"), 400), (UnauthorizedError("x"), 401), (NotFoundError("x"), 404),
-    (ConflictError("x"), 409), (InvalidInputError("x"), 422), (RateLimitedError("x", 7), 429),
-])
+
+@pytest.mark.parametrize(
+    "error,status",
+    [
+        (BadRequestError("x"), 400),
+        (UnauthorizedError("x"), 401),
+        (NotFoundError("x"), 404),
+        (ConflictError("x"), 409),
+        (InvalidInputError("x"), 422),
+        (RateLimitedError("x", 7), 429),
+    ],
+)
 def test_every_domain_error_becomes_its_http_status(error, status):
     small_app = FastAPI()
     register_error_handlers(small_app)
@@ -55,6 +63,7 @@ async def test_enforce_raises_with_retry_after_once_the_limit_is_used():
 
 # ── approval gate ─────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", ["pending", "rejected", "suspended"])
 async def test_unapproved_hospitals_are_refused(platform_repo, status):
@@ -66,10 +75,16 @@ async def test_unapproved_hospitals_are_refused(platform_repo, status):
 
 # ── review rules ──────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_review_rules(platform_repo):
-    platform_repo.hospitals["H1"] = {"id": "H1", "name": "A", "status": "pending", "email_verified": False,
-                                     "official_email": "a@a.example"}
+    platform_repo.hospitals["H1"] = {
+        "id": "H1",
+        "name": "A",
+        "status": "pending",
+        "email_verified": False,
+        "official_email": "a@a.example",
+    }
     with pytest.raises(InvalidInputError):
         await hospital_review.decide("H1", "explode", "", "root")
     with pytest.raises(InvalidInputError):
@@ -86,6 +101,7 @@ async def test_review_rules(platform_repo):
 
 
 # ── staff rules ───────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_staff_authentication_never_reveals_which_part_was_wrong(platform_repo):
@@ -114,6 +130,7 @@ async def test_staff_limit_and_public_shape(platform_repo, monkeypatch):
 
 # ── documents ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_documents_are_validated_by_content_not_name(platform_repo, uploads):
     platform_repo.hospitals["H1"] = {"id": "H1"}
@@ -122,6 +139,7 @@ async def test_documents_are_validated_by_content_not_name(platform_repo, upload
     with pytest.raises(InvalidInputError):
         await hospital_documents.store_document("H1", "other", "a.pdf", b"")
     from backend.services.errors import UnsupportedMediaError
+
     with pytest.raises(UnsupportedMediaError):
         await hospital_documents.store_document("H1", "other", "licence.pdf", b"<html>not a pdf</html>")
     doc = await hospital_documents.store_document("H1", "other", None, b"%PDF-1.4 ok")

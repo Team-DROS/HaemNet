@@ -104,6 +104,7 @@ async def test_local_rejects_keys_that_are_not_ours(tmp_path):
 
 # ── the API on top of S3 ──────────────────────────────────────────
 
+
 def test_upload_download_and_delete_through_the_api_on_s3(client, platform_repo, hospital_db, admin, s3):
     hid, owner = signup(client, platform_repo, hospital_db)
     doc = upload(client, owner).json()
@@ -145,6 +146,7 @@ def test_deep_health_reports_storage(client, s3, monkeypatch):
 
 
 # ── migration tool ────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_migration_copies_local_files_once(s3, tmp_path):

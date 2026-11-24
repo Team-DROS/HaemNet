@@ -41,10 +41,26 @@ from backend.db_services import (
 logging.basicConfig(level=logging.WARNING)
 
 NAMES = [
-    "Ramesh Kumar", "Anjali Joseph", "Suresh Pillai", "Divya Varma", "Vignesh Menon",
-    "Karthik Subramaniam", "Fathima Rasheed", "Priya Nadar", "Arjun Nair", "Meera Iyer",
-    "Sanjay Rao", "Lakshmi Narayan", "Deepak Sharma", "Kavya Reddy", "Harish Babu",
-    "Nisha Thomas", "Rahul Verma", "Shalini Gopal", "Mohan Das", "Aisha Khan",
+    "Ramesh Kumar",
+    "Anjali Joseph",
+    "Suresh Pillai",
+    "Divya Varma",
+    "Vignesh Menon",
+    "Karthik Subramaniam",
+    "Fathima Rasheed",
+    "Priya Nadar",
+    "Arjun Nair",
+    "Meera Iyer",
+    "Sanjay Rao",
+    "Lakshmi Narayan",
+    "Deepak Sharma",
+    "Kavya Reddy",
+    "Harish Babu",
+    "Nisha Thomas",
+    "Rahul Verma",
+    "Shalini Gopal",
+    "Mohan Das",
+    "Aisha Khan",
 ]
 GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]
 LANGUAGES = ["english", "hindi", "tamil"]
@@ -90,15 +106,15 @@ async def seed(args) -> None:
             phone=f"{PHONE_PREFIX}{i + 1:05d}",
             blood_group=group,
             language=random.choice(LANGUAGES),
-            lat=lat, lng=lng,
+            lat=lat,
+            lng=lng,
             last_donated_date=last_donated,
         )
         created += 1
 
     counts = await db_eligible_counts_by_group(args.lat, args.lng)
     print(f"Seeded {created} donors into {settings.db_backend}.")
-    print("Eligible right now within 10 km:",
-          ", ".join(f"{group} {counts.get(group, 0)}" for group in GROUPS))
+    print("Eligible right now within 10 km:", ", ".join(f"{group} {counts.get(group, 0)}" for group in GROUPS))
     await close()
 
 

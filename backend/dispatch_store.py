@@ -59,24 +59,28 @@ class DispatchStore:
         address: str = "",
     ) -> None:
         """Register a new dispatch and its donor roster."""
-        roster = [
-            {"id": donor_id, "distance_km": (data or {}).get("distance_km")}
-            for donor_id, data in donors.items()
-        ]
+        roster = [{"id": donor_id, "distance_km": (data or {}).get("distance_km")} for donor_id, data in donors.items()]
         await db_create_dispatch(
-            dispatch_id, hospital_id, blood_group, lat, lng, roster,
-            units=units, urgency=urgency, address=address,
+            dispatch_id,
+            hospital_id,
+            blood_group,
+            lat,
+            lng,
+            roster,
+            units=units,
+            urgency=urgency,
+            address=address,
         )
         logger.info("Dispatch %s registered with %d donors in Neo4j", dispatch_id, len(donors))
 
-    async def register_call(
-        self, call_sid: str, dispatch_id: str, donor_id: str
-    ) -> None:
+    async def register_call(self, call_sid: str, dispatch_id: str, donor_id: str) -> None:
         """Map a Twilio call SID to a dispatch + donor pair."""
         await db_register_call_sid(call_sid, dispatch_id, donor_id)
         logger.debug(
             "Call SID %s registered → dispatch=%s donor=%s in Neo4j",
-            call_sid, dispatch_id, donor_id,
+            call_sid,
+            dispatch_id,
+            donor_id,
         )
 
     # ── Lookups ───────────────────────────────────────────────────
@@ -85,15 +89,11 @@ class DispatchStore:
         """Return the full dispatch state, or None."""
         return await db_get_dispatch(dispatch_id)
 
-    async def get_by_call_sid(
-        self, call_sid: str
-    ) -> Optional[Tuple[str, str]]:
+    async def get_by_call_sid(self, call_sid: str) -> Optional[Tuple[str, str]]:
         """Look up (dispatch_id, donor_id) from a Twilio call SID."""
         return await db_get_by_call_sid(call_sid)
 
-    async def get_donor(
-        self, dispatch_id: str, donor_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_donor(self, dispatch_id: str, donor_id: str) -> Optional[Dict[str, Any]]:
         """Return a single donor's state within a dispatch."""
         dispatch = await self.get_dispatch(dispatch_id)
         if dispatch:
@@ -117,12 +117,15 @@ class DispatchStore:
         if success:
             logger.info(
                 "Donor %s in dispatch %s → %s",
-                donor_id, dispatch_id, status.value,
+                donor_id,
+                dispatch_id,
+                status.value,
             )
         else:
             logger.warning(
                 "update_donor_status: failed for donor %s in dispatch %s",
-                donor_id, dispatch_id,
+                donor_id,
+                dispatch_id,
             )
         return success
 

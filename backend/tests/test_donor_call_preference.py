@@ -52,8 +52,9 @@ def test_preference_applies_only_to_the_signed_in_donor_and_needs_sign_in(client
 
     monkeypatch.setattr(donors, "db_set_calls_opt_out", fake_set)
     assert client.post("/api/donor/calls/preference", json={"opt_out": True}).status_code == 401
-    client.post("/api/donor/calls/preference", json={"opt_out": True, "phone": "+919222222222"},
-                headers=donor_headers(PHONE))
+    client.post(
+        "/api/donor/calls/preference", json={"opt_out": True, "phone": "+919222222222"}, headers=donor_headers(PHONE)
+    )
     assert seen == [PHONE]  # a body phone number cannot redirect the change to someone else
 
 
@@ -62,10 +63,16 @@ def test_unknown_donor_and_unsupported_backend(client, monkeypatch):
         return False
 
     monkeypatch.setattr(donors, "db_set_calls_opt_out", missing)
-    assert client.post("/api/donor/calls/preference", json={"opt_out": True}, headers=donor_headers(PHONE)).status_code == 404
+    assert (
+        client.post("/api/donor/calls/preference", json={"opt_out": True}, headers=donor_headers(PHONE)).status_code
+        == 404
+    )
 
     async def unsupported(phone, opt_out):
         raise NotImplementedError
 
     monkeypatch.setattr(donors, "db_set_calls_opt_out", unsupported)
-    assert client.post("/api/donor/calls/preference", json={"opt_out": True}, headers=donor_headers(PHONE)).status_code == 501
+    assert (
+        client.post("/api/donor/calls/preference", json={"opt_out": True}, headers=donor_headers(PHONE)).status_code
+        == 501
+    )

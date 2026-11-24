@@ -22,6 +22,7 @@ def asgi_client():
 
 # ── the race that allowed() + hit() could not close ───────────────
 
+
 @pytest.mark.asyncio
 async def test_try_acquire_never_lets_more_than_the_limit_through_in_memory(monkeypatch):
     monkeypatch.setattr(redis_client, "get_redis", lambda: None)
@@ -41,6 +42,7 @@ async def test_try_acquire_never_lets_more_than_the_limit_through_with_redis(mon
         idx = i % 4
         monkeypatch.setattr(redis_client, "get_redis", lambda c=clients[idx]: c)
         results.append(limiters[idx].try_acquire("k"))
+
     # run them all concurrently, each bound to its own instance's client
     async def run(i):
         return await results[i]
@@ -62,15 +64,16 @@ async def test_a_burst_of_wrong_passwords_is_cut_off_at_the_limit(monkeypatch):
     monkeypatch.setattr(auth, "db_get_hospital_by_id", slow_lookup)
     auth._login_failures.clear()
     async with asgi_client() as client:
-        responses = await asyncio.gather(*[
-            client.post("/api/auth/token", data={"username": "HOSP-1", "password": "wrong"}) for _ in range(60)
-        ])
+        responses = await asyncio.gather(
+            *[client.post("/api/auth/token", data={"username": "HOSP-1", "password": "wrong"}) for _ in range(60)]
+        )
     codes = [r.status_code for r in responses]
     assert codes.count(401) == 10 and codes.count(429) == 50
     assert seen["checked"] == 10  # the throttled requests never reached the password check
 
 
 # ── 50 concurrent dispatches ──────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_fifty_hospitals_dispatch_at_once_without_mixing_anything_up(monkeypatch):
@@ -87,16 +90,26 @@ async def test_fifty_hospitals_dispatch_at_once_without_mixing_anything_up(monke
     monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
 
     def body(h):
-        return {"hospital_id": h, "blood_group": "O-", "urgency": "critical",
-                "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
+        return {
+            "hospital_id": h,
+            "blood_group": "O-",
+            "urgency": "critical",
+            "coordinates": {"lat": 13.06, "lng": 80.25},
+            "units": 1,
+        }
 
     hospitals = [f"HOSP-{2000 + i}" for i in range(50)]
     async with asgi_client() as client:
-        responses = await asyncio.gather(*[
-            client.post("/api/dispatch", json=body(h),
-                        headers={"Authorization": "Bearer " + create_access_token({"sub": h, "role": "hospital"})})
-            for h in hospitals
-        ])
+        responses = await asyncio.gather(
+            *[
+                client.post(
+                    "/api/dispatch",
+                    json=body(h),
+                    headers={"Authorization": "Bearer " + create_access_token({"sub": h, "role": "hospital"})},
+                )
+                for h in hospitals
+            ]
+        )
     assert all(r.status_code == 200 and r.json()["donors_matched"] == 3 for r in responses)
     assert len({r.json()["dispatch_id"] for r in responses}) == 50
     assert sorted(h for h, _ in ran) == sorted(hospitals)  # each dispatch recorded against its own hospital
@@ -115,8 +128,13 @@ async def test_one_hospital_hammering_dispatch_is_stopped_by_the_daily_quota(mon
 
     monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
     monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
-    body = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
-            "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
+    body = {
+        "hospital_id": "HOSP-1001",
+        "blood_group": "O-",
+        "urgency": "critical",
+        "coordinates": {"lat": 13.06, "lng": 80.25},
+        "units": 1,
+    }
     headers = {"Authorization": "Bearer " + create_access_token({"sub": "HOSP-1001", "role": "hospital"})}
     async with asgi_client() as client:
         responses = await asyncio.gather(*[client.post("/api/dispatch", json=body, headers=headers) for _ in range(30)])
@@ -141,10 +159,17 @@ async def test_failed_or_empty_requests_give_their_daily_slot_back(monkeypatch):
 
     monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
     monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
-    body = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
-            "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
+    body = {
+        "hospital_id": "HOSP-1001",
+        "blood_group": "O-",
+        "urgency": "critical",
+        "coordinates": {"lat": 13.06, "lng": 80.25},
+        "units": 1,
+    }
     headers = {"Authorization": "Bearer " + create_access_token({"sub": "HOSP-1001", "role": "hospital"})}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False), base_url="http://t") as c:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False), base_url="http://t"
+    ) as c:
         codes = [(await c.post("/api/dispatch", json=body, headers=headers)).status_code for _ in range(5)]
     # empty result and a crash cost nothing; then two real dispatches fit, the third is refused
     assert codes == [200, 500, 200, 200, 429]

@@ -7,8 +7,13 @@ from backend.config import settings
 from backend.services import call_guard
 from backend.services import dispatching as planning
 
-BODY = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
-        "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
+BODY = {
+    "hospital_id": "HOSP-1001",
+    "blood_group": "O-",
+    "urgency": "critical",
+    "coordinates": {"lat": 13.06, "lng": 80.25},
+    "units": 1,
+}
 
 
 def donor_at(offset):

@@ -6,15 +6,26 @@ from backend.api import auth
 from backend.config import settings
 from backend.services import turnstile
 
-SIGNUP = {"name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "pw12345",
-          "official_email": "a@apollo.example", "contact_person": "Dr Rao", "hfr_id": "IN1"}
+SIGNUP = {
+    "name": "Apollo",
+    "location": "Chennai",
+    "phone": "+919876543210",
+    "password": "pw12345",
+    "official_email": "a@apollo.example",
+    "contact_person": "Dr Rao",
+    "hfr_id": "IN1",
+}
 MESSAGE = {"name": "Asha", "email": "asha@example.com", "message": "Hello, we want to onboard."}
 
 
 @pytest.fixture(autouse=True)
 def hospital_db(monkeypatch):
-    async def none(_): return None
-    async def create(**kw): return kw
+    async def none(_):
+        return None
+
+    async def create(**kw):
+        return kw
+
     monkeypatch.setattr(auth, "db_get_hospital_by_id", none)
     monkeypatch.setattr(auth, "db_create_hospital", create)
 
@@ -35,6 +46,7 @@ def turnstile_on(monkeypatch):
 @pytest.fixture
 def smtp(monkeypatch):
     from backend.api import contact
+
     sent = []
 
     async def fake_send(to, subject, body):
@@ -64,9 +76,14 @@ async def test_verify_fails_closed_without_token_or_on_network_error(monkeypatch
     assert await turnstile.verify_token(None) is False
 
     class Boom:
-        def __init__(self, *a, **k): pass
-        async def __aenter__(self): raise RuntimeError("down")
-        async def __aexit__(self, *a): return False
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            raise RuntimeError("down")
+
+        async def __aexit__(self, *a):
+            return False
 
     monkeypatch.setattr(turnstile.httpx, "AsyncClient", Boom)
     assert await turnstile.verify_token("anything") is False

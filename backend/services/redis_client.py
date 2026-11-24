@@ -25,9 +25,13 @@ def get_redis():
         return None
     if _client is None:
         import redis.asyncio as aioredis
+
         _client = aioredis.from_url(
-            settings.redis_url, decode_responses=True,
-            socket_connect_timeout=2, socket_timeout=2, health_check_interval=30,
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            health_check_interval=30,
         )
     return _client
 

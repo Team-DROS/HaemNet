@@ -37,6 +37,7 @@ router = APIRouter(prefix="/api", tags=["dispatch"])
 
 # ── Helpers ───────────────────────────────────────────────────────
 
+
 def _public_dispatch(dispatch: Dict[str, Any]) -> Dict[str, Any]:
     """
     Dispatch state as the hospital dashboard sees it.
@@ -80,6 +81,7 @@ async def _owned_dispatch(dispatch_id: str, hospital_id: str) -> Dict[str, Any]:
 
 # ── POST /api/dispatch ────────────────────────────────────────────
 
+
 @router.post("/dispatch", response_model=DispatchResponse)
 async def trigger_dispatch(
     payload: DispatchRequest,
@@ -98,7 +100,8 @@ async def trigger_dispatch(
     if payload.hospital_id != hospital_id:
         logger.warning(
             "Dispatch body hospital_id=%s differs from token hospital=%s; using token",
-            payload.hospital_id, hospital_id,
+            payload.hospital_id,
+            hospital_id,
         )
 
     # Reserve the daily slot first so a burst of simultaneous requests cannot overshoot the cap.
@@ -121,7 +124,9 @@ async def trigger_dispatch(
     # Bind ownership first so live events only reach this hospital.
     manager.bind(planned.dispatch_id, hospital_id)
     await hp.audit(
-        hospital_id, actor, "dispatch_created",
+        hospital_id,
+        actor,
+        "dispatch_created",
         f"{planned.dispatch_id} {payload.blood_group} x{payload.units} {payload.urgency.value} "
         f"matched={planned.donors_matched}",
     )
@@ -129,7 +134,11 @@ async def trigger_dispatch(
 
     logger.info(
         "Dispatch %s created: %d donors matched (hospital=%s, blood=%s, units=%d)",
-        planned.dispatch_id, planned.donors_matched, hospital_id, payload.blood_group, payload.units,
+        planned.dispatch_id,
+        planned.donors_matched,
+        hospital_id,
+        payload.blood_group,
+        payload.units,
     )
     return DispatchResponse(
         dispatch_id=planned.dispatch_id,
@@ -157,13 +166,13 @@ async def run_dispatch_graph(dispatch_id: str, initial_state: dict) -> None:
     except Exception as exc:
         logger.exception("Dispatch %s graph failed: %s", dispatch_id, exc)
         # Notify connected dashboards of the failure.
-        await manager.broadcast_raw(dispatch_id, {
-            "type": "error",
-            "message": str(exc),
-        })
-
-
-
+        await manager.broadcast_raw(
+            dispatch_id,
+            {
+                "type": "error",
+                "message": str(exc),
+            },
+        )
 
 
 @router.get("/dispatches/active")
@@ -179,6 +188,7 @@ async def list_active_dispatches(hospital_id: str = Depends(get_current_hospital
 
 
 # ── GET /api/dispatches/history ───────────────────────────────────
+
 
 def _history_status(row: Dict[str, Any]) -> str:
     if not row.get("is_complete"):
@@ -201,21 +211,27 @@ async def dispatch_history(
     """
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = await dispatch_store.history_for_hospital(hospital_id, since)
-    return {"days": days, "dispatches": [{
-        "dispatch_id": r["dispatch_id"],
-        "blood_group": r.get("blood_group"),
-        "units": r.get("units") or 1,
-        "urgency": r.get("urgency") or "urgent",
-        "created_at": r.get("created_at"),
-        "first_accept_at": r.get("first_accept_at"),
-        "closed_at": r.get("closed_at"),
-        "status": _history_status(r),
-        "matched": r.get("matched") or 0,
-        "contacted": r.get("matched") or 0,  # every matched donor is dialled
-        "answered": r.get("answered") or 0,
-        "accepted": r.get("accepted") or 0,
-        "donated": r.get("donated") or 0,
-    } for r in rows]}
+    return {
+        "days": days,
+        "dispatches": [
+            {
+                "dispatch_id": r["dispatch_id"],
+                "blood_group": r.get("blood_group"),
+                "units": r.get("units") or 1,
+                "urgency": r.get("urgency") or "urgent",
+                "created_at": r.get("created_at"),
+                "first_accept_at": r.get("first_accept_at"),
+                "closed_at": r.get("closed_at"),
+                "status": _history_status(r),
+                "matched": r.get("matched") or 0,
+                "contacted": r.get("matched") or 0,  # every matched donor is dialled
+                "answered": r.get("answered") or 0,
+                "accepted": r.get("accepted") or 0,
+                "donated": r.get("donated") or 0,
+            }
+            for r in rows
+        ],
+    }
 
 
 # ── GET /api/network/availability ─────────────────────────────────
@@ -263,8 +279,11 @@ async def network_availability(
 
 # ── POST /api/dispatches/{dispatch_id}/close ──────────────────────
 
+
 @router.post("/dispatches/{dispatch_id}/close")
-async def close_dispatch(dispatch_id: str, hospital_id: str = Depends(get_current_hospital), actor: str = Depends(get_actor)):
+async def close_dispatch(
+    dispatch_id: str, hospital_id: str = Depends(get_current_hospital), actor: str = Depends(get_actor)
+):
     """Mark a dispatch as finished (fulfilled or cancelled by the hospital)."""
     await _owned_dispatch(dispatch_id, hospital_id)
     await dispatch_store.mark_complete(dispatch_id)
@@ -274,6 +293,7 @@ async def close_dispatch(dispatch_id: str, hospital_id: str = Depends(get_curren
 
 
 # ── POST /api/donate — Log a Successful Donation ─────────────────
+
 
 @router.post("/donate")
 async def log_donation(
@@ -302,24 +322,35 @@ async def log_donation(
         raise HTTPException(status_code=500, detail="Failed to update donation record.")
 
     logger.info("Donation logged for donor %s at hospital %s", payload.donor_id, hospital_id)
-    await hp.audit(hospital_id, actor, "donation_logged", f"donor={payload.donor_id} dispatch={payload.dispatch_id or '-'}")
+    await hp.audit(
+        hospital_id, actor, "donation_logged", f"donor={payload.donor_id} dispatch={payload.dispatch_id or '-'}"
+    )
 
     fulfilled = False
     if dispatch is not None:
         await dispatch_store.update_donor_status(
-            payload.dispatch_id, payload.donor_id, CallStatus.DONATED,
+            payload.dispatch_id,
+            payload.donor_id,
+            CallStatus.DONATED,
         )
         donor = (dispatch.get("donors") or {}).get(payload.donor_id, {})
-        await manager.broadcast(payload.dispatch_id, DonorStatusUpdate(
-            donor_id=payload.donor_id,
-            name=donor.get("name", "Donor"),
-            status=CallStatus.DONATED,
-        ))
+        await manager.broadcast(
+            payload.dispatch_id,
+            DonorStatusUpdate(
+                donor_id=payload.donor_id,
+                name=donor.get("name", "Donor"),
+                status=CallStatus.DONATED,
+            ),
+        )
 
-        donated = sum(
-            1 for d in (dispatch.get("donors") or {}).values()
-            if d.get("status") == CallStatus.DONATED.value and d.get("donor_id") != payload.donor_id
-        ) + 1
+        donated = (
+            sum(
+                1
+                for d in (dispatch.get("donors") or {}).values()
+                if d.get("status") == CallStatus.DONATED.value and d.get("donor_id") != payload.donor_id
+            )
+            + 1
+        )
         if donated >= (dispatch.get("units") or 1):
             fulfilled = True
             await dispatch_store.mark_complete(payload.dispatch_id, fulfilled=True)
@@ -332,5 +363,3 @@ async def log_donation(
         "dispatch_fulfilled": fulfilled,
         "message": "Donation recorded. Donor is now on 56-day cooldown.",
     }
-
-

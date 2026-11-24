@@ -33,8 +33,11 @@ class FakeStore:
             "dispatch_id": dispatch_id,
             "hospital_id": hospital_id,
             "blood_group": "O-",
-            "lat": 13.06, "lng": 80.25,
-            "units": units, "urgency": "critical", "address": "Trauma Bay 2",
+            "lat": 13.06,
+            "lng": 80.25,
+            "units": units,
+            "urgency": "critical",
+            "address": "Trauma Bay 2",
             "created_at": "2026-09-18T12:40:41",
             "is_complete": False,
             "donors": {d["donor_id"]: dict(d) for d in (donors or [])},
@@ -67,8 +70,11 @@ class FakeStore:
         return [dict(r) for r in getattr(self, "history_rows", []) if r["hospital_id"] == hospital_id]
 
     async def active_for_hospital(self, hospital_id):
-        return [copy.deepcopy(d) for d in self.dispatches.values()
-                if d["hospital_id"] == hospital_id and not d["is_complete"]]
+        return [
+            copy.deepcopy(d)
+            for d in self.dispatches.values()
+            if d["hospital_id"] == hospital_id and not d["is_complete"]
+        ]
 
     async def requests_for_donor(self, phone):
         out = []
@@ -77,22 +83,35 @@ class FakeStore:
                 continue
             for donor in d["donors"].values():
                 if donor.get("phone") == phone and donor.get("status") in {"ringing", "answered", "no_answer"}:
-                    out.append({
-                        "dispatch_id": d["dispatch_id"], "donor_id": donor["donor_id"],
-                        "status": donor["status"], "distance_km": donor.get("distance_km"),
-                        "blood_group": d["blood_group"], "units": d["units"],
-                        "urgency": d["urgency"], "created_at": d["created_at"],
-                        "lat": d["lat"], "lng": d["lng"],
-                        "hospital_name": "Apollo Hospital", "address": d["address"],
-                    })
+                    out.append(
+                        {
+                            "dispatch_id": d["dispatch_id"],
+                            "donor_id": donor["donor_id"],
+                            "status": donor["status"],
+                            "distance_km": donor.get("distance_km"),
+                            "blood_group": d["blood_group"],
+                            "units": d["units"],
+                            "urgency": d["urgency"],
+                            "created_at": d["created_at"],
+                            "lat": d["lat"],
+                            "lng": d["lng"],
+                            "hospital_name": "Apollo Hospital",
+                            "address": d["address"],
+                        }
+                    )
         return out
 
 
 def donor(donor_id, phone, status="ringing", distance_km=2.4, name=None):
     return {
-        "donor_id": donor_id, "name": name or donor_id, "phone": phone,
-        "status": status, "eta_minutes": None, "distance_km": distance_km,
-        "has_app": True, "language": "tamil",
+        "donor_id": donor_id,
+        "name": name or donor_id,
+        "phone": phone,
+        "status": status,
+        "eta_minutes": None,
+        "distance_km": distance_km,
+        "has_app": True,
+        "language": "tamil",
     }
 
 
@@ -140,6 +159,7 @@ def donor_headers(phone="+919000000001"):
 def _reset_limits():
     """Rate limiters and pending codes are process-wide; isolate each test."""
     from backend.api import auth
+
     auth._login_failures.clear()
     auth._donor_failures.clear()
     auth._donor_signups.clear()
@@ -166,8 +186,13 @@ def platform_repo(monkeypatch):
 
     monkeypatch.setattr(hp, "send_verification_email", fake_verification)
     monkeypatch.setattr(hospital_review, "send_decision_email", fake_decision)
-    for limiter in (admin._admin_failures, hospital_account._resend_limit, hospital_account._verify_limit,
-                    hospital_account._upload_limit, hospital_staff._staff_failures):
+    for limiter in (
+        admin._admin_failures,
+        hospital_account._resend_limit,
+        hospital_account._verify_limit,
+        hospital_account._upload_limit,
+        hospital_staff._staff_failures,
+    ):
         limiter.clear()
     return repo
 
@@ -218,10 +243,12 @@ def admin(client, monkeypatch):
 @pytest.fixture(autouse=True)
 def _reset_contact_limit():
     from backend.api import contact
+
     contact._per_ip.clear()
 
 
 @pytest.fixture(autouse=True)
 def _reset_call_quota():
     from backend.services import call_guard
+
     call_guard.reset_quotas()

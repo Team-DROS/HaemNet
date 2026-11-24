@@ -13,13 +13,14 @@ def create_wav_from_mulaw(mulaw_bytes: bytes, sample_rate: int = 8000) -> bytes:
 
     # Write to a WAV container in memory
     buf = io.BytesIO()
-    with wave.open(buf, 'wb') as wav_file:
+    with wave.open(buf, "wb") as wav_file:
         wav_file.setnchannels(1)
-        wav_file.setsampwidth(2) # 16-bit
+        wav_file.setsampwidth(2)  # 16-bit
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(pcm_bytes)
 
     return buf.getvalue()
+
 
 def create_mulaw_from_wav(wav_bytes: bytes) -> bytes:
     """
@@ -27,7 +28,7 @@ def create_mulaw_from_wav(wav_bytes: bytes) -> bytes:
     """
     buf = io.BytesIO(wav_bytes)
     try:
-        with wave.open(buf, 'rb') as wav_file:
+        with wave.open(buf, "rb") as wav_file:
             channels = wav_file.getnchannels()
             sampwidth = wav_file.getsampwidth()
             framerate = wav_file.getframerate()

@@ -35,45 +35,105 @@ active_sessions: Dict[str, VoiceSession] = {}
 def create_voice_session(**kwargs):
     """Select once per call so a rollout never changes an active call's engine."""
     from backend.config import settings
+
     if settings.voice_intent_mode == "ai":
         from backend.services.ai_voice_pipeline import AIVoiceSession
+
         logger.info("Starting AI voice session")
         return AIVoiceSession(**kwargs)
     logger.info("Starting legacy voice session")
     return VoiceSession(**kwargs)
 
+
 # ── Intent keywords (multi-lingual) ──────────────────────────────
 
 _ACCEPT_KEYWORDS = {
     "english": [
-        "yes", "sure", "okay", "ok", "coming", "on my way",
-        "i can", "i will", "accept", "available", "ready",
-        "i'll come", "be there", "count me in", "definitely",
+        "yes",
+        "sure",
+        "okay",
+        "ok",
+        "coming",
+        "on my way",
+        "i can",
+        "i will",
+        "accept",
+        "available",
+        "ready",
+        "i'll come",
+        "be there",
+        "count me in",
+        "definitely",
     ],
     "hindi": [
-        "haan", "haa", "theek", "theek hai", "aa raha", "aa rahi",
-        "aa rahe", "bilkul", "zaroor", "main aaunga", "main aaungi",
-        "tayyar", "ha ji", "हाँ", "ठीक", "आ", "जरूर", "तैयार", "यस"
+        "haan",
+        "haa",
+        "theek",
+        "theek hai",
+        "aa raha",
+        "aa rahi",
+        "aa rahe",
+        "bilkul",
+        "zaroor",
+        "main aaunga",
+        "main aaungi",
+        "tayyar",
+        "ha ji",
+        "हाँ",
+        "ठीक",
+        "आ",
+        "जरूर",
+        "तैयार",
+        "यस",
     ],
     "tamil": [
-        "aama", "seri", "varuven", "vara mudiyum", "varen",
-        "sarri", "ok", "ready", "ஆம்", "சரி", "வருவேன்", "முடியும்", "வரேன்", "எஸ்", "ஓகே"
+        "aama",
+        "seri",
+        "varuven",
+        "vara mudiyum",
+        "varen",
+        "sarri",
+        "ok",
+        "ready",
+        "ஆம்",
+        "சரி",
+        "வருவேன்",
+        "முடியும்",
+        "வரேன்",
+        "எஸ்",
+        "ஓகே",
     ],
 }
 
 _DECLINE_KEYWORDS = {
     "english": [
-        "no", "sorry", "can't", "cannot", "not available",
-        "busy", "unable", "decline", "not possible", "won't",
+        "no",
+        "sorry",
+        "can't",
+        "cannot",
+        "not available",
+        "busy",
+        "unable",
+        "decline",
+        "not possible",
+        "won't",
     ],
     "hindi": [
-        "nahi", "naa", "nahin", "maaf", "nahi aa sakta",
-        "nahi aa sakti", "busy", "mushkil", "नहीं", "माफ़", "व्यस्त", "मुश्किल", "नो"
+        "nahi",
+        "naa",
+        "nahin",
+        "maaf",
+        "nahi aa sakta",
+        "nahi aa sakti",
+        "busy",
+        "mushkil",
+        "नहीं",
+        "माफ़",
+        "व्यस्त",
+        "मुश्किल",
+        "नो",
     ],
-    "tamil": [
-        "illa", "mudiyathu", "mudiyadu", "varamudiyathu",
-        "sorry", "busy", "இல்லை", "முடியாது", "வர முடியாது", "நோ"
-    ],
+    "tamil": ["illa", "mudiyathu", "mudiyadu", "varamudiyathu", "sorry", "busy", "இல்லை", "முடியாது", "வர முடியாது", "நோ"],
 }
 
 # Audio buffer threshold (bytes) — roughly 2 seconds of 8kHz 16-bit PCM.
@@ -81,6 +141,7 @@ _AUDIO_BUFFER_THRESHOLD = 32_000
 
 
 # ── Voice Session ─────────────────────────────────────────────────
+
 
 class VoiceSession:
     """
@@ -119,9 +180,7 @@ class VoiceSession:
 
     # ── Main entry point ──────────────────────────────────────────
 
-    async def handle_audio_chunk(
-        self, audio_bytes: bytes
-    ) -> Tuple[Optional[bytes], Optional[str]]:
+    async def handle_audio_chunk(self, audio_bytes: bytes) -> Tuple[Optional[bytes], Optional[str]]:
         """
         Process an incoming audio chunk from Twilio.
 
@@ -156,7 +215,9 @@ class VoiceSession:
         self._conversation.append({"role": "donor", "text": transcript})
         logger.info(
             "Donor %s replied (%s): transcript_len=%d",
-            self.donor_id, self.language, len(transcript),
+            self.donor_id,
+            self.language,
+            len(transcript),
         )
 
         # Check for intent.
@@ -183,9 +244,7 @@ class VoiceSession:
             result = await transcribe_audio(wav_bytes, language=bcp47)
             return result.get("transcript", "").strip()
         except Exception as exc:
-            logger.error(
-                "STT failed for donor %s: %s", self.donor_id, exc
-            )
+            logger.error("STT failed for donor %s: %s", self.donor_id, exc)
             return None
 
     # ── Intent Extraction ─────────────────────────────────────────
@@ -206,14 +265,16 @@ class VoiceSession:
         for keyword in decline_words:
             if keyword in text_lower:
                 logger.info(
-                    "Intent DECLINED detected for donor %s", self.donor_id,
+                    "Intent DECLINED detected for donor %s",
+                    self.donor_id,
                 )
                 return "declined"
 
         for keyword in accept_words:
             if keyword in text_lower:
                 logger.info(
-                    "Intent ACCEPTED detected for donor %s", self.donor_id,
+                    "Intent ACCEPTED detected for donor %s",
+                    self.donor_id,
                 )
                 return "accepted"
 
@@ -248,10 +309,7 @@ class VoiceSession:
                 "Please head there as soon as possible. Goodbye."
             )
         else:
-            msg_en = (
-                "Thank you for your time. We understand. "
-                "Take care and goodbye."
-            )
+            msg_en = "Thank you for your time. We understand. Take care and goodbye."
         return await self._speak(msg_en)
 
     async def _speak(self, text_en: str) -> Optional[bytes]:
@@ -281,6 +339,7 @@ class VoiceSession:
         except Exception as exc:
             logger.error(
                 "TTS generation failed for donor %s: %s",
-                self.donor_id, exc,
+                self.donor_id,
+                exc,
             )
             return None

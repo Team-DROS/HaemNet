@@ -71,7 +71,8 @@ async def send_push_notification(
         result = resp.json()
         logger.info(
             "Push notification sent to token %s...%s",
-            expo_token[:20], expo_token[-6:],
+            expo_token[:20],
+            expo_token[-6:],
         )
         return result
     except httpx.HTTPStatusError as exc:

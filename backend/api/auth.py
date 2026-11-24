@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 SECRET_KEY = settings.jwt_secret
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 DONOR_TOKEN_EXPIRE_DAYS = 30
 
 ROLE_HOSPITAL = "hospital"
@@ -50,6 +50,7 @@ donor_router = APIRouter(prefix="/api/donor/auth", tags=["donor-auth"])
 
 # Failed hospital sign-ins: 10 per ID per 15 minutes, then 429.
 _login_failures = Limiter("hospital_login", max_events=10, window_seconds=15 * 60)
+
 
 class HospitalRegister(BaseModel):
     # Optional: when omitted the server issues a unique ID. Clients used to
@@ -87,6 +88,7 @@ async def _issue_hospital_id() -> str:
         if not await db_get_hospital_by_id(candidate):
             return candidate
     return f"HOSP-{secrets.token_hex(4).upper()}"
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -179,6 +181,7 @@ async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depe
         raise _unauthorized("Sign in again to continue")
     return phone
 
+
 @router.post("/register")
 async def register_hospital(hospital: HospitalRegister, request: Request):
     await require_human(hospital.turnstile_token, request.client.host if request.client else None)
@@ -209,12 +212,16 @@ async def register_hospital(hospital: HospitalRegister, request: Request):
         name=hospital.name,
         location=hospital.location,
         phone=hospital.phone,
-        password_hash=hashed_password
+        password_hash=hashed_password,
     )
     if profile:
         await hp.register_pending(hospital_id, hospital.name, profile)
-    return {"message": "Hospital registered successfully", "id": hospital_id,
-            "status": "pending" if profile else "approved"}
+    return {
+        "message": "Hospital registered successfully",
+        "id": hospital_id,
+        "status": "pending" if profile else "approved",
+    }
+
 
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):

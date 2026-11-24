@@ -33,6 +33,7 @@ def redis_server(monkeypatch):
 
 # ── rate limits ───────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_limit_is_shared_between_two_instances(redis_server):
     instance_a = rate_limit.Limiter("t", max_events=3, window_seconds=60)
@@ -68,9 +69,14 @@ async def test_window_expires(redis_server):
 @pytest.mark.asyncio
 async def test_falls_back_to_local_counters_when_redis_errors(monkeypatch):
     class Broken:
-        def pipeline(self): raise RedisConnectionError("down")
-        async def zcard(self, *a): raise RedisConnectionError("down")
-        async def delete(self, *a): raise RedisConnectionError("down")
+        def pipeline(self):
+            raise RedisConnectionError("down")
+
+        async def zcard(self, *a):
+            raise RedisConnectionError("down")
+
+        async def delete(self, *a):
+            raise RedisConnectionError("down")
 
     monkeypatch.setattr(redis_client, "get_redis", lambda: Broken())
     lim = rate_limit.Limiter("f", max_events=2, window_seconds=60)
@@ -104,6 +110,7 @@ def test_login_lockout_is_shared_across_instances(client, redis_server, monkeypa
 
 
 # ── live dashboard events ─────────────────────────────────────────
+
 
 class FakeSocket:
     def __init__(self):
@@ -186,7 +193,8 @@ async def test_delivers_locally_without_redis_or_before_the_subscriber_is_ready(
 @pytest.mark.asyncio
 async def test_publish_failure_falls_back_to_local_delivery(monkeypatch):
     class Down:
-        async def publish(self, *a): raise RedisConnectionError("down")
+        async def publish(self, *a):
+            raise RedisConnectionError("down")
 
     monkeypatch.setattr(redis_client, "get_redis", lambda: Down())
     mgr = DashboardConnectionManager(owner_resolver=owner_is_h1)
@@ -223,7 +231,8 @@ def test_deep_health_reports_redis(client, redis_server, monkeypatch):
     assert client.get("/api/health/deep").json()["checks"]["redis"] is True
 
     class Dead:
-        async def ping(self): raise RedisConnectionError("down")
+        async def ping(self):
+            raise RedisConnectionError("down")
 
     monkeypatch.setattr(redis_client, "get_redis", lambda: Dead())
     body = client.get("/api/health/deep").json()

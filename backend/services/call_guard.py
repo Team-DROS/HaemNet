@@ -35,7 +35,8 @@ async def reserve_daily_quota(hospital_id: str) -> None:
     """
     _daily.max_events = settings.max_dispatches_per_hospital_day
     await enforce(
-        _daily, hospital_id,
+        _daily,
+        hospital_id,
         f"Daily request limit reached ({settings.max_dispatches_per_hospital_day} per 24 hours). "
         "Contact HaemNet support if this is an emergency.",
     )

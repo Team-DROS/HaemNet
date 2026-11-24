@@ -12,6 +12,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
 async def geocode_address(address: str) -> Optional[Tuple[float, float]]:
     """
     Convert a text address into GPS coordinates using Nominatim.
@@ -26,9 +27,7 @@ async def geocode_address(address: str) -> Optional[Tuple[float, float]]:
         return None
 
     # Nominatim requires a descriptive User-Agent
-    headers = {
-        "User-Agent": "HaemNetApp/1.0 (contact@hackahazard.com)"
-    }
+    headers = {"User-Agent": "HaemNetApp/1.0 (contact@hackahazard.com)"}
 
     query = urllib.parse.quote(address)
     url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=1"

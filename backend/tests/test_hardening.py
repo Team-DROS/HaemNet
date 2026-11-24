@@ -9,8 +9,13 @@ from backend.main import app
 from backend.services import dispatching as planning
 from backend.tests.conftest import HOSPITAL
 
-BODY = {"hospital_id": HOSPITAL, "blood_group": "O-", "urgency": "critical",
-        "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 2}
+BODY = {
+    "hospital_id": HOSPITAL,
+    "blood_group": "O-",
+    "urgency": "critical",
+    "coordinates": {"lat": 13.06, "lng": 80.25},
+    "units": 2,
+}
 
 
 def test_security_headers_on_every_response(client):
@@ -36,8 +41,9 @@ def test_oversized_json_is_rejected_before_it_is_read(client, monkeypatch):
 
 def test_uploads_have_their_own_larger_limit(client, monkeypatch):
     monkeypatch.setattr(settings, "max_request_body_kb", 1)
-    res = client.post("/api/hospitals/me/documents", content=b"x" * 4096,
-                      headers={"content-type": "multipart/form-data; boundary=x"})
+    res = client.post(
+        "/api/hospitals/me/documents", content=b"x" * 4096, headers={"content-type": "multipart/form-data; boundary=x"}
+    )
     assert res.status_code != 413  # got past the size check (later rejected as a malformed form)
 
 
@@ -69,10 +75,12 @@ def test_docs_are_hidden_in_production():
 
 # ── dispatch audit trail ──────────────────────────────────────────
 
+
 @pytest.fixture
 def dispatching(monkeypatch):
     async def fake_find(**kwargs):
         from types import SimpleNamespace
+
         return [SimpleNamespace(location=SimpleNamespace(lat=13.06, lng=80.25))]
 
     async def fake_run(dispatch_id, state):
@@ -91,6 +99,7 @@ def test_dispatch_is_audited_with_the_owner(client, auth_headers, dispatching, p
 
 def test_dispatch_is_audited_with_the_staff_member(client, dispatching, platform_repo):
     from backend.api import auth
+
     token = auth.create_access_token({"sub": HOSPITAL, "role": "hospital", "staff_id": "STF-1", "staff_role": "staff"})
     platform_repo.hospitals[HOSPITAL] = {"id": HOSPITAL, "staff": [{"id": "STF-1", "active": True, "email": "a@b.co"}]}
     client.post("/api/dispatch", headers={"Authorization": f"Bearer {token}"}, json=BODY)

@@ -51,7 +51,9 @@ def test_missing_and_wrong_signatures_are_rejected(client, signed):
 
 def test_tampered_parameters_are_rejected(client, signed):
     good = {"CallSid": "CA1", "CallStatus": "completed"}
-    res = client.post(PATH + QUERY, data={**good, "CallStatus": "no-answer"}, headers={"X-Twilio-Signature": sign(good)})
+    res = client.post(
+        PATH + QUERY, data={**good, "CallStatus": "no-answer"}, headers={"X-Twilio-Signature": sign(good)}
+    )
     assert res.status_code == 403
 
 

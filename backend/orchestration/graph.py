@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 
 # ── Dispatch State (shared across all nodes) ─────────────────────
 
+
 class DonorCallState(BaseModel):
     """Tracks an individual donor's call within the dispatch."""
+
     donor_id: str
     name: str
     phone: str
@@ -47,6 +49,7 @@ class DispatchState(BaseModel):
     The root state object for a single emergency dispatch.
     LangGraph passes this through every node in the graph.
     """
+
     dispatch_id: str = Field(default_factory=lambda: str(uuid4()))
     hospital_id: str = ""
     blood_group: str = ""
@@ -63,6 +66,7 @@ class DispatchState(BaseModel):
 
 # ── Graph Nodes ───────────────────────────────────────────────────
 
+
 async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Query the database for eligible donors and populate the state.
@@ -70,13 +74,19 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     from backend.db_services import find_eligible_donors
     from backend.services.blood_groups import request_groups
     from backend.services.geo import haversine_km
+
     donors: List[DonorNode] = []
     for group in request_groups(state["blood_group"]):
-        donors.extend(await find_eligible_donors(
-            blood_group=group, lat=state["lat"], lng=state["lng"],
-        ))
+        donors.extend(
+            await find_eligible_donors(
+                blood_group=group,
+                lat=state["lat"],
+                lng=state["lng"],
+            )
+        )
 
     from backend.services.call_guard import cap_donors
+
     donors = cap_donors(donors, state["lat"], state["lng"])
 
     donor_states = {}
@@ -144,9 +154,7 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
             language=donor_data.get("language", "english"),
             location={"lat": state.get("lat", 0), "lng": state.get("lng", 0)},
         )
-        call_tasks.append(
-            _initiate_single_call(donor_node, dispatch_id, donor_id, callback_url)
-        )
+        call_tasks.append(_initiate_single_call(donor_node, dispatch_id, donor_id, callback_url))
 
         # Emit a RINGING update for the dashboard. This is the only update
         # that carries distance and language; later ones only change status.
@@ -191,11 +199,15 @@ async def _initiate_single_call(
         report_exception(exc)
         logger.error(
             "Failed to initiate call for donor %s in dispatch %s: %s",
-            donor_id, dispatch_id, exc,
+            donor_id,
+            dispatch_id,
+            exc,
         )
         # Mark as declined so the dashboard shows failure.
         await dispatch_store.update_donor_status(
-            dispatch_id, donor_id, CallStatus.DECLINED,
+            dispatch_id,
+            donor_id,
+            CallStatus.DECLINED,
         )
 
 
@@ -235,12 +247,16 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                         donor_id,
                     )
                     # Fall through to SMS.
-                    await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
+                    await _send_sms_fallback(
+                        donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0)
+                    )
             except Exception as exc:
                 report_exception(exc)
                 logger.error("Push notification failed for donor %s: %s", donor_id, exc)
                 # Fall through to SMS on push failure.
-                await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
+                await _send_sms_fallback(
+                    donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0)
+                )
         else:
             # Fallback — SMS with tracking link.
             await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
@@ -273,14 +289,12 @@ async def _send_sms_fallback(
 def should_route(state: Dict[str, Any]) -> str:
     """Conditional edge: only route if at least one donor accepted."""
     donors = state.get("donors", {})
-    has_accepted = any(
-        d.get("status") == CallStatus.ACCEPTED
-        for d in donors.values()
-    )
+    has_accepted = any(d.get("status") == CallStatus.ACCEPTED for d in donors.values())
     return "route" if has_accepted else "end"
 
 
 # ── Build the Graph ──────────────────────────────────────────────
+
 
 def build_dispatch_graph() -> StateGraph:
     """
@@ -309,6 +323,7 @@ def build_dispatch_graph() -> StateGraph:
     graph.add_edge("route_donor", END)
 
     return graph.compile()
+
 
 # Pre-compiled graph — import this from routes.
 dispatch_graph = build_dispatch_graph()

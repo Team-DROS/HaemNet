@@ -52,8 +52,13 @@ async def store_document(hospital_id: str, kind: str, filename: str | None, data
         raise ServiceUnavailableError("Could not store the file right now. Please try again.") from exc
 
     document = {
-        "id": uuid.uuid4().hex, "kind": kind, "key": key, "content_type": mime, "size": len(data),
-        "filename": (filename or f"document.{ext}")[:120], "uploaded_at": hp.now_iso(),
+        "id": uuid.uuid4().hex,
+        "kind": kind,
+        "key": key,
+        "content_type": mime,
+        "size": len(data),
+        "filename": (filename or f"document.{ext}")[:120],
+        "uploaded_at": hp.now_iso(),
     }
     await hp.repo.push_document(hospital_id, document)
     await hp.record(hospital_id, "hospital", "document_uploaded", kind)

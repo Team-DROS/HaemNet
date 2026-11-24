@@ -21,6 +21,7 @@ pytestmark = pytest.mark.usefixtures("hospital_db")
 
 # ── sign-up ───────────────────────────────────────────────────────
 
+
 def test_signup_creates_pending_unverified_hospital_and_sends_email(client, platform_repo, hospital_db):
     hid, _ = signup(client, platform_repo, hospital_db)
     h = platform_repo.hospitals[hid]
@@ -30,9 +31,14 @@ def test_signup_creates_pending_unverified_hospital_and_sends_email(client, plat
     assert "email_verification_hash" in h and platform_repo.emails[0][2] not in str(h)
 
 
-@pytest.mark.parametrize("field,value", [
-    ("official_email", "not-an-email"), ("contact_person", " "), ("hfr_id", ""),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("official_email", "not-an-email"),
+        ("contact_person", " "),
+        ("hfr_id", ""),
+    ],
+)
 def test_signup_requires_verification_details(client, field, value):
     body = {**SIGNUP, field: value}
     if field == "hfr_id":
@@ -49,6 +55,7 @@ def test_login_reports_status(client, platform_repo, hospital_db):
 
 
 # ── email verification ────────────────────────────────────────────
+
 
 def test_verify_email_works_once(client, platform_repo, hospital_db):
     hid, _ = signup(client, platform_repo, hospital_db)
@@ -75,6 +82,7 @@ def test_resend_verification_issues_new_token_and_is_limited(client, platform_re
 
 
 # ── documents ─────────────────────────────────────────────────────
+
 
 def test_upload_accepts_pdf_and_png_and_lists_them(client, platform_repo, hospital_db, uploads):
     hid, headers = signup(client, platform_repo, hospital_db)
@@ -105,6 +113,7 @@ def test_upload_requires_hospital_sign_in(client):
 
 # ── admin ─────────────────────────────────────────────────────────
 
+
 def test_admin_endpoints_need_admin_token(client, platform_repo, hospital_db):
     hid, headers = signup(client, platform_repo, hospital_db)
     assert client.get("/api/admin/hospitals").status_code == 401
@@ -131,7 +140,9 @@ def test_admin_login_locks_after_repeated_failures(client, monkeypatch):
 
 def test_admin_lists_filters_and_shows_detail_with_audit(client, platform_repo, hospital_db, admin):
     hid, _ = signup(client, platform_repo, hospital_db)
-    assert [h["id"] for h in client.get("/api/admin/hospitals?status=pending", headers=admin).json()["hospitals"]] == [hid]
+    assert [h["id"] for h in client.get("/api/admin/hospitals?status=pending", headers=admin).json()["hospitals"]] == [
+        hid
+    ]
     assert client.get("/api/admin/hospitals?status=approved", headers=admin).json()["hospitals"] == []
     assert client.get("/api/admin/hospitals?status=bogus", headers=admin).status_code == 422
     detail = client.get(f"/api/admin/hospitals/{hid}", headers=admin).json()
@@ -154,7 +165,9 @@ def test_reject_and_suspend_need_a_reason_and_valid_transitions(client, platform
     hid, _ = signup(client, platform_repo, hospital_db)
     url = f"/api/admin/hospitals/{hid}/decision"
     assert client.post(url, json={"action": "reject"}, headers=admin).status_code == 422
-    assert client.post(url, json={"action": "suspend", "reason": "x"}, headers=admin).status_code == 409  # not approved yet
+    assert (
+        client.post(url, json={"action": "suspend", "reason": "x"}, headers=admin).status_code == 409
+    )  # not approved yet
     assert client.post(url, json={"action": "explode"}, headers=admin).status_code == 422
     res = client.post(url, json={"action": "reject", "reason": "Licence unreadable"}, headers=admin)
     assert res.json()["status"] == "rejected"
@@ -167,9 +180,17 @@ def test_suspend_and_reinstate_round_trip(client, platform_repo, hospital_db, ad
     verify(client, platform_repo)
     url = f"/api/admin/hospitals/{hid}/decision"
     client.post(url, json={"action": "approve"}, headers=admin)
-    assert client.post(url, json={"action": "suspend", "reason": "Misuse"}, headers=admin).json()["status"] == "suspended"
+    assert (
+        client.post(url, json={"action": "suspend", "reason": "Misuse"}, headers=admin).json()["status"] == "suspended"
+    )
     assert client.post(url, json={"action": "reinstate"}, headers=admin).json()["status"] == "approved"
-    assert [e["action"] for e in platform_repo.audit] == ["registered", "email_verified", "approve", "suspend", "reinstate"]
+    assert [e["action"] for e in platform_repo.audit] == [
+        "registered",
+        "email_verified",
+        "approve",
+        "suspend",
+        "reinstate",
+    ]
 
 
 def test_admin_can_download_document_but_hospital_cannot(client, platform_repo, hospital_db, admin, uploads):
@@ -192,8 +213,14 @@ def test_document_path_cannot_escape_upload_folder(uploads):
 
 # ── dispatch gate ─────────────────────────────────────────────────
 
-DISPATCH = {"hospital_id": "HOSP-1001", "blood_group": "O-", "units": 1, "urgency": "critical",
-            "address": "Chennai", "coordinates": {"lat": 13.0, "lng": 80.2}}
+DISPATCH = {
+    "hospital_id": "HOSP-1001",
+    "blood_group": "O-",
+    "units": 1,
+    "urgency": "critical",
+    "address": "Chennai",
+    "coordinates": {"lat": 13.0, "lng": 80.2},
+}
 
 
 @pytest.mark.parametrize("status", ["pending", "rejected", "suspended"])
@@ -214,6 +241,7 @@ async def test_approved_and_legacy_hospitals_pass_the_gate(platform_repo):
 
 
 # ── staff accounts ────────────────────────────────────────────────
+
 
 def test_owner_adds_lists_and_staff_can_sign_in(client, platform_repo, hospital_db):
     hid, owner = signup(client, platform_repo, hospital_db)
@@ -270,10 +298,16 @@ def test_staff_validation_and_duplicates(client, platform_repo, hospital_db):
 
 def test_staff_endpoints_need_hospital_sign_in(client):
     assert client.get("/api/hospitals/me/staff").status_code == 401
-    assert client.post("/api/auth/staff-token", json={"hospital_id": "HOSP-1", "email": "a@b.co", "password": "x"}).status_code == 401
+    assert (
+        client.post(
+            "/api/auth/staff-token", json={"hospital_id": "HOSP-1", "email": "a@b.co", "password": "x"}
+        ).status_code
+        == 401
+    )
 
 
 # ── data export and deletion ──────────────────────────────────────
+
 
 def test_export_contains_profile_staff_and_audit_but_no_secrets(client, platform_repo, hospital_db):
     hid, owner = signup(client, platform_repo, hospital_db)
@@ -299,7 +333,9 @@ def test_delete_needs_the_hospital_id_then_removes_account_and_files(client, pla
     assert any(uploads.rglob("*.pdf"))
     assert client.post("/api/hospitals/me/delete", headers=owner, json={"confirm_id": "HOSP-0000"}).status_code == 422
     assert hid in platform_repo.hospitals
-    assert client.post("/api/hospitals/me/delete", headers=owner, json={"confirm_id": hid.lower()}).json() == {"deleted": hid}
+    assert client.post("/api/hospitals/me/delete", headers=owner, json={"confirm_id": hid.lower()}).json() == {
+        "deleted": hid
+    }
     assert hid not in platform_repo.hospitals
     assert not any(uploads.rglob("*.pdf"))
     assert platform_repo.audit[-1]["action"] == "account_deleted"
@@ -307,10 +343,15 @@ def test_delete_needs_the_hospital_id_then_removes_account_and_files(client, pla
 
 # ── pagination and audit ──────────────────────────────────────────
 
+
 def test_admin_list_is_paginated_and_reports_the_total(client, platform_repo, admin):
     for i in range(5):
-        platform_repo.hospitals[f"H{i}"] = {"id": f"H{i}", "name": f"Hospital {i}", "status": "pending",
-                                            "registered_at": f"2026-01-0{i + 1}T00:00:00+00:00"}
+        platform_repo.hospitals[f"H{i}"] = {
+            "id": f"H{i}",
+            "name": f"Hospital {i}",
+            "status": "pending",
+            "registered_at": f"2026-01-0{i + 1}T00:00:00+00:00",
+        }
     first = client.get("/api/admin/hospitals?status=pending&limit=2", headers=admin).json()
     assert first["total"] == 5 and [h["id"] for h in first["hospitals"]] == ["H4", "H3"]  # newest first
     second = client.get("/api/admin/hospitals?status=pending&limit=2&offset=2", headers=admin).json()

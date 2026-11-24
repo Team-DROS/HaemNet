@@ -40,6 +40,7 @@ async def _get_client() -> httpx.AsyncClient:
 
 # ── STT — Speech-to-Text ─────────────────────────────────────────
 
+
 async def transcribe_audio(
     audio_bytes: bytes,
     language: str = "en-IN",
@@ -60,7 +61,9 @@ async def transcribe_audio(
     }
 
     try:
-        resp = await post_with_retry(client, "/speech-to-text", retry_statuses=_RETRY, idempotent=True, files=files, data=data)
+        resp = await post_with_retry(
+            client, "/speech-to-text", retry_statuses=_RETRY, idempotent=True, files=files, data=data
+        )
         resp.raise_for_status()
         result = resp.json()
         # Never log transcript text: donor speech is personal data (DPDP Act).
@@ -72,6 +75,7 @@ async def transcribe_audio(
 
 
 # ── TTS — Text-to-Speech ─────────────────────────────────────────
+
 
 async def synthesize_speech(
     text: str,
@@ -91,11 +95,19 @@ async def synthesize_speech(
     }
 
     try:
-        resp = await post_with_retry(client, "/text-to-speech", retry_statuses=_RETRY, idempotent=True, json=payload, headers={"Content-Type": "application/json"})
+        resp = await post_with_retry(
+            client,
+            "/text-to-speech",
+            retry_statuses=_RETRY,
+            idempotent=True,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
         resp.raise_for_status()
         result = resp.json()
         # Sarvam returns base64-encoded audio in the response.
         import base64
+
         audio_b64 = result.get("audios", [None])[0]
         if audio_b64:
             return base64.b64decode(audio_b64)
@@ -107,6 +119,7 @@ async def synthesize_speech(
 
 
 # ── Translate (helper) ───────────────────────────────────────────
+
 
 async def translate_text(
     text: str,
@@ -153,6 +166,7 @@ def get_bcp47_code(language: str) -> str:
 
 
 # ── Cleanup ───────────────────────────────────────────────────────
+
 
 async def close() -> None:
     """Gracefully close the httpx client."""

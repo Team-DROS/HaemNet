@@ -44,10 +44,17 @@ def test_deep_health_reports_sarvam_down(client, monkeypatch):
         return {"status": "connected", "backend": "mongodb"}
 
     class Down:
-        def __init__(self, *a, **k): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
-        async def get(self, url): raise httpx.ConnectError("down")
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            raise httpx.ConnectError("down")
 
     monkeypatch.setattr(health, "db_health", db_ok)
     monkeypatch.setattr(settings, "sarvam_api_key", "key")

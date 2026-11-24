@@ -37,8 +37,11 @@ class SecurityMiddleware:
             return
 
         headers = dict(scope.get("headers") or [])
-        limit = (settings.max_upload_mb * 1024 * 1024 + 64 * 1024) if scope["path"] == UPLOAD_PATH \
+        limit = (
+            (settings.max_upload_mb * 1024 * 1024 + 64 * 1024)
+            if scope["path"] == UPLOAD_PATH
             else settings.max_request_body_kb * 1024
+        )
         try:
             length = int(headers.get(b"content-length", b"0") or 0)
         except ValueError:
@@ -56,9 +59,13 @@ class SecurityMiddleware:
 
         if length > limit:
             body = json.dumps({"detail": "Request body too large"}).encode()
-            await send_with_headers({"type": "http.response.start", "status": 413,
-                                     "headers": [(b"content-type", b"application/json"),
-                                                 (b"content-length", str(len(body)).encode())]})
+            await send_with_headers(
+                {
+                    "type": "http.response.start",
+                    "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+                }
+            )
             await send_with_headers({"type": "http.response.body", "body": body})
         else:
             await self.app(scope, receive, send_with_headers)

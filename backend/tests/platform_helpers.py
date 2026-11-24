@@ -6,8 +6,13 @@ PDF = b"%PDF-1.4 test file"
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
 
 SIGNUP = {
-    "name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "pw12345",
-    "official_email": "Admin@Apollo.example", "contact_person": "Dr Rao", "hfr_id": "IN123",
+    "name": "Apollo",
+    "location": "Chennai",
+    "phone": "+919876543210",
+    "password": "pw12345",
+    "official_email": "Admin@Apollo.example",
+    "contact_person": "Dr Rao",
+    "hfr_id": "IN123",
 }
 STAFF = {"name": "Nurse Devi", "email": "Devi@Apollo.example", "role": "staff", "password": "staffpass1"}
 
@@ -31,8 +36,12 @@ def verify(client, platform_repo):
 
 
 def upload(client, headers, data=PDF, name="licence.pdf", kind="hfr_certificate"):
-    return client.post("/api/hospitals/me/documents", headers=headers, data={"kind": kind},
-                       files={"file": (name, data, "application/octet-stream")})
+    return client.post(
+        "/api/hospitals/me/documents",
+        headers=headers,
+        data={"kind": kind},
+        files={"file": (name, data, "application/octet-stream")},
+    )
 
 
 def add_staff(client, headers, **overrides):

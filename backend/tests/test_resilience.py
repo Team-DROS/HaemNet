@@ -32,7 +32,9 @@ async def test_retries_throttling_then_succeeds_and_honours_retry_after(no_real_
 
     def handler(request):
         calls.append(1)
-        return httpx.Response(429, headers={"Retry-After": "2"}) if len(calls) < 3 else httpx.Response(200, json={"ok": 1})
+        return (
+            httpx.Response(429, headers={"Retry-After": "2"}) if len(calls) < 3 else httpx.Response(200, json={"ok": 1})
+        )
 
     async with client_with(handler) as c:
         res = await http_retry.post_with_retry(c, "/x", retry_statuses={429}, json={})
@@ -107,6 +109,7 @@ async def test_sarvam_speech_to_text_survives_a_503(monkeypatch):
 @pytest.mark.asyncio
 async def test_twilio_call_is_retried_on_429_but_not_after_a_timeout(monkeypatch):
     from types import SimpleNamespace
+
     donor = SimpleNamespace(phone="+919000000001", id="d1")
     seen = []
 

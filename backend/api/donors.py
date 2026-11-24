@@ -39,7 +39,6 @@ def _require_same_donor(claimed_phone: Optional[str], token_phone: str) -> None:
         raise HTTPException(status_code=403, detail="This phone number is not yours")
 
 
-
 @router.post("/donor/register")
 async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depends(get_current_donor)):
     """
@@ -65,6 +64,7 @@ async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depe
 
 # ── POST /api/donor/calls/preference ───────────────────────────────
 
+
 class CallPreference(BaseModel):
     opt_out: bool
 
@@ -83,6 +83,7 @@ async def set_call_preference(payload: CallPreference, donor_phone: str = Depend
 
 
 # ── GET /api/donor/profile/{phone} ─────────────────────────────────
+
 
 @router.get("/donor/profile/{phone}")
 async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_donor)):
@@ -105,7 +106,7 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
                 "blood_group": donor.blood_group,
                 "last_donated_date": donor.last_donated_date.isoformat() if donor.last_donated_date else None,
                 "calls_opt_out": donor.calls_opt_out,
-            }
+            },
         }
     except HTTPException:
         raise
@@ -115,6 +116,7 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
 
 
 # ── DELETE /api/donor/profile/{phone} ───────────────────────────────
+
 
 @router.delete("/donor/profile/{phone}")
 async def remove_donor_profile(phone: str, donor_phone: str = Depends(get_current_donor)):
@@ -137,6 +139,7 @@ async def remove_donor_profile(phone: str, donor_phone: str = Depends(get_curren
 
 # ── GET /api/donor/requests/{phone} ────────────────────────────────
 
+
 @router.get("/donor/requests/{phone}")
 async def get_donor_requests(phone: str, donor_phone: str = Depends(get_current_donor)):
     """
@@ -158,6 +161,7 @@ async def get_donor_requests(phone: str, donor_phone: str = Depends(get_current_
 
 
 # ── POST /api/donor/respond ───────────────────────────────────────
+
 
 @router.post("/donor/respond")
 async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_current_donor)):
@@ -193,7 +197,10 @@ async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_c
         current_status = None
     if current_status in TERMINAL_OR_DECIDED:
         already_accepted = current_status in {
-            CallStatus.ACCEPTED, CallStatus.EN_ROUTE, CallStatus.COMPLETED, CallStatus.DONATED,
+            CallStatus.ACCEPTED,
+            CallStatus.EN_ROUTE,
+            CallStatus.COMPLETED,
+            CallStatus.DONATED,
         }
         if already_accepted == payload.accept:
             return {"status": "ok", "donor_status": current, "unchanged": True}
@@ -201,19 +208,33 @@ async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_c
 
     eta = estimate_eta_minutes(donor.get("distance_km")) if payload.accept else None
     await dispatch_store.update_donor_status(payload.dispatch_id, donor_id, wanted, eta_minutes=eta)
-    await manager.broadcast(payload.dispatch_id, DonorStatusUpdate(
-        donor_id=donor_id, name=donor.get("name", "Donor"), status=wanted, eta_minutes=eta,
-    ))
+    await manager.broadcast(
+        payload.dispatch_id,
+        DonorStatusUpdate(
+            donor_id=donor_id,
+            name=donor.get("name", "Donor"),
+            status=wanted,
+            eta_minutes=eta,
+        ),
+    )
 
     final_status = wanted
     if payload.accept:
         await dispatch_store.update_donor_status(
-            payload.dispatch_id, donor_id, CallStatus.EN_ROUTE, eta_minutes=eta,
+            payload.dispatch_id,
+            donor_id,
+            CallStatus.EN_ROUTE,
+            eta_minutes=eta,
         )
-        await manager.broadcast(payload.dispatch_id, DonorStatusUpdate(
-            donor_id=donor_id, name=donor.get("name", "Donor"),
-            status=CallStatus.EN_ROUTE, eta_minutes=eta,
-        ))
+        await manager.broadcast(
+            payload.dispatch_id,
+            DonorStatusUpdate(
+                donor_id=donor_id,
+                name=donor.get("name", "Donor"),
+                status=CallStatus.EN_ROUTE,
+                eta_minutes=eta,
+            ),
+        )
         final_status = CallStatus.EN_ROUTE
 
     logger.info("Donor %s responded %s in app (dispatch %s)", donor_id, wanted.value, payload.dispatch_id)
@@ -223,5 +244,3 @@ async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_c
         "eta_minutes": eta,
         "hospital": {"lat": dispatch.get("lat"), "lng": dispatch.get("lng"), "address": dispatch.get("address")},
     }
-
-

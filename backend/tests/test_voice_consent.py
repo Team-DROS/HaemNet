@@ -11,14 +11,16 @@ from backend.services.voice_intent import IntentResult
 
 
 def result(intent, confirmation=False):
-    return IntentResult(intent=intent, explicit_consent=intent == "accepted",
-                        confirmation_answer=confirmation)
+    return IntentResult(intent=intent, explicit_consent=intent == "accepted", confirmation_answer=confirmation)
 
 
 @pytest.fixture
 def session(monkeypatch):
     s = ai_voice_pipeline.AIVoiceSession(
-        call_sid="test", dispatch_id="test", donor_id="test", donor_name="Test",
+        call_sid="test",
+        dispatch_id="test",
+        donor_id="test",
+        donor_name="Test",
     )
     s._speak = AsyncMock(return_value=b"question")
     s._greeting_sent = True
@@ -40,16 +42,18 @@ async def test_accept_requires_a_separate_answer_after_playback(session, monkeyp
 
 
 async def test_confirmation_no_cancels_initial_yes(session, monkeypatch):
-    monkeypatch.setattr(ai_voice_pipeline, "interpret_response",
-                        AsyncMock(side_effect=[result("accepted"), result("declined")]))
+    monkeypatch.setattr(
+        ai_voice_pipeline, "interpret_response", AsyncMock(side_effect=[result("accepted"), result("declined")])
+    )
     await session.process_transcript("yes")
     session.playback_finished(session.playback_started())
     assert await session.process_transcript("No, I cannot donate") == (None, "declined")
 
 
 async def test_uncertain_confirmation_never_uses_previous_yes(session, monkeypatch):
-    monkeypatch.setattr(ai_voice_pipeline, "interpret_response",
-                        AsyncMock(side_effect=[result("accepted"), result("unclear")]))
+    monkeypatch.setattr(
+        ai_voice_pipeline, "interpret_response", AsyncMock(side_effect=[result("accepted"), result("unclear")])
+    )
     await session.process_transcript("yes")
     session.playback_finished(session.playback_started())
     assert await session.process_transcript("maybe") == (b"question", None)
@@ -109,30 +113,51 @@ def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, 
     from backend.api import callbacks
     from backend.config import settings
     from backend.tests.conftest import donor
+
     store.add("voice-test", donors=[donor("donor-test", "+919000000001")])
     monkeypatch.setattr(callbacks, "dispatch_store", store)
     monkeypatch.setattr(settings, "voice_intent_mode", "ai")
     monkeypatch.setattr(ai_voice_pipeline.AIVoiceSession, "_speak", AsyncMock(return_value=b"audio"))
-    monkeypatch.setattr(ai_voice_pipeline.AIVoiceSession, "_transcribe",
-                        AsyncMock(side_effect=["Yes, I will donate", "The final answer"]))
-    monkeypatch.setattr(ai_voice_pipeline, "interpret_response", AsyncMock(side_effect=[
-        result("accepted"), result(final_intent, final_intent == "accepted"),
-    ]))
+    monkeypatch.setattr(
+        ai_voice_pipeline.AIVoiceSession,
+        "_transcribe",
+        AsyncMock(side_effect=["Yes, I will donate", "The final answer"]),
+    )
+    monkeypatch.setattr(
+        ai_voice_pipeline,
+        "interpret_response",
+        AsyncMock(
+            side_effect=[
+                result("accepted"),
+                result(final_intent, final_intent == "accepted"),
+            ]
+        ),
+    )
     route = AsyncMock(return_value=False)
     monkeypatch.setattr(callbacks, "_route_accepted_donor", route)
     monkeypatch.setattr(callbacks.manager, "broadcast", AsyncMock())
     speech = audioop.lin2ulaw(b"\x10\x27" * 160, 2)
+
     def speak(ws):
         for frame in [speech] * 10 + [b"\xff" * 160] * 50:
-            ws.send_json({"event": "media", "media": {"track": "inbound",
-                "payload": base64.b64encode(frame).decode()}})
+            ws.send_json({"event": "media", "media": {"track": "inbound", "payload": base64.b64encode(frame).decode()}})
+
     def acknowledge(ws):
         assert ws.receive_json()["event"] == "media"
         mark = ws.receive_json()
         ws.send_json({"event": "mark", "mark": mark["mark"]})
+
     with client.websocket_connect("/ws/twilio/audio-stream") as ws:
-        ws.send_json({"event": "start", "start": {"streamSid": "stream-test", "callSid": "call-test",
-            "customParameters": {"dispatch_id": "voice-test", "donor_id": "donor-test"}}})
+        ws.send_json(
+            {
+                "event": "start",
+                "start": {
+                    "streamSid": "stream-test",
+                    "callSid": "call-test",
+                    "customParameters": {"dispatch_id": "voice-test", "donor_id": "donor-test"},
+                },
+            }
+        )
         acknowledge(ws)
         speak(ws)
         # The first yes produces a question, never acceptance or directions.
@@ -147,16 +172,22 @@ def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, 
     assert route.await_count == (1 if final_intent == "accepted" else 0)
 
 
-@pytest.mark.parametrize("content,finish", [
-    ('{"intent":"accepted","explicit_consent":false,"confirmation_answer":true}', "stop"),
-    ('{"intent":"accepted","explicit_consent":"true","confirmation_answer":true}', "stop"),
-    ('{"intent":"accepted","explicit_consent":true,"confirmation_answer":true}', "length"),
-    ('not JSON', "stop"),
-])
+@pytest.mark.parametrize(
+    "content,finish",
+    [
+        ('{"intent":"accepted","explicit_consent":false,"confirmation_answer":true}', "stop"),
+        ('{"intent":"accepted","explicit_consent":"true","confirmation_answer":true}', "stop"),
+        ('{"intent":"accepted","explicit_consent":true,"confirmation_answer":true}', "length"),
+        ("not JSON", "stop"),
+    ],
+)
 async def test_provider_output_validation(monkeypatch, content, finish):
     client = AsyncMock()
-    client.post.return_value = httpx.Response(200, request=httpx.Request("POST", "https://example.invalid"),
-        json={"choices": [{"finish_reason": finish, "message": {"content": content}}]})
+    client.post.return_value = httpx.Response(
+        200,
+        request=httpx.Request("POST", "https://example.invalid"),
+        json={"choices": [{"finish_reason": finish, "message": {"content": content}}]},
+    )
     monkeypatch.setattr(voice_intent, "_get_client", AsyncMock(return_value=client))
     assert (await voice_intent.interpret_response("no", [], False)).intent == "unclear"
 
@@ -170,6 +201,7 @@ async def test_timeout_never_falls_back_to_keywords(monkeypatch):
 
 def test_rollback_selects_original_class(monkeypatch):
     from backend.config import settings
+
     args = {"call_sid": "t", "dispatch_id": "t", "donor_id": "t", "donor_name": "Test"}
     monkeypatch.setattr(settings, "voice_intent_mode", "legacy")
     assert type(voice_pipeline.create_voice_session(**args)) is voice_pipeline.VoiceSession
@@ -186,11 +218,15 @@ async def test_stt_does_not_log_transcript(monkeypatch, caplog):
     class Resp:
         status_code = 200
 
-        def raise_for_status(self): pass
-        def json(self): return {"transcript": SECRET}
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"transcript": SECRET}
 
     class Client:
-        async def post(self, *a, **k): return Resp()
+        async def post(self, *a, **k):
+            return Resp()
 
     monkeypatch.setattr(sarvam_service, "_get_client", AsyncMock(return_value=Client()))
     with caplog.at_level("DEBUG"):
@@ -201,7 +237,11 @@ async def test_stt_does_not_log_transcript(monkeypatch, caplog):
 
 async def test_legacy_pipeline_does_not_log_transcript(monkeypatch, caplog):
     s = voice_pipeline.VoiceSession(
-        call_sid="c1", dispatch_id="dp1", donor_id="d1", donor_name="Test", language="english",
+        call_sid="c1",
+        dispatch_id="dp1",
+        donor_id="d1",
+        donor_name="Test",
+        language="english",
     )
     s._greeting_sent = True
     monkeypatch.setattr(s, "_transcribe", AsyncMock(return_value="no " + SECRET))

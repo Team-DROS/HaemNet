@@ -43,7 +43,9 @@ async def decide(hospital_id: str, action: str, reason: str, actor: str) -> str:
     if action == "approve" and not hospital.get("email_verified", True):
         raise ConflictError("The hospital has not verified its official email yet")
 
-    await hp.repo.update(hospital_id, {"status": new_status, "decision_reason": reason or None, "decided_at": hp.now_iso()})
+    await hp.repo.update(
+        hospital_id, {"status": new_status, "decision_reason": reason or None, "decided_at": hp.now_iso()}
+    )
     await hp.record(hospital_id, actor, action, reason)
     logger.info("Hospital %s: %s -> %s by admin", hospital_id, current, new_status)
     if hospital.get("official_email"):

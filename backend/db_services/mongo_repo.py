@@ -56,6 +56,7 @@ _indexes_ready = False
 
 # ── helpers ───────────────────────────────────────────────────────
 
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -152,6 +153,7 @@ async def db_health() -> Dict[str, str]:
 
 # ── donors ────────────────────────────────────────────────────────
 
+
 async def find_eligible_donors(
     blood_group: str,
     lat: float,
@@ -166,42 +168,53 @@ async def find_eligible_donors(
     cutoff = _now() - timedelta(days=cooldown_days)
     db = get_database()
     pipeline = [
-        {"$geoNear": {
-            "near": _point(lat, lng),
-            "distanceField": "distance_m",
-            "maxDistance": radius_km * 1000,
-            "spherical": True,
-            "query": {
-                "blood_group": blood_group,
-                "calls_opt_out": {"$ne": True},  # donors who opted out of automated calls are never called
-                "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
-            },
-        }},
+        {
+            "$geoNear": {
+                "near": _point(lat, lng),
+                "distanceField": "distance_m",
+                "maxDistance": radius_km * 1000,
+                "spherical": True,
+                "query": {
+                    "blood_group": blood_group,
+                    "calls_opt_out": {"$ne": True},  # donors who opted out of automated calls are never called
+                    "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
+                },
+            }
+        },
     ]
     cursor = await db[DONORS].aggregate(pipeline)
     donors = [_doc_to_donor_node(doc) async for doc in cursor]
     logger.info(
         "find_eligible_donors: %d matches (blood_group=%s, radius=%skm)",
-        len(donors), blood_group, radius_km,
+        len(donors),
+        blood_group,
+        radius_km,
     )
     return donors
 
 
 async def db_eligible_counts_by_group(
-    lat: float, lng: float, radius_km: float = 10.0, cooldown_days: int = 56,
+    lat: float,
+    lng: float,
+    radius_km: float = 10.0,
+    cooldown_days: int = 56,
 ) -> Dict[str, int]:
     """How many donors of each blood group could be called right now."""
     cutoff = _now() - timedelta(days=cooldown_days)
     db = get_database()
     pipeline = [
-        {"$geoNear": {
-            "near": _point(lat, lng),
-            "distanceField": "distance_m",
-            "maxDistance": radius_km * 1000,
-            "spherical": True,
-            "query": {"calls_opt_out": {"$ne": True},
-                      "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}]},
-        }},
+        {
+            "$geoNear": {
+                "near": _point(lat, lng),
+                "distanceField": "distance_m",
+                "maxDistance": radius_km * 1000,
+                "spherical": True,
+                "query": {
+                    "calls_opt_out": {"$ne": True},
+                    "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
+                },
+            }
+        },
         {"$group": {"_id": "$blood_group", "available": {"$sum": 1}}},
     ]
     cursor = await db[DONORS].aggregate(pipeline)
@@ -264,7 +277,10 @@ async def register_donor(
         update["$set"]["calls_opt_out"] = True
 
     doc = await get_database()[DONORS].find_one_and_update(
-        {"phone": phone}, update, upsert=True, return_document=ReturnDocument.AFTER,
+        {"phone": phone},
+        update,
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
     )
     logger.info("Donor registered/updated: phone=%s", phone)
     return _doc_to_donor_node(doc)
@@ -274,7 +290,8 @@ async def update_donation_date(donor_id: str, donated_at: Optional[datetime] = N
     """Start the donor's 56-day cooldown. False if no such donor."""
     ts = _as_utc(donated_at) or _now()
     result = await get_database()[DONORS].update_one(
-        {"_id": donor_id}, {"$set": {"last_donated_date": ts}},
+        {"_id": donor_id},
+        {"$set": {"last_donated_date": ts}},
     )
     if result.matched_count:
         logger.info("Donation logged for donor %s at %s", donor_id, ts.isoformat())
@@ -327,6 +344,7 @@ async def delete_donor(phone: str) -> bool:
 
 # ── dispatches and call sessions ──────────────────────────────────
 
+
 async def db_create_dispatch(
     dispatch_id: str,
     hospital_id: str,
@@ -342,35 +360,45 @@ async def db_create_dispatch(
     db = get_database()
     await db[DISPATCHES].update_one(
         {"_id": dispatch_id},
-        {"$set": {
-            "hospital_id": hospital_id, "blood_group": blood_group,
-            "lat": lat, "lng": lng, "units": units, "urgency": urgency,
-            "address": address, "is_complete": False,
+        {
+            "$set": {
+                "hospital_id": hospital_id,
+                "blood_group": blood_group,
+                "lat": lat,
+                "lng": lng,
+                "units": units,
+                "urgency": urgency,
+                "address": address,
+                "is_complete": False,
+            },
+            "$setOnInsert": {"created_at": _now(), "fulfilled": False},
         },
-         "$setOnInsert": {"created_at": _now(), "fulfilled": False}},
         upsert=True,
     )
-    entries = [
-        entry if isinstance(entry, dict) else {"id": entry, "distance_km": None}
-        for entry in roster
-    ]
+    entries = [entry if isinstance(entry, dict) else {"id": entry, "distance_km": None} for entry in roster]
     for entry in entries:
         donor_id = entry["id"]
         await db[CALLS].update_one(
             {"_id": _call_id(dispatch_id, donor_id)},
-            {"$set": {"distance_km": entry.get("distance_km")},
-             "$setOnInsert": {
-                 "dispatch_id": dispatch_id, "donor_id": donor_id,
-                 "status": "ringing", "eta_minutes": None, "call_sid": None,
-                 "created_at": _now(),
-             }},
+            {
+                "$set": {"distance_km": entry.get("distance_km")},
+                "$setOnInsert": {
+                    "dispatch_id": dispatch_id,
+                    "donor_id": donor_id,
+                    "status": "ringing",
+                    "eta_minutes": None,
+                    "call_sid": None,
+                    "created_at": _now(),
+                },
+            },
             upsert=True,
         )
 
 
 async def db_register_call_sid(call_sid: str, dispatch_id: str, donor_id: str) -> None:
     await get_database()[CALLS].update_one(
-        {"_id": _call_id(dispatch_id, donor_id)}, {"$set": {"call_sid": call_sid}},
+        {"_id": _call_id(dispatch_id, donor_id)},
+        {"$set": {"call_sid": call_sid}},
     )
 
 
@@ -382,9 +410,7 @@ async def db_get_dispatch(dispatch_id: str) -> Optional[dict]:
 
     calls = [c async for c in db[CALLS].find({"dispatch_id": dispatch_id})]
     donor_ids = [c["donor_id"] for c in calls]
-    donors_by_id = {
-        d["_id"]: d async for d in db[DONORS].find({"_id": {"$in": donor_ids}})
-    }
+    donors_by_id = {d["_id"]: d async for d in db[DONORS].find({"_id": {"$in": donor_ids}})}
 
     donors: Dict[str, Dict[str, Any]] = {}
     for call in calls:
@@ -424,7 +450,10 @@ async def db_get_by_call_sid(call_sid: str) -> Optional[tuple[str, str]]:
 
 
 async def db_update_donor_status(
-    dispatch_id: str, donor_id: str, status: str, eta_minutes: Optional[int] = None,
+    dispatch_id: str,
+    donor_id: str,
+    status: str,
+    eta_minutes: Optional[int] = None,
 ) -> bool:
     """Move one donor's call along. Records the dispatch's first acceptance."""
     db = get_database()
@@ -452,7 +481,8 @@ async def db_mark_complete(dispatch_id: str, fulfilled: bool = False) -> None:
         changes["fulfilled"] = True
     await db[DISPATCHES].update_one({"_id": dispatch_id}, {"$set": changes})
     await db[DISPATCHES].update_one(
-        {"_id": dispatch_id, "closed_at": None}, {"$set": {"closed_at": _now()}},
+        {"_id": dispatch_id, "closed_at": None},
+        {"$set": {"closed_at": _now()}},
     )
 
 
@@ -470,19 +500,27 @@ async def db_summary() -> List[dict]:
     db = get_database()
     rows = []
     async for dispatch in db[DISPATCHES].find().sort("created_at", -1):
-        rows.append({
-            "dispatch_id": dispatch["_id"],
-            "donors": await db[CALLS].count_documents({"dispatch_id": dispatch["_id"]}),
-            "is_complete": bool(dispatch.get("is_complete")),
-            "created_at": _iso(dispatch.get("created_at")),
-        })
+        rows.append(
+            {
+                "dispatch_id": dispatch["_id"],
+                "donors": await db[CALLS].count_documents({"dispatch_id": dispatch["_id"]}),
+                "is_complete": bool(dispatch.get("is_complete")),
+                "created_at": _iso(dispatch.get("created_at")),
+            }
+        )
     return rows
 
 
 async def db_active_dispatch_ids(hospital_id: str, limit: int = 20) -> List[str]:
-    cursor = get_database()[DISPATCHES].find(
-        {"hospital_id": hospital_id, "is_complete": False}, {"_id": 1},
-    ).sort("created_at", -1).limit(limit)
+    cursor = (
+        get_database()[DISPATCHES]
+        .find(
+            {"hospital_id": hospital_id, "is_complete": False},
+            {"_id": 1},
+        )
+        .sort("created_at", -1)
+        .limit(limit)
+    )
     return [doc["_id"] async for doc in cursor]
 
 
@@ -497,24 +535,30 @@ async def db_dispatch_history(hospital_id: str, since_iso: str, limit: int = 500
     rows = []
     cursor = db[DISPATCHES].find(query).sort("created_at", -1).limit(limit)
     async for dispatch in cursor:
-        statuses = [c.get("status") async for c in db[CALLS].find(
-            {"dispatch_id": dispatch["_id"]}, {"status": 1},
-        )]
-        rows.append({
-            "dispatch_id": dispatch["_id"],
-            "blood_group": dispatch.get("blood_group"),
-            "units": dispatch.get("units") or 1,
-            "urgency": dispatch.get("urgency") or "urgent",
-            "created_at": _iso(dispatch.get("created_at")),
-            "first_accept_at": _iso(dispatch.get("first_accept_at")),
-            "closed_at": _iso(dispatch.get("closed_at")),
-            "is_complete": bool(dispatch.get("is_complete")),
-            "fulfilled": bool(dispatch.get("fulfilled")),
-            "matched": len(statuses),
-            "answered": sum(1 for s in statuses if s in ANSWERED_STATUSES),
-            "accepted": sum(1 for s in statuses if s in ACCEPT_STATUSES),
-            "donated": sum(1 for s in statuses if s == "donated"),
-        })
+        statuses = [
+            c.get("status")
+            async for c in db[CALLS].find(
+                {"dispatch_id": dispatch["_id"]},
+                {"status": 1},
+            )
+        ]
+        rows.append(
+            {
+                "dispatch_id": dispatch["_id"],
+                "blood_group": dispatch.get("blood_group"),
+                "units": dispatch.get("units") or 1,
+                "urgency": dispatch.get("urgency") or "urgent",
+                "created_at": _iso(dispatch.get("created_at")),
+                "first_accept_at": _iso(dispatch.get("first_accept_at")),
+                "closed_at": _iso(dispatch.get("closed_at")),
+                "is_complete": bool(dispatch.get("is_complete")),
+                "fulfilled": bool(dispatch.get("fulfilled")),
+                "matched": len(statuses),
+                "answered": sum(1 for s in statuses if s in ANSWERED_STATUSES),
+                "accepted": sum(1 for s in statuses if s in ACCEPT_STATUSES),
+                "donated": sum(1 for s in statuses if s == "donated"),
+            }
+        )
     return rows
 
 
@@ -532,25 +576,28 @@ async def db_requests_for_donor(phone: str) -> List[dict]:
         if not dispatch:
             continue
         hospital = await db[HOSPITALS].find_one({"_id": dispatch.get("hospital_id")}, {"name": 1, "location": 1})
-        rows.append({
-            "dispatch_id": dispatch["_id"],
-            "donor_id": donor["_id"],
-            "status": call.get("status"),
-            "distance_km": call.get("distance_km"),
-            "blood_group": dispatch.get("blood_group"),
-            "units": dispatch.get("units") or 1,
-            "urgency": dispatch.get("urgency") or "urgent",
-            "created_at": _iso(dispatch.get("created_at")),
-            "lat": dispatch.get("lat"),
-            "lng": dispatch.get("lng"),
-            "hospital_name": (hospital or {}).get("name") or dispatch.get("hospital_id"),
-            "address": dispatch.get("address") or (hospital or {}).get("location") or "",
-        })
+        rows.append(
+            {
+                "dispatch_id": dispatch["_id"],
+                "donor_id": donor["_id"],
+                "status": call.get("status"),
+                "distance_km": call.get("distance_km"),
+                "blood_group": dispatch.get("blood_group"),
+                "units": dispatch.get("units") or 1,
+                "urgency": dispatch.get("urgency") or "urgent",
+                "created_at": _iso(dispatch.get("created_at")),
+                "lat": dispatch.get("lat"),
+                "lng": dispatch.get("lng"),
+                "hospital_name": (hospital or {}).get("name") or dispatch.get("hospital_id"),
+                "address": dispatch.get("address") or (hospital or {}).get("location") or "",
+            }
+        )
     rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
     return rows
 
 
 # ── hospitals ─────────────────────────────────────────────────────
+
 
 def _hospital_out(doc: Optional[Dict[str, Any]]) -> Optional[dict]:
     if not doc:
@@ -564,7 +611,8 @@ async def db_create_hospital(id: str, name: str, location: str, phone: str, pass
     doc = await get_database()[HOSPITALS].find_one_and_update(
         {"_id": id},
         {"$set": {"name": name, "location": location, "phone": phone, "password_hash": password_hash}},
-        upsert=True, return_document=ReturnDocument.AFTER,
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
     )
     return _hospital_out(doc)
 

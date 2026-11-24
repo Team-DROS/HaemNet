@@ -54,6 +54,7 @@ else:
 
 # ── Lifespan (startup / shutdown) ─────────────────────────────────
 
+
 def _warn_if_uvloop() -> None:
     """
     PyMongo's async client does not work on uvloop: server selection never
@@ -68,8 +69,7 @@ def _warn_if_uvloop() -> None:
         return
     if "uvloop" in loop_module:
         logger.error(
-            "Running on uvloop with the MongoDB backend: requests will hang. "
-            "Start the server with `--loop asyncio`."
+            "Running on uvloop with the MongoDB backend: requests will hang. Start the server with `--loop asyncio`."
         )
 
 
@@ -81,24 +81,32 @@ async def lifespan(app: FastAPI):
     """
     logger.info(
         "🚀  Blood Dispatch Backend starting up (env=%s, database=%s)",
-        settings.app_env, settings.db_backend,
+        settings.app_env,
+        settings.db_backend,
     )
     _warn_if_uvloop()
-    logger.info("Voice interpretation mode=%s model=%s", settings.voice_intent_mode,
-                settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords")
+    logger.info(
+        "Voice interpretation mode=%s model=%s",
+        settings.voice_intent_mode,
+        settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords",
+    )
     if settings.app_env.lower() in {"production", "staging"} and not settings.s3_bucket:
-        logger.warning("S3_BUCKET is not set: hospital documents are stored on local disk and are lost "
-                       "on hosts with an ephemeral disk (for example Render free). Set S3_BUCKET for production.")
+        logger.warning(
+            "S3_BUCKET is not set: hospital documents are stored on local disk and are lost "
+            "on hosts with an ephemeral disk (for example Render free). Set S3_BUCKET for production."
+        )
     if not settings.twilio_configured:
         logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:
         logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
     try:
         from backend.db_services import ensure_indexes
+
         await ensure_indexes()
     except Exception as exc:  # the app still starts; /api/health reports the problem
         logger.error("Could not prepare database indexes: %s", exc)
     from backend.api.websockets import manager as ws_manager
+
     await ws_manager.start_pubsub()
     yield
     await ws_manager.stop_pubsub()
@@ -166,6 +174,7 @@ app.include_router(contact_router)
 
 
 # ── Root ──────────────────────────────────────────────────────────
+
 
 @app.get("/", tags=["meta"])
 async def root():

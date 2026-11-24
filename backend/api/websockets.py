@@ -52,6 +52,7 @@ async def _default_owner_resolver(dispatch_id: str) -> Optional[str]:
 
 # ── Connection Manager ────────────────────────────────────────────
 
+
 class DashboardConnectionManager:
     """
     Tracks authenticated dashboard sockets per hospital and delivers each
@@ -86,8 +87,7 @@ class DashboardConnectionManager:
     async def register(self, websocket: WebSocket, hospital_id: str, dispatch_filter: Optional[str] = None) -> None:
         async with self._lock:
             self._connections.setdefault(hospital_id, {})[websocket] = dispatch_filter
-        logger.info("Dashboard WS authenticated for %s. Sockets: %d",
-                    hospital_id, len(self._connections[hospital_id]))
+        logger.info("Dashboard WS authenticated for %s. Sockets: %d", hospital_id, len(self._connections[hospital_id]))
 
     async def disconnect(self, websocket: WebSocket, hospital_id: Optional[str]) -> None:
         if not hospital_id:
@@ -112,8 +112,9 @@ class DashboardConnectionManager:
             logger.warning("Dropping WS event for dispatch %s: owner unknown", dispatch_id)
             return
         async with self._lock:
-            targets = [ws for ws, only in self._connections.get(owner, {}).items()
-                       if only is None or only == dispatch_id]
+            targets = [
+                ws for ws, only in self._connections.get(owner, {}).items() if only is None or only == dispatch_id
+            ]
 
         dead = []
         for ws in targets:
@@ -209,10 +210,12 @@ class DashboardConnectionManager:
         Stamps it with its dispatch_id and event time so a dashboard watching
         several emergencies can route each update.
         """
-        update = update.model_copy(update={
-            "dispatch_id": dispatch_id,
-            "timestamp": update.timestamp or datetime.now(timezone.utc).isoformat(),
-        })
+        update = update.model_copy(
+            update={
+                "dispatch_id": dispatch_id,
+                "timestamp": update.timestamp or datetime.now(timezone.utc).isoformat(),
+            }
+        )
         await self._emit(dispatch_id, update.model_dump_json())
 
     async def broadcast_raw(self, dispatch_id: str, data: dict) -> None:
@@ -244,6 +247,7 @@ async def _authenticate(websocket: WebSocket) -> Optional[str]:
 
 
 # ── WebSocket Route ──────────────────────────────────────────────
+
 
 @router.websocket("/ws/dashboard")
 async def dashboard_websocket(websocket: WebSocket, dispatch_id: Optional[str] = None):

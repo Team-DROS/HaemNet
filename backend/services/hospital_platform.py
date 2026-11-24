@@ -88,9 +88,11 @@ from backend.services.file_storage import LocalStorage, get_storage  # noqa: E40
 
 # ── repositories ──────────────────────────────────────────────────
 
+
 class MongoPlatformRepo:
     def _col(self):
         from backend.db_services.mongodb import get_database
+
         return get_database()["hospitals"]
 
     @staticmethod
@@ -124,11 +126,15 @@ class MongoPlatformRepo:
 
     async def add_audit(self, entry: dict) -> None:
         from backend.db_services.mongodb import get_database
+
         await get_database()["hospital_audit"].insert_one(dict(entry))
 
     async def audit_for(self, hospital_id: str) -> List[dict]:
         from backend.db_services.mongodb import get_database
-        cursor = get_database()["hospital_audit"].find({"hospital_id": hospital_id}, {"_id": 0}).sort("at", -1).limit(100)
+
+        cursor = (
+            get_database()["hospital_audit"].find({"hospital_id": hospital_id}, {"_id": 0}).sort("at", -1).limit(100)
+        )
         return [d async for d in cursor]
 
 
@@ -158,7 +164,7 @@ class MemoryPlatformRepo:
     async def list(self, status, limit=50, offset=0):
         rows = [dict(h) for h in self.hospitals.values() if not status or h.get("status") == status]
         rows = sorted(rows, key=lambda h: h.get("registered_at") or "", reverse=True)
-        return rows[offset:offset + limit], len(rows)
+        return rows[offset : offset + limit], len(rows)
 
     async def delete(self, hospital_id):
         self.hospitals.pop(hospital_id, None)
@@ -191,12 +197,15 @@ async def audit(hospital_id: str, actor: str, action: str, detail: str = "") -> 
     if not platform_available():
         return
     try:
-        await repo.add_audit({"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()})
+        await repo.add_audit(
+            {"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()}
+        )
     except Exception as exc:
         logger.error("Audit write failed for %s (%s): %s", hospital_id, action, type(exc).__name__)
 
 
 # ── public (client-safe) shapes ───────────────────────────────────
+
 
 def public_document(doc: dict) -> dict:
     return {k: doc.get(k) for k in ("id", "kind", "filename", "content_type", "size", "uploaded_at")}
@@ -205,12 +214,16 @@ def public_document(doc: dict) -> dict:
 def hospital_profile(h: dict) -> dict:
     """What a hospital may see about itself. Never the hash, token or file paths."""
     return {
-        "id": h.get("id"), "name": h.get("name"), "location": h.get("location"), "phone": h.get("phone"),
+        "id": h.get("id"),
+        "name": h.get("name"),
+        "location": h.get("location"),
+        "phone": h.get("phone"),
         "status": hospital_status(h),
         "email_verified": bool(h.get("email_verified", True)),
         "official_email": h.get("official_email"),
         "contact_person": h.get("contact_person"),
-        "hfr_id": h.get("hfr_id"), "registration_number": h.get("registration_number"),
+        "hfr_id": h.get("hfr_id"),
+        "registration_number": h.get("registration_number"),
         "blood_centre_licence": h.get("blood_centre_licence"),
         "decision_reason": h.get("decision_reason"),
         "documents": [public_document(d) for d in h.get("documents", [])],
@@ -226,9 +239,12 @@ def admin_summary(h: dict) -> dict:
 
 # ── registration and email verification ───────────────────────────
 
+
 async def record(hospital_id: str, actor: str, action: str, detail: str = "") -> None:
     """Write an audit entry. Failures propagate: account changes must not go unrecorded."""
-    await repo.add_audit({"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()})
+    await repo.add_audit(
+        {"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()}
+    )
 
 
 async def register_pending(hospital_id: str, name: str, profile: dict) -> None:
@@ -236,11 +252,18 @@ async def register_pending(hospital_id: str, name: str, profile: dict) -> None:
     if not platform_available():
         return
     token, token_hash, expires = new_verification_token()
-    await repo.update(hospital_id, {
-        "status": PENDING, "email_verified": False, "registered_at": now_iso(),
-        "email_verification_hash": token_hash, "email_verification_expires": expires,
-        "documents": [], **profile,
-    })
+    await repo.update(
+        hospital_id,
+        {
+            "status": PENDING,
+            "email_verified": False,
+            "registered_at": now_iso(),
+            "email_verification_hash": token_hash,
+            "email_verification_expires": expires,
+            "documents": [],
+            **profile,
+        },
+    )
     await record(hospital_id, "hospital", "registered")
     await send_verification_email(profile["official_email"], name, token)
 
@@ -251,9 +274,14 @@ async def verify_email(token: str) -> None:
     expires = (hospital or {}).get("email_verification_expires") or ""
     if not hospital or expires < now_iso():
         raise BadRequestError("This verification link is invalid or has expired. Request a new one.")
-    await repo.update(hospital["id"], {
-        "email_verified": True, "email_verification_hash": None, "email_verification_expires": None,
-    })
+    await repo.update(
+        hospital["id"],
+        {
+            "email_verified": True,
+            "email_verification_hash": None,
+            "email_verification_expires": None,
+        },
+    )
     await record(hospital["id"], "hospital", "email_verified")
 
 

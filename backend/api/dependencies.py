@@ -13,11 +13,15 @@ async def approved_hospital(hospital_id: str = Depends(get_current_hospital)) ->
     try:
         await hp.assert_approved(hospital_id)
     except hp.HospitalNotApproved as exc:
-        raise HTTPException(status_code=403, detail={
-            "code": f"hospital_{exc.status}",
-            "message": "Your hospital is not approved to send requests yet." if exc.status == hp.PENDING
-            else f"Your hospital account is {exc.status}. Contact HaemNet support.",
-        }) from exc
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": f"hospital_{exc.status}",
+                "message": "Your hospital is not approved to send requests yet."
+                if exc.status == hp.PENDING
+                else f"Your hospital account is {exc.status}. Contact HaemNet support.",
+            },
+        ) from exc
     return hospital_id
 
 

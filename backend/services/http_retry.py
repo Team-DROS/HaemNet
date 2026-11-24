@@ -22,8 +22,14 @@ MAX_RETRY_AFTER = 5.0
 
 
 async def post_with_retry(
-    client: httpx.AsyncClient, url: str, *, retry_statuses: Iterable[int] = (), idempotent: bool = False,
-    attempts: int = 3, base_delay: float = 0.4, **kwargs,
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    retry_statuses: Iterable[int] = (),
+    idempotent: bool = False,
+    attempts: int = 3,
+    base_delay: float = 0.4,
+    **kwargs,
 ) -> httpx.Response:
     retry_statuses = set(retry_statuses)
     for attempt in range(1, attempts + 1):

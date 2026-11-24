@@ -61,8 +61,11 @@ async def initiate_call(
     try:
         # 429 means Twilio did not start the call, so retrying cannot double-ring a donor.
         resp = await post_with_retry(
-            client, f"/Accounts/{settings.twilio_account_sid}/Calls.json",
-            data=payload, retry_statuses={429}, idempotent=False,
+            client,
+            f"/Accounts/{settings.twilio_account_sid}/Calls.json",
+            data=payload,
+            retry_statuses={429},
+            idempotent=False,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -83,10 +86,7 @@ async def initiate_bulk_calls(
 ) -> List[Dict[str, Any]]:
     import asyncio
 
-    tasks = [
-        initiate_call(donor, dispatch_id, callback_url)
-        for donor in donors
-    ]
+    tasks = [initiate_call(donor, dispatch_id, callback_url) for donor in donors]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     successes: List[Dict[str, Any]] = []

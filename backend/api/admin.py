@@ -36,7 +36,8 @@ async def admin_login(form: OAuth2PasswordRequestForm = Depends()):
         raise UnauthorizedError("Incorrect username or password")
     await _admin_failures.reset(key)
     token = create_access_token(
-        {"sub": settings.admin_username, "role": ROLE_ADMIN}, expires_delta=timedelta(hours=ADMIN_TOKEN_HOURS),
+        {"sub": settings.admin_username, "role": ROLE_ADMIN},
+        expires_delta=timedelta(hours=ADMIN_TOKEN_HOURS),
     )
     return {"access_token": token, "token_type": "bearer"}
 
@@ -65,7 +66,8 @@ async def hospital_document(hospital_id: str, doc_id: str, admin: str = Depends(
     doc, content = await hospital_documents.read_document(hospital_id, doc_id)
     extension = doc["key"].rsplit(".", 1)[-1]
     return Response(
-        content=content, media_type=doc["content_type"],
+        content=content,
+        media_type=doc["content_type"],
         headers={
             "Content-Disposition": f'inline; filename="{doc["id"]}.{extension}"',
             "Cache-Control": "private, no-store",

@@ -46,7 +46,8 @@ async def send_email(to: str, subject: str, body: str) -> bool:
 async def send_verification_email(to: str, hospital_name: str, token: str) -> bool:
     link = f"{settings.dashboard_url.rstrip('/')}/verify-email?token={token}"
     return await send_email(
-        to, "Verify your hospital email for HaemNet",
+        to,
+        "Verify your hospital email for HaemNet",
         f"Hello,\n\nPlease confirm this address for {hospital_name} on HaemNet:\n{link}\n\n"
         "The link works once and expires in 48 hours. If you did not register, ignore this email.\n",
     )
@@ -54,16 +55,23 @@ async def send_verification_email(to: str, hospital_name: str, token: str) -> bo
 
 async def send_decision_email(to: str, hospital_name: str, action: str, reason: str = "") -> bool:
     if action == "approve":
-        subject, text = "Your hospital is approved on HaemNet", (
-            f"{hospital_name} has been approved. You can now sign in and send blood requests.")
+        subject, text = (
+            "Your hospital is approved on HaemNet",
+            (f"{hospital_name} has been approved. You can now sign in and send blood requests."),
+        )
     elif action == "reject":
-        subject, text = "Your HaemNet registration was not approved", (
-            f"We could not approve {hospital_name}.\nReason: {reason}\n"
-            "You can fix the details, upload new documents and write to us to be reviewed again.")
+        subject, text = (
+            "Your HaemNet registration was not approved",
+            (
+                f"We could not approve {hospital_name}.\nReason: {reason}\n"
+                "You can fix the details, upload new documents and write to us to be reviewed again."
+            ),
+        )
     elif action == "suspend":
-        subject, text = "Your HaemNet account is suspended", (
-            f"The account for {hospital_name} is suspended and cannot send requests.\nReason: {reason}")
+        subject, text = (
+            "Your HaemNet account is suspended",
+            (f"The account for {hospital_name} is suspended and cannot send requests.\nReason: {reason}"),
+        )
     else:
-        subject, text = "Your HaemNet account is active again", (
-            f"The account for {hospital_name} is active again.")
+        subject, text = "Your HaemNet account is active again", (f"The account for {hospital_name} is active again.")
     return await send_email(to, subject, text + "\n")

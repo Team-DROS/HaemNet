@@ -50,8 +50,13 @@ async def add_staff(hospital_id: str, name: str, email: str, role: str, password
     if any(m["email"] == email for m in _active(staff)):
         raise ConflictError("This email already has a staff account")
     member = {
-        "id": f"STF-{uuid.uuid4().hex[:8]}", "name": name.strip(), "email": email, "role": role,
-        "password_hash": get_password_hash(password), "active": True, "created_at": hp.now_iso(),
+        "id": f"STF-{uuid.uuid4().hex[:8]}",
+        "name": name.strip(),
+        "email": email,
+        "role": role,
+        "password_hash": get_password_hash(password),
+        "active": True,
+        "created_at": hp.now_iso(),
     }
     await hp.repo.update(hospital_id, {"staff": [*staff, member]})
     await hp.record(hospital_id, "hospital", "staff_added", f"{email} ({role})")

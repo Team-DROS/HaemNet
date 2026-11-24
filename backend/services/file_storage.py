@@ -93,11 +93,17 @@ class S3Storage:
         """Store `data` under an existing key (used by `save` and by the migration tool)."""
         extra = {"ServerSideEncryption": "AES256"} if self.encrypt else {}
         await asyncio.to_thread(
-            self.client.put_object, Bucket=self.bucket, Key=self._full(key), Body=data,
-            ContentType=content_type, **extra,
+            self.client.put_object,
+            Bucket=self.bucket,
+            Key=self._full(key),
+            Body=data,
+            ContentType=content_type,
+            **extra,
         )
 
-    async def save(self, hospital_id: str, ext: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+    async def save(
+        self, hospital_id: str, ext: str, data: bytes, content_type: str = "application/octet-stream"
+    ) -> str:
         key = f"{folder_for(hospital_id)}/{uuid.uuid4().hex}.{ext}"
         await self.put(key, data, content_type)
         return key
@@ -114,6 +120,7 @@ class S3Storage:
                 if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
                     return None
                 raise
+
         return await asyncio.to_thread(get)
 
     async def delete_prefix(self, hospital_id: str) -> None:
@@ -125,6 +132,7 @@ class S3Storage:
                 keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
                 if keys:
                     self.client.delete_objects(Bucket=self.bucket, Delete={"Objects": keys, "Quiet": True})
+
         await asyncio.to_thread(run)
 
     async def check(self) -> bool:
@@ -145,8 +153,14 @@ def reset_cache() -> None:
 
 def get_storage() -> Storage:
     """The configured backend. Cached per configuration so the S3 client is reused."""
-    ident = (settings.s3_bucket, settings.s3_endpoint_url, settings.s3_region, settings.s3_access_key_id,
-             settings.s3_prefix, settings.upload_dir)
+    ident = (
+        settings.s3_bucket,
+        settings.s3_endpoint_url,
+        settings.s3_region,
+        settings.s3_access_key_id,
+        settings.s3_prefix,
+        settings.upload_dir,
+    )
     if ident not in _cache:
         if settings.s3_bucket:
             import boto3
@@ -158,11 +172,17 @@ def get_storage() -> Storage:
                 region_name=settings.s3_region or None,
                 aws_access_key_id=settings.s3_access_key_id or None,
                 aws_secret_access_key=settings.s3_secret_access_key or None,
-                config=Config(signature_version="s3v4", retries={"max_attempts": 3, "mode": "standard"},
-                              connect_timeout=5, read_timeout=15),
+                config=Config(
+                    signature_version="s3v4",
+                    retries={"max_attempts": 3, "mode": "standard"},
+                    connect_timeout=5,
+                    read_timeout=15,
+                ),
             )
             # R2 encrypts at rest itself and rejects the SSE header; AWS gets AES256.
-            _cache[ident] = S3Storage(client, settings.s3_bucket, settings.s3_prefix, encrypt=not settings.s3_endpoint_url)
+            _cache[ident] = S3Storage(
+                client, settings.s3_bucket, settings.s3_prefix, encrypt=not settings.s3_endpoint_url
+            )
         else:
             _cache[ident] = LocalStorage(settings.upload_dir)
     return _cache[ident]

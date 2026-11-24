@@ -145,22 +145,20 @@ class Settings(BaseSettings):
         if self.app_env.lower() in {"production", "staging"}:
             required = {
                 "JWT_SECRET": self.jwt_secret,
-                **({"MONGODB_URI": self.mongodb_uri}
-                   if self.db_backend == "mongodb" else
-                   {"NEO4J_PASSWORD": self.neo4j_password}),
+                **(
+                    {"MONGODB_URI": self.mongodb_uri}
+                    if self.db_backend == "mongodb"
+                    else {"NEO4J_PASSWORD": self.neo4j_password}
+                ),
             }
             missing = [name for name, value in required.items() if not (value or "").strip()]
             if missing:
-                raise ValueError(
-                    f"Missing required production configuration: {', '.join(missing)}"
-                )
+                raise ValueError(f"Missing required production configuration: {', '.join(missing)}")
             if self.jwt_secret in {"change-me", "secret", "your-secret-key", "replace-with-a-long-random-secret"}:
                 raise ValueError("JWT_SECRET must be changed from its placeholder value")
             if len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be at least 32 characters in staging and production")
-            if self.db_backend == "mongodb" and any(
-                host in self.mongodb_uri for host in ("localhost", "127.0.0.1")
-            ):
+            if self.db_backend == "mongodb" and any(host in self.mongodb_uri for host in ("localhost", "127.0.0.1")):
                 raise ValueError("MONGODB_URI points at localhost; use the Atlas connection string in production")
         return self
 

@@ -52,8 +52,11 @@ def configure_logging(level: int, log_format: str) -> None:
     if log_format == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s | %(levelname)-7s | %(name)s | %(request_id)s | %(message)s", "%Y-%m-%d %H:%M:%S"))
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)-7s | %(name)s | %(request_id)s | %(message)s", "%Y-%m-%d %H:%M:%S"
+            )
+        )
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
@@ -92,11 +95,24 @@ class RequestIdMiddleware:
             logger.exception("Unhandled error on %s %s", scope["method"], scope["path"])
             report_exception(exc)
             body = json.dumps({"detail": "Something went wrong on our side.", "request_id": rid}).encode()
-            await send_with_id({"type": "http.response.start", "status": 500, "headers": [
-                (b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),
-                (b"x-content-type-options", b"nosniff")]})
+            await send_with_id(
+                {
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                        (b"x-content-type-options", b"nosniff"),
+                    ],
+                }
+            )
             await send_with_id({"type": "http.response.body", "body": body})
         finally:
-            access_logger.info("%s %s -> %s in %dms", scope["method"], scope["path"], status["code"],
-                               (time.perf_counter() - started) * 1000)
+            access_logger.info(
+                "%s %s -> %s in %dms",
+                scope["method"],
+                scope["path"],
+                status["code"],
+                (time.perf_counter() - started) * 1000,
+            )
             request_id_var.reset(token)

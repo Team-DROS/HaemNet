@@ -11,7 +11,8 @@ Tick every box in the PR description before tagging a release.
 - [ ] Release notes written (what changed for hospitals, donors, admins)
 
 ## Staging test list
-- [ ] Hospital signs up, verifies email, uploads a document, sees "under review"
+- [ ] Hospital signs up, verifies email, uploads a document (it appears in the bucket, not on local disk), sees "under review"
+- [ ] `/api/health/deep` shows `storage` and `storage_persistent` true, and `redis` true when `REDIS_URL` is set
 - [ ] Admin approves it; the hospital reaches the dashboard
 - [ ] Hospital sends a dispatch (confirm step shown); a test donor receives a real call
 - [ ] Donor says yes then confirms: dashboard shows accepted. Donor says no: declined. Silence: not accepted

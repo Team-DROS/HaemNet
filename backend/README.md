@@ -200,8 +200,8 @@ status and count as approved.
   `GET /api/admin/hospitals/{id}`, `GET /api/admin/hospitals/{id}/documents/{doc_id}`,
   `POST /api/admin/hospitals/{id}/decision` with `approve`, `reject`, `suspend` or `reinstate`
 - Setup: set `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `DASHBOARD_URL`, `UPLOAD_DIR` and the `SMTP_*`
-  values (see `.env.example`). Without SMTP no email is sent. Uploads live on local disk, so use a
-  persistent disk or move `LocalStorage` to S3 or R2. Needs `DB_BACKEND=mongodb`.
+  values (see `.env.example`). Without SMTP no email is sent. Documents go to local disk
+  by default; set `S3_BUCKET` (see below) for production. Needs `DB_BACKEND=mongodb`.
 
 Staff accounts: the hospital owner login can create staff (`POST /api/hospitals/me/staff`,
 roles `admin` or `staff`, up to 20), list and remove them. Staff sign in through
@@ -221,3 +221,20 @@ Set `REDIS_URL` to share, across all backend instances:
 With `REDIS_URL` empty everything stays in process memory, which is fine for one instance. If Redis fails, limits fall back to per-instance counters and events are delivered locally, with a warning in the logs, so an outage weakens limits but never blocks sign-in. `GET /api/health/deep` reports `redis`. Voice sessions stay in process on purpose: one call is one audio WebSocket on one instance. Dispatch state already lives in MongoDB.
 
 Locally: `docker compose up redis`, then `REDIS_URL=redis://localhost:6379`.
+
+## Document storage (S3 or Cloudflare R2)
+
+Hospital licence documents are private. With `S3_BUCKET` empty they go to `UPLOAD_DIR` on local disk, which is wiped on every
+redeploy on Render. In production set a bucket:
+
+1. Create a **private** bucket. Turn on "Block all public access". No bucket CORS is needed: admins read files through
+   `GET /api/admin/hospitals/{id}/documents/{doc_id}`, which checks the admin token.
+2. Create an access key limited to that bucket (read, write, list, delete). On AWS you can leave the keys empty and use an instance role.
+3. Set `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_PREFIX` (default `hospital-documents/`).
+   - AWS: also `S3_REGION`. Files are encrypted with AES256.
+   - Cloudflare R2: `S3_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com` and `S3_REGION=auto` (R2 encrypts at rest itself).
+4. Check `GET /api/health/deep`: `storage: true` and `storage_persistent: true`.
+5. Moving existing files: `python -m backend.tools.migrate_uploads_to_s3 --dry-run`, then without `--dry-run`. Keys are the same, so no database change is needed.
+
+Uploads are limited to PDF, JPG and PNG up to `MAX_UPLOAD_MB`, checked by file signature. Deleting a hospital account deletes its files; if the
+bucket cannot be reached the account is kept and the caller gets a 503 so it can retry.

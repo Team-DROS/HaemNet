@@ -60,6 +60,18 @@ services:
       # Shares rate limits, call quotas and live dashboard updates across instances.
       - key: REDIS_URL
         sync: false
+      # Private S3 or Cloudflare R2 bucket for hospital documents. Required on Render:
+      # the disk is wiped on every deploy, so local uploads would be lost.
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
       # Hospital verification and admin panel.
       - key: ADMIN_USERNAME
         sync: false

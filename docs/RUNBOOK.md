@@ -29,6 +29,8 @@ Fill in the contact table before launch. Severity: **S1** donors cannot be reach
 
 **Dashboards miss live updates only sometimes, or limits behave oddly with several instances.** Check `redis` in `/api/health/deep`. If Redis is down the backend falls back to per-instance behaviour (events reach only dashboards on the same instance) and logs `Redis ... unavailable`. Restore Redis; the subscriber reconnects by itself within 30 seconds.
 
+**Admins cannot open documents, or uploads fail with 503.** Check `storage` in `/api/health/deep`. Usual causes: expired or wrong `S3_*` keys, a deleted bucket, or R2 `S3_ENDPOINT_URL` typos. Hospitals can retry once it is fixed; no data is lost because failed uploads are not recorded. If `storage_persistent` is false in production, set `S3_BUCKET` before the next deploy.
+
 **Suspected data leak.** Rotate `JWT_SECRET`, Twilio, Sarvam, SMTP and Mongo credentials, revoke sessions, then follow the DPDP breach steps: notify affected users and the Data Protection Board as the law requires.
 
 ## After the incident

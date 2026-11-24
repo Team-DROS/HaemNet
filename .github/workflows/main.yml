@@ -42,3 +42,16 @@ jobs:
         DB_BACKEND: mongodb
         MONGODB_TEST_URI: mongodb://127.0.0.1:27017
       run: python -m pytest backend/tests -q
+
+  dependency-scan:
+    # Informational for now: langgraph and langchain-core need a major upgrade
+    # that must be tested on its own. Remove continue-on-error once they are updated.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - run: pip install pip-audit
+    - run: pip-audit -r backend/requirements.txt --no-deps --disable-pip

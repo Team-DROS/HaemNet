@@ -35,6 +35,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
 
+    - name: Lint, format check and type check
+      run: |
+        pip install ruff==0.16.9 mypy==1.14.1
+        ruff check backend
+        ruff format --check backend
+        mypy backend
+
     - name: Run backend tests
       env:
         JWT_SECRET: ci-only-secret-value-at-least-32-chars

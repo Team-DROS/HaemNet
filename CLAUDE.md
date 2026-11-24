@@ -44,4 +44,4 @@ pip-audit -r backend/requirements.txt --no-deps --disable-pip
 - PyMongo's async client hangs on uvloop: run uvicorn with `--loop asyncio`.
 - Python 3.13 removed `audioop`; install `audioop-lts` there (CI uses 3.11).
 - Uploaded licence files live in `UPLOAD_DIR` on local disk and vanish on Render's free tier.
-- Rate limiters and call quotas are in process memory, so they are per instance until moved to Redis.
+- Rate limits, call quotas and live dashboard events are shared across instances only when `REDIS_URL` is set. Without it they are per instance. Use the async `Limiter` in `backend/services/rate_limit.py`, never a bare in-process counter.

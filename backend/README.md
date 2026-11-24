@@ -211,3 +211,13 @@ staff; plain staff cannot. Removing someone revokes their access immediately.
 Bot protection: set `TURNSTILE_SECRET` to require a Cloudflare Turnstile token on hospital sign-up and `/api/contact`
 (clients send `turnstile_token`). Empty means the check is off. The dashboard reads `EXPO_PUBLIC_TURNSTILE_SITE_KEY`.
 `POST /api/contact` emails `CONTACT_TO` via SMTP and is limited to 5 messages per IP per hour.
+
+## Redis (running more than one instance)
+
+Set `REDIS_URL` to share, across all backend instances:
+- rate limits (sign-in lockouts, sign-up and upload limits, contact form) and the per-hospital daily call quota, kept as sorted sets under `rl:*`
+- live dashboard events: every event is published on the `haemnet:dashboard-events` channel and each instance delivers it to its own sockets, so a Twilio callback on instance B reaches a dashboard connected to instance A
+
+With `REDIS_URL` empty everything stays in process memory, which is fine for one instance. If Redis fails, limits fall back to per-instance counters and events are delivered locally, with a warning in the logs, so an outage weakens limits but never blocks sign-in. `GET /api/health/deep` reports `redis`. Voice sessions stay in process on purpose: one call is one audio WebSocket on one instance. Dispatch state already lives in MongoDB.
+
+Locally: `docker compose up redis`, then `REDIS_URL=redis://localhost:6379`.

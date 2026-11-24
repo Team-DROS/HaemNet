@@ -180,11 +180,13 @@ export function useDispatchStore() {
   }, []);
 
   // ── HTTP ───────────────────────────────────────────────────────
-  const request = useCallback(async (path, { method = 'GET', body, form, auth = true } = {}) => {
+  const request = useCallback(async (path, { method = 'GET', body, form, formData, auth = true } = {}) => {
     const headers = {};
     if (auth && profileRef.current?.token) headers.Authorization = `Bearer ${profileRef.current.token}`;
     let payload;
-    if (form) {
+    if (formData) {
+      payload = formData; // the browser sets the multipart boundary itself
+    } else if (form) {
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
       payload = new URLSearchParams(form).toString();
     } else if (body) {
@@ -199,9 +201,12 @@ export function useDispatchStore() {
     }
     if (!res.ok) {
       const detail = data?.detail;
-      const message = Array.isArray(detail) ? detail.map((d) => d.msg).join(', ') : detail || `Request failed (${res.status})`;
+      const message = Array.isArray(detail) ? detail.map((d) => d.msg).join(', ')
+        : (detail && typeof detail === 'object') ? detail.message || `Request failed (${res.status})`
+        : detail || `Request failed (${res.status})`;
       const err = new Error(message);
       err.status = res.status;
+      err.code = detail && typeof detail === 'object' ? detail.code : undefined;
       throw err;
     }
     return data;
@@ -246,10 +251,30 @@ export function useDispatchStore() {
     return user;
   }, [request]);
 
-  const register = useCallback(async ({ name, location, phone, password }) => {
-    const data = await request('/api/auth/register', { method: 'POST', body: { name, location, phone, password }, auth: false });
+  const register = useCallback(async (fields) => {
+    const data = await request('/api/auth/register', { method: 'POST', body: fields, auth: false });
     return data.id;
   }, [request]);
+
+  // Verification status, documents and the review decision for this hospital.
+  const refreshProfile = useCallback(async () => {
+    const me = await request('/api/hospitals/me');
+    const merged = { ...profileRef.current, ...me, token: profileRef.current?.token };
+    delete merged.password_hash;
+    setProfile(merged);
+    AsyncStorage.setItem(USER_KEY, JSON.stringify(merged)).catch(() => {});
+    return me;
+  }, [request]);
+
+  const uploadDocument = useCallback(async (kind, file) => {
+    const formData = new FormData();
+    formData.append('kind', kind);
+    formData.append('file', file);
+    await request('/api/hospitals/me/documents', { method: 'POST', formData });
+    return refreshProfile();
+  }, [request, refreshProfile]);
+
+  const resendVerification = useCallback(() => request('/api/hospitals/resend-verification', { method: 'POST' }), [request]);
 
   const logout = useCallback(() => clearSession(null), [clearSession]);
 
@@ -431,13 +456,20 @@ export function useDispatchStore() {
 
   // ── Actions ────────────────────────────────────────────────────
   const triggerDispatch = useCallback(async ({ patient, bloodGroup, units, urgency, address }) => {
-    const data = await request('/api/dispatch', {
-      method: 'POST',
-      body: {
-        hospital_id: profileRef.current?.id, blood_group: bloodGroup, urgency,
-        coordinates: { lat: 0, lng: 0 }, address, patient_name: patient || null, units,
-      },
-    });
+    let data;
+    try {
+      data = await request('/api/dispatch', {
+        method: 'POST',
+        body: {
+          hospital_id: profileRef.current?.id, blood_group: bloodGroup, urgency,
+          coordinates: { lat: 0, lng: 0 }, address, patient_name: patient || null, units,
+        },
+      });
+    } catch (e) {
+      // Approval was withdrawn: show the right screen instead of an error.
+      if (e.code && e.code.startsWith('hospital_')) await refreshProfile().catch(() => {});
+      throw e;
+    }
     if (!data.donors_matched) return { matched: 0, message: data.message };
     const createdAt = toMs(data.created_at);
     update(data.dispatch_id, (em) => {
@@ -452,7 +484,7 @@ export function useDispatchStore() {
     });
     setSelectedId(data.dispatch_id);
     return { matched: data.donors_matched, id: data.dispatch_id };
-  }, [request, update]);
+  }, [request, update, refreshProfile]);
 
   const markDonated = useCallback(async (emergencyId, donorId) => {
     await request('/api/donate', {
@@ -468,7 +500,7 @@ export function useDispatchStore() {
   }, [request, update]);
 
   return {
-    booting, profile, login, register, logout, notice, setNotice,
+    booting, profile, login, register, refreshProfile, uploadDocument, resendVerification, logout, notice, setNotice,
     emergencies, ordered, selectedId, setSelectedId, selected: selectedId ? emergencies[selectedId] : null,
     history, wsState, health, availability, now,
     triggerDispatch, markDonated, closeEmergency, refreshAvailability, refreshHistory, reconnect: connect,

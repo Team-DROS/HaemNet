@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 from typing import List, Literal
-from pydantic import field_validator, model_validator
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
-    
+
     sentry_dsn: str = ""
 
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def validate_runtime_configuration(self) -> "Settings":
+    def validate_runtime_configuration(self) -> Settings:
         """
         Reject configuration that would be insecure or broken outside development.
 

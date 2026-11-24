@@ -33,7 +33,8 @@ class SecurityMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
 
         headers = dict(scope.get("headers") or [])
         limit = (settings.max_upload_mb * 1024 * 1024 + 64 * 1024) if scope["path"] == UPLOAD_PATH \
@@ -59,5 +60,5 @@ class SecurityMiddleware:
                                      "headers": [(b"content-type", b"application/json"),
                                                  (b"content-length", str(len(body)).encode())]})
             await send_with_headers({"type": "http.response.body", "body": body})
-            return
+            return None
         await self.app(scope, receive, send_with_headers)

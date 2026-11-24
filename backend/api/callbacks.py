@@ -8,17 +8,20 @@ Routes:
 
 from __future__ import annotations
 
-import json
 import asyncio
 import base64
+import html
+import json
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
 from backend.api.websockets import manager
+from backend.config import settings
 from backend.dispatch_store import dispatch_store
-from backend.schemas.models import CallStatus, DonorStatusUpdate, TERMINAL_OR_DECIDED
+from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusUpdate
 from backend.services.twilio_signature import verify_twilio_request
 
 logger = logging.getLogger(__name__)
@@ -67,9 +70,6 @@ def map_twilio_status(twilio_status: str, current: Optional[str]) -> Optional[Ca
 
 # ── GET/POST /api/twilio/twiml ────────────────────────────────────
 
-from fastapi.responses import Response
-from backend.config import settings
-
 @router.post("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
 @router.get("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
 async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(default="")):
@@ -78,10 +78,9 @@ async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(
     to our Audio Stream WebSocket for real-time Sarvam AI conversational processing.
     """
     ws_url = settings.server_base_url.replace("http", "ws") + settings.twilio_audio_ws_path
-    
-    import html
+
     xml_safe_url = html.escape(ws_url)
-    
+
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
@@ -249,7 +248,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                         return
             try:
                 await asyncio.wait_for(wait_for_playback(), timeout=20)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Closing voice playback acknowledgement timed out")
 
     try:
@@ -258,22 +257,22 @@ async def twilio_audio_stream(websocket: WebSocket):
                 # A lost mark or stalled stream must not leave a call open forever.
                 try:
                     data_str = await asyncio.wait_for(websocket.receive_text(), timeout=35)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("AI voice stream idle; ending without another decision")
                     break
             else:
                 data_str = await websocket.receive_text()
             msg = json.loads(data_str)
-            
+
             if msg["event"] == "start":
                 stream_sid = msg["start"]["streamSid"]
                 call_sid = msg["start"]["callSid"]
-                
+
                 # Extract params passed via <Parameter> tags
                 custom_params = msg["start"].get("customParameters", {})
                 dispatch_id = custom_params.get("dispatch_id", "")
                 donor_id = custom_params.get("donor_id", "")
-                
+
                 if not dispatch_id or not donor_id:
                     logger.warning("Audio stream missing customParameters — closing")
                     await websocket.close(code=1008, reason="Missing params")
@@ -289,7 +288,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                 blood_group = dispatch.get("blood_group", "") if dispatch else ""
 
                 session = create_voice_session(
-                    call_sid=call_sid, 
+                    call_sid=call_sid,
                     dispatch_id=dispatch_id,
                     donor_id=donor_id,
                     donor_name=donor.get("name", "Donor") if donor else "Donor",
@@ -299,7 +298,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                 )
                 active_sessions[call_sid] = session
                 logger.info("Twilio stream started. StreamSid: %s, CallSid: %s, donor: %s", stream_sid, call_sid, donor_id)
-                
+
                 # Send the greeting immediately when stream starts
                 greeting_audio, _ = await session.handle_audio_chunk(b"")
                 if greeting_audio:
@@ -310,12 +309,12 @@ async def twilio_audio_stream(websocket: WebSocket):
             elif msg["event"] == "mark":
                 if session is not None and hasattr(session, "playback_finished"):
                     session.playback_finished(msg.get("mark", {}).get("name", ""))
-                    
+
             elif msg["event"] == "media":
                 if session is None or msg.get("media", {}).get("track", "inbound") != "inbound":
                     continue
                 audio_bytes = base64.b64decode(msg["media"]["payload"])
-                
+
                 # Process through the voice pipeline.
                 response_audio, intent = await session.handle_audio_chunk(audio_bytes)
 
@@ -380,10 +379,10 @@ async def twilio_audio_stream(websocket: WebSocket):
                         closing_audio = await session.generate_closing_message(accepted=True)
                     else:
                         closing_audio = await session.generate_closing_message(accepted=False)
-                        
+
                     if closing_audio:
                         await finish_audio(closing_audio)
-                        
+
                     break
 
             elif msg["event"] == "stop":
@@ -411,8 +410,8 @@ async def _route_accepted_donor(
 ) -> bool:
     """Send the accepted donor directions. Returns True if something was sent."""
     from backend.db_services import get_donor_push_token
-    from backend.services.twilio_service import send_sms
     from backend.services.push_service import send_dispatch_notification
+    from backend.services.twilio_service import send_sms
 
     if not donor or not dispatch:
         logger.warning(
@@ -439,11 +438,10 @@ async def _route_accepted_donor(
                 )
                 logger.info("Donor %s routed via push notification", donor_id)
                 return True
-            else:
-                logger.warning(
-                    "Donor %s has_app=true but no push token — SMS fallback",
-                    donor_id,
-                )
+            logger.warning(
+                "Donor %s has_app=true but no push token — SMS fallback",
+                donor_id,
+            )
         except Exception as exc:
             logger.error("Push failed for donor %s: %s — SMS fallback", donor_id, exc)
 

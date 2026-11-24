@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -13,8 +13,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
 from backend.api.auth import (
-    ROLE_ADMIN, ROLE_HOSPITAL, create_access_token, get_current_admin, get_current_hospital,
-    get_current_hospital_admin, get_password_hash, public_hospital, verify_password,
+    ROLE_ADMIN,
+    ROLE_HOSPITAL,
+    create_access_token,
+    get_current_admin,
+    get_current_hospital,
+    get_current_hospital_admin,
+    get_password_hash,
+    public_hospital,
+    verify_password,
 )
 from backend.config import settings
 from backend.services import hospital_platform as hp
@@ -143,7 +150,7 @@ async def upload_document(
         key = await hp.get_storage().save(hospital_id, ext, data, mime)
     except Exception as exc:
         logger.error("Document storage failed for %s: %s", hospital_id, type(exc).__name__)
-        raise HTTPException(status_code=503, detail="Could not store the file right now. Please try again.")
+        raise HTTPException(status_code=503, detail="Could not store the file right now. Please try again.") from exc
     document = {
         "id": doc_id, "kind": kind, "key": key, "content_type": mime, "size": len(data),
         "filename": (file.filename or f"document.{ext}")[:120], "uploaded_at": hp.now_iso(),
@@ -201,7 +208,7 @@ async def admin_document(hospital_id: str, doc_id: str, admin: str = Depends(get
         content = await hp.get_storage().load(doc["key"]) if doc else None
     except Exception as exc:
         logger.error("Document read failed for %s: %s", hospital_id, type(exc).__name__)
-        raise HTTPException(status_code=503, detail="Could not read the file right now. Please try again.")
+        raise HTTPException(status_code=503, detail="Could not read the file right now. Please try again.") from exc
     if not doc or content is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return Response(content=content, media_type=doc["content_type"],
@@ -370,7 +377,7 @@ async def delete_my_account(payload: DeleteAccount, hospital_id: str = Depends(g
         await hp.get_storage().delete_prefix(hospital_id)
     except Exception as exc:  # do not leave a half-deleted account: stop before removing the record
         logger.error("Document deletion failed for %s: %s", hospital_id, type(exc).__name__)
-        raise HTTPException(status_code=503, detail="Could not delete your documents right now. Please try again.")
+        raise HTTPException(status_code=503, detail="Could not delete your documents right now. Please try again.") from exc
     await hp.repo.add_audit({"hospital_id": hospital_id, "actor": "hospital", "action": "account_deleted", "reason": "", "at": hp.now_iso()})
     await hp.repo.delete(hospital_id)
     logger.info("Hospital %s deleted its account", hospital_id)

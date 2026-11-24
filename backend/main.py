@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-
-import sentry_sdk
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.auth import donor_router as donor_auth_router, router as auth_router
+from backend.api.auth import donor_router as donor_auth_router
+from backend.api.auth import router as auth_router
 from backend.api.callbacks import router as callback_router
 from backend.api.contact import router as contact_router
 from backend.api.hospital_platform import router as platform_router
@@ -100,11 +100,10 @@ async def lifespan(app: FastAPI):
     # Shutdown — close service clients.
     from backend.db_services import close as close_db
     from backend.db_services.mongodb import close as close_mongodb
-    from backend.services.twilio_service import close as close_twilio
     from backend.services.push_service import close as close_push
-    from backend.services.sarvam_service import close as close_sarvam
-
     from backend.services.redis_client import close as close_redis
+    from backend.services.sarvam_service import close as close_sarvam
+    from backend.services.twilio_service import close as close_twilio
 
     await close_redis()
     await close_twilio()

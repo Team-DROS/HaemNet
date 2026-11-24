@@ -9,7 +9,7 @@ and TTS (Text-to-Speech) models for multi-lingual conversations.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 

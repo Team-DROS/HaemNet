@@ -9,14 +9,16 @@ A donor token can never be used on hospital endpoints, and the reverse.
 """
 
 import logging
-import jwt
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+import bcrypt
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-import bcrypt
+
 from backend.config import settings
 from backend.db_services import (
     db_create_donor_password,
@@ -100,8 +102,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 def _decode(token: str) -> Optional[dict]:
     try:

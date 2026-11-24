@@ -11,7 +11,6 @@ from backend.schemas.models import (
 )
 from backend.services.geo import estimate_eta_minutes, haversine_km
 
-
 # ── geo ───────────────────────────────────────────────────────────
 
 def test_haversine_one_degree_of_latitude():

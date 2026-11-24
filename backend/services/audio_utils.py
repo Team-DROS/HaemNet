@@ -2,6 +2,7 @@ import audioop
 import io
 import wave
 
+
 def create_wav_from_mulaw(mulaw_bytes: bytes, sample_rate: int = 8000) -> bytes:
     """
     Converts raw 8-bit mu-law PCM from Twilio to a valid 16-bit PCM WAV file.
@@ -9,7 +10,7 @@ def create_wav_from_mulaw(mulaw_bytes: bytes, sample_rate: int = 8000) -> bytes:
     """
     # Convert mu-law to 16-bit linear PCM
     pcm_bytes = audioop.ulaw2lin(mulaw_bytes, 2)
-    
+
     # Write to a WAV container in memory
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as wav_file:
@@ -17,7 +18,7 @@ def create_wav_from_mulaw(mulaw_bytes: bytes, sample_rate: int = 8000) -> bytes:
         wav_file.setsampwidth(2) # 16-bit
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(pcm_bytes)
-        
+
     return buf.getvalue()
 
 def create_mulaw_from_wav(wav_bytes: bytes) -> bytes:
@@ -49,5 +50,4 @@ def create_mulaw_from_wav(wav_bytes: bytes) -> bytes:
         frames, _ = audioop.ratecv(frames, 2, 1, framerate, 8000, None)
 
     # Finally, convert to mu-law
-    mulaw_bytes = audioop.lin2ulaw(frames, 2)
-    return mulaw_bytes
+    return audioop.lin2ulaw(frames, 2)

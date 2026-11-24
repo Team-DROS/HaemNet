@@ -31,7 +31,6 @@ from typing import Optional
 
 from neo4j import Driver
 
-
 # -----------------------------------------------------------------------------
 # 1. SPATIAL + COOLDOWN MATCH
 #    Core query for the emergency dispatch flow (POST /api/dispatch).

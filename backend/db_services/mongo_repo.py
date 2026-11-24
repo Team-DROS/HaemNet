@@ -33,7 +33,8 @@ from uuid import uuid4
 from pymongo import ASCENDING, GEOSPHERE, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from backend.db_services.mongodb import close as close_client, get_database, ping
+from backend.db_services.mongodb import close as close_client
+from backend.db_services.mongodb import get_database, ping
 from backend.schemas.models import Coordinates, DonorNode
 
 logger = logging.getLogger(__name__)

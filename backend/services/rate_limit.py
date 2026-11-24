@@ -107,7 +107,7 @@ class Limiter:
             pipe.zcard(k)
             _, count = await pipe.execute()
             return count < self.max_events
-        return await self._run(op, lambda l: l.allowed(key, now), now)
+        return await self._run(op, lambda local: local.allowed(key, now), now)
 
     async def try_acquire(self, key: str, now: Optional[float] = None) -> bool:
         """Atomically take one slot. False means the limit is reached (nothing is recorded).
@@ -128,12 +128,12 @@ class Limiter:
                 await r.zrem(k, member)
                 return False
             return True
-        return await self._run(op, lambda l: l.try_acquire(key, now), now)
+        return await self._run(op, lambda local: local.try_acquire(key, now), now)
 
     async def release_one(self, key: str) -> None:
         async def op(r):
             await r.zpopmax(self._key(key))
-        await self._run(op, lambda l: l.release_one(key), None)
+        await self._run(op, lambda local: local.release_one(key), None)
 
     async def hit(self, key: str, now: Optional[float] = None) -> None:
         async def op(r):
@@ -142,7 +142,7 @@ class Limiter:
             pipe.zadd(k, {f"{t}:{uuid.uuid4().hex[:8]}": t})
             pipe.expire(k, int(self.window) + 1)
             await pipe.execute()
-        await self._run(op, lambda l: l.hit(key, now), now)
+        await self._run(op, lambda local: local.hit(key, now), now)
 
     async def retry_after(self, key: str, now: Optional[float] = None) -> int:
         async def op(r):
@@ -153,12 +153,12 @@ class Limiter:
             if not oldest:
                 return 0
             return max(1, int(self.window - (t - oldest[0][1]) + 0.999))
-        return await self._run(op, lambda l: l.retry_after(key, now), now)
+        return await self._run(op, lambda local: local.retry_after(key, now), now)
 
     async def reset(self, key: str) -> None:
         async def op(r):
             await r.delete(self._key(key))
-        await self._run(op, lambda l: l.reset(key), None)
+        await self._run(op, lambda local: local.reset(key), None)
 
     def clear(self) -> None:
         """Forget local counters (tests). Redis keys expire on their own."""

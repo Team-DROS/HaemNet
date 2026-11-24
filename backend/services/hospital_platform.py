@@ -17,9 +17,7 @@ import hashlib
 import logging
 import re
 import secrets
-import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from backend.config import settings
@@ -77,7 +75,6 @@ def new_verification_token() -> tuple[str, str, str]:
 # Documents go through backend.services.file_storage (local disk or S3/R2).
 
 from backend.services.file_storage import LocalStorage, get_storage  # noqa: E402,F401
-
 
 # ── repositories ──────────────────────────────────────────────────
 

@@ -159,7 +159,7 @@ class DashboardConnectionManager:
         self._pubsub_task = asyncio.create_task(self._pubsub_loop(ready))
         try:
             await asyncio.wait_for(ready.wait(), timeout=3)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Redis subscriber is not ready yet; events are local until it connects")
 
     async def stop_pubsub(self) -> None:
@@ -167,10 +167,7 @@ class DashboardConnectionManager:
         self._pubsub_ready = False
         if task:
             task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
+            await asyncio.gather(task, return_exceptions=True)
 
     async def _pubsub_loop(self, ready: asyncio.Event) -> None:
         from backend.services.redis_client import get_redis
@@ -202,7 +199,7 @@ class DashboardConnectionManager:
                     try:
                         await pubsub.aclose()
                     except Exception:
-                        pass
+                        logger.debug("Closing the Redis subscription failed", exc_info=True)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
 
@@ -239,7 +236,7 @@ async def _authenticate(websocket: WebSocket) -> Optional[str]:
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
         message = json.loads(raw)
-    except (asyncio.TimeoutError, json.JSONDecodeError, TypeError):
+    except (TimeoutError, json.JSONDecodeError, TypeError):
         return None
     if not isinstance(message, dict) or message.get("type") != "auth":
         return None
@@ -265,8 +262,8 @@ async def dashboard_websocket(websocket: WebSocket, dispatch_id: Optional[str] =
         try:
             await websocket.send_text(json.dumps({"type": "auth_error", "detail": "Sign in again"}))
             await websocket.close(code=CLOSE_UNAUTHORIZED)
-        except Exception:
-            pass
+        except Exception:  # the client may already be gone; nothing else to do
+            logger.debug("Could not tell the client its sign-in failed", exc_info=True)
         return
 
     if dispatch_id and dispatch_id != "global" and await manager.owner_of(dispatch_id) != hospital_id:

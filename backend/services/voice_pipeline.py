@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from backend.services.audio_utils import create_wav_from_mulaw, create_mulaw_from_wav
+from backend.services.audio_utils import create_mulaw_from_wav, create_wav_from_mulaw
 from backend.services.sarvam_service import (
     get_bcp47_code,
     synthesize_speech,
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # ── Active session registry ───────────────────────────────────────
 
-active_sessions: Dict[str, "VoiceSession"] = {}
+active_sessions: Dict[str, VoiceSession] = {}
 
 
 def create_voice_session(**kwargs):

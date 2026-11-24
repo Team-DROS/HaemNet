@@ -12,16 +12,15 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-
-from backend.api.websockets import manager
-from backend.api.auth import get_actor, get_current_donor, get_current_hospital
 from pydantic import BaseModel
 
+from backend.api.auth import get_actor, get_current_donor, get_current_hospital
+from backend.api.websockets import manager
 from backend.config import settings
 from backend.db_services import (
     db_eligible_counts_by_group,
-    db_health,
     db_get_hospital_by_id,
+    db_health,
     db_set_calls_opt_out,
     delete_donor,
     find_eligible_donors,
@@ -32,6 +31,7 @@ from backend.db_services import (
 from backend.dispatch_store import dispatch_store
 from backend.orchestration.graph import DispatchState, dispatch_graph
 from backend.schemas.models import (
+    TERMINAL_OR_DECIDED,
     CallStatus,
     DispatchRequest,
     DispatchResponse,
@@ -39,7 +39,6 @@ from backend.schemas.models import (
     DonorRegistration,
     DonorResponse,
     DonorStatusUpdate,
-    TERMINAL_OR_DECIDED,
     normalise_language,
 )
 from backend.services.geo import estimate_eta_minutes
@@ -423,7 +422,7 @@ async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depe
         return {"status": "ok", "message": "Donor successfully registered"}
     except Exception as exc:
         logger.exception("Failed to register donor: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to register donor")
+        raise HTTPException(status_code=500, detail="Failed to register donor") from exc
 
 
 # ── POST /api/donor/calls/preference ───────────────────────────────
@@ -437,8 +436,8 @@ async def set_call_preference(payload: CallPreference, donor_phone: str = Depend
     """Opt out of (or back into) automated emergency calls. Takes effect for the next request."""
     try:
         found = await db_set_calls_opt_out(donor_phone, payload.opt_out)
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Call preferences need the MongoDB data layer")
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail="Call preferences need the MongoDB data layer") from exc
     if not found:
         raise HTTPException(status_code=404, detail="Complete your donor profile first")
     logger.info("Donor …%s set calls_opt_out=%s", donor_phone[-4:], payload.opt_out)
@@ -474,7 +473,7 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
         raise
     except Exception as exc:
         logger.exception("Failed to get donor profile: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to get donor profile")
+        raise HTTPException(status_code=500, detail="Failed to get donor profile") from exc
 
 
 # ── DELETE /api/donor/profile/{phone} ───────────────────────────────
@@ -495,7 +494,7 @@ async def remove_donor_profile(phone: str, donor_phone: str = Depends(get_curren
         raise
     except Exception as exc:
         logger.exception("Failed to delete donor profile: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to delete donor profile")
+        raise HTTPException(status_code=500, detail="Failed to delete donor profile") from exc
 
 
 # ── GET /api/donor/requests/{phone} ────────────────────────────────

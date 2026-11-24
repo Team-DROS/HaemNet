@@ -43,7 +43,7 @@ async def initiate_call(
     Place a single outbound call to `donor.phone` via Twilio.
     """
     client = await _get_client()
-    
+
     twiml_url = f"{settings.server_base_url}/api/twilio/twiml?dispatch_id={dispatch_id}&donor_id={donor.id}"
     status_cb = f"{settings.server_base_url}/api/twilio/status-callback?dispatch_id={dispatch_id}&donor_id={donor.id}"
 
@@ -90,7 +90,7 @@ async def initiate_bulk_calls(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     successes: List[Dict[str, Any]] = []
-    for donor, result in zip(donors, results):
+    for donor, result in zip(donors, results, strict=True):
         if isinstance(result, Exception):
             logger.error("Failed to call donor %s: %s", donor.id, result)
         else:

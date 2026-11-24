@@ -24,8 +24,8 @@ from typing import List, Optional
 from uuid import uuid4
 
 from neo4j import AsyncDriver, AsyncGraphDatabase
-from neo4j.exceptions import SessionExpired, ServiceUnavailable
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from backend.config import settings
 from backend.schemas.models import Coordinates, DonorNode
@@ -52,7 +52,7 @@ def _get_driver() -> AsyncDriver:
 
 async def ensure_indexes() -> None:
     """No-op: the Neo4j schema and indexes are managed in database/schema.cypher."""
-    return None
+    return
 
 
 async def db_health() -> dict:

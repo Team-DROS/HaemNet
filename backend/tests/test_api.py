@@ -8,7 +8,6 @@ from backend.api.websockets import DashboardConnectionManager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
 
-
 # ── auth ──────────────────────────────────────────────────────────
 
 def test_login_never_returns_password_hash(client, monkeypatch):

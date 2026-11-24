@@ -1,6 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from backend.dispatch_store import dispatch_store
+
 
 @pytest.mark.asyncio
 @patch("backend.dispatch_store.db_create_dispatch", new_callable=AsyncMock)

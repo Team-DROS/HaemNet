@@ -56,7 +56,7 @@ async def test_a_burst_of_wrong_passwords_is_cut_off_at_the_limit(monkeypatch):
     async def slow_lookup(_):
         seen["checked"] += 1
         await asyncio.sleep(0.01)  # a real database call: lets every request pass the old check
-        return None
+        return
 
     monkeypatch.setattr(auth, "db_get_hospital_by_id", slow_lookup)
     auth._login_failures.clear()

@@ -1,9 +1,10 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import patch
+from httpx import ASGITransport, AsyncClient
+
 from backend.main import app
 
-from unittest.mock import AsyncMock
 
 @pytest.mark.asyncio
 @patch("backend.api.routes.db_health", new_callable=AsyncMock)
@@ -51,12 +52,12 @@ async def test_authorized_dispatch(mock_verify, mock_get_hospital, mock_find_don
     mock_find_donors.return_value = [] # Return empty list so it doesn't trigger graph
     mock_get_hospital.return_value = {"id": "HOSP-123", "password_hash": "hash"}
     mock_verify.return_value = True
-    
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login_res = await ac.post("/api/auth/token", data={"username": "HOSP-123", "password": "password"})
     assert login_res.status_code == 200
     token = login_res.json()["access_token"]
-    
+
     payload = {
         "hospital_id": "HOSP-123",
         "blood_group": "O+",
@@ -65,7 +66,7 @@ async def test_authorized_dispatch(mock_verify, mock_get_hospital, mock_find_don
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
-            "/api/dispatch", 
+            "/api/dispatch",
             json=payload,
             headers={"Authorization": f"Bearer {token}"}
         )

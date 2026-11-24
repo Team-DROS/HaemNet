@@ -1,7 +1,6 @@
 """Consent and audio regressions. No phone calls or provider requests."""
 
 import audioop
-import json
 from unittest.mock import AsyncMock
 
 import httpx
@@ -106,6 +105,7 @@ async def test_continuous_speech_is_not_classified_when_cut_off(session):
 @pytest.mark.parametrize("final_intent", ["accepted", "declined"])
 def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, final_intent):
     import base64
+
     from backend.api import callbacks
     from backend.config import settings
     from backend.tests.conftest import donor

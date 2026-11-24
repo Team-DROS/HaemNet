@@ -14,21 +14,21 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.schemas.models import CallStatus
 from backend.db_services import (
-    db_create_dispatch,
-    db_register_call_sid,
-    db_get_dispatch,
-    db_get_by_call_sid,
-    db_update_donor_status,
-    db_mark_complete,
-    db_remove_dispatch,
     db_active_count,
-    db_summary,
     db_active_dispatch_ids,
-    db_requests_for_donor,
+    db_create_dispatch,
     db_dispatch_history,
+    db_get_by_call_sid,
+    db_get_dispatch,
+    db_mark_complete,
+    db_register_call_sid,
+    db_remove_dispatch,
+    db_requests_for_donor,
+    db_summary,
+    db_update_donor_status,
 )
+from backend.schemas.models import CallStatus
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,9 @@ class DispatchStore:
     Proxies all operations to Neo4j.
     """
 
-    _instance: Optional["DispatchStore"] = None
+    _instance: Optional[DispatchStore] = None
 
-    def __new__(cls) -> "DispatchStore":
+    def __new__(cls) -> DispatchStore:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance

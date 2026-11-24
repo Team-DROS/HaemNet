@@ -9,6 +9,7 @@
     { "source": "/about", "destination": "/pages/about.html" },
     { "source": "/contact", "destination": "/pages/contact.html" },
     { "source": "/privacy", "destination": "/pages/privacy.html" },
+    { "source": "/delete-account", "destination": "/pages/delete-account.html" },
     { "source": "/terms", "destination": "/pages/terms.html" },
     { "source": "/thank-you", "destination": "/pages/thank-you.html" }
   ],

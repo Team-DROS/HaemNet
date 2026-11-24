@@ -175,3 +175,35 @@ def test_rollback_selects_original_class(monkeypatch):
     assert type(voice_pipeline.create_voice_session(**args)) is voice_pipeline.VoiceSession
     monkeypatch.setattr(settings, "voice_intent_mode", "ai")
     assert isinstance(voice_pipeline.create_voice_session(**args), ai_voice_pipeline.AIVoiceSession)
+
+
+SECRET = "my-secret-donor-phrase"
+
+
+async def test_stt_does_not_log_transcript(monkeypatch, caplog):
+    from backend.services import sarvam_service
+
+    class Resp:
+        def raise_for_status(self): pass
+        def json(self): return {"transcript": SECRET}
+
+    class Client:
+        async def post(self, *a, **k): return Resp()
+
+    monkeypatch.setattr(sarvam_service, "_get_client", AsyncMock(return_value=Client()))
+    with caplog.at_level("DEBUG"):
+        await sarvam_service.transcribe_audio(b"x", language="en-IN")
+    assert caplog.records
+    assert SECRET not in caplog.text
+
+
+async def test_legacy_pipeline_does_not_log_transcript(monkeypatch, caplog):
+    s = voice_pipeline.VoiceSession(
+        call_sid="c1", dispatch_id="dp1", donor_id="d1", donor_name="Test", language="english",
+    )
+    s._greeting_sent = True
+    monkeypatch.setattr(s, "_transcribe", AsyncMock(return_value="no " + SECRET))
+    with caplog.at_level("DEBUG"):
+        await s.handle_audio_chunk(b"\x00" * (voice_pipeline._AUDIO_BUFFER_THRESHOLD + 1))
+    assert caplog.records
+    assert SECRET not in caplog.text

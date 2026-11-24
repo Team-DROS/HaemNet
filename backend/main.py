@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.auth import donor_router as donor_auth_router, router as auth_router
 from backend.api.callbacks import router as callback_router
+from backend.api.contact import router as contact_router
 from backend.api.hospital_platform import router as platform_router
 from backend.api.routes import router as api_router
 from backend.api.websockets import router as ws_router
@@ -134,6 +135,7 @@ app.include_router(callback_router)
 app.include_router(auth_router)
 app.include_router(donor_auth_router)
 app.include_router(platform_router)
+app.include_router(contact_router)
 
 
 # ── Root ──────────────────────────────────────────────────────────

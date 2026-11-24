@@ -171,3 +171,10 @@ def platform_repo(monkeypatch):
     api._upload_limit.clear()
     api._staff_failures.clear()
     return repo
+
+
+@pytest.fixture(autouse=True)
+def _reset_contact_limit():
+    from backend.api import contact
+    contact._per_ip.clear()
+    yield

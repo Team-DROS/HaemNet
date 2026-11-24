@@ -13,7 +13,7 @@ import jwt
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 import bcrypt
@@ -61,6 +61,7 @@ class HospitalRegister(BaseModel):
     hfr_id: Optional[str] = None
     registration_number: Optional[str] = None
     blood_centre_licence: Optional[str] = None
+    turnstile_token: Optional[str] = None
 
 
 _PUBLIC_HOSPITAL_FIELDS = ("id", "name", "location", "phone", "status", "email_verified", "decision_reason")
@@ -179,10 +180,12 @@ async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depe
     return phone
 
 @router.post("/register")
-async def register_hospital(hospital: HospitalRegister):
+async def register_hospital(hospital: HospitalRegister, request: Request):
     from backend.api import hospital_platform as platform
     from backend.services import hospital_platform as hp
+    from backend.services.turnstile import require_human
 
+    await require_human(hospital.turnstile_token, request.client.host if request.client else None)
     profile = {}
     if hp.platform_available():
         email = (hospital.official_email or "").strip().lower()

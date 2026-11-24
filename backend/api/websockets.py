@@ -26,7 +26,10 @@ from typing import Awaitable, Callable, Dict, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from backend.api.auth import hospital_from_token  # local import: auth imports db at module load
+from backend.dispatch_store import dispatch_store  # local import: avoids a cycle at startup
 from backend.schemas.models import DonorStatusUpdate
+from backend.services import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,6 @@ OwnerResolver = Callable[[str], Awaitable[Optional[str]]]
 
 async def _default_owner_resolver(dispatch_id: str) -> Optional[str]:
     """Look up which hospital created a dispatch (used after a restart)."""
-    from backend.dispatch_store import dispatch_store  # local import: avoids a cycle at startup
 
     try:
         dispatch = await dispatch_store.get_dispatch(dispatch_id)
@@ -139,9 +141,8 @@ class DashboardConnectionManager:
     PUBSUB_CHANNEL = "haemnet:dashboard-events"
 
     async def _emit(self, dispatch_id: str, payload: str) -> None:
-        from backend.services.redis_client import get_redis
 
-        client = get_redis()
+        client = redis_client.get_redis()
         if client is not None and self._pubsub_ready:
             try:
                 await client.publish(self.PUBSUB_CHANNEL, json.dumps({"d": dispatch_id, "p": payload}))
@@ -152,9 +153,8 @@ class DashboardConnectionManager:
 
     async def start_pubsub(self) -> None:
         """Begin delivering events published by any instance. No-op without Redis."""
-        from backend.services.redis_client import get_redis
 
-        if get_redis() is None or self._pubsub_task is not None:
+        if redis_client.get_redis() is None or self._pubsub_task is not None:
             return
         ready = asyncio.Event()
         self._pubsub_task = asyncio.create_task(self._pubsub_loop(ready))
@@ -171,13 +171,12 @@ class DashboardConnectionManager:
             await asyncio.gather(task, return_exceptions=True)
 
     async def _pubsub_loop(self, ready: asyncio.Event) -> None:
-        from backend.services.redis_client import get_redis
 
         delay = 1.0
         while True:
             pubsub = None
             try:
-                pubsub = get_redis().pubsub()
+                pubsub = redis_client.get_redis().pubsub()
                 await pubsub.subscribe(self.PUBSUB_CHANNEL)
                 self._pubsub_ready = True
                 ready.set()
@@ -234,7 +233,6 @@ manager = DashboardConnectionManager()
 
 async def _authenticate(websocket: WebSocket) -> Optional[str]:
     """Wait for the auth message and return the hospital ID, or None."""
-    from backend.api.auth import hospital_from_token  # local import: auth imports db at module load
 
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)

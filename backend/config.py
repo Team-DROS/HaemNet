@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     twilio_phone_number: str = ""
 
     sentry_dsn: str = ""
+    # Share of requests traced by Sentry (0 to 1). Tracing every request is costly at scale.
+    sentry_traces_sample_rate: float = 0.1
 
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
     sarvam_api_key: str = ""

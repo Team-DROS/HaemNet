@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from backend.config import settings
+from backend.db_services.mongodb import get_database
 from backend.services.email_service import send_verification_email
 from backend.services.errors import BadRequestError
 
@@ -81,17 +82,11 @@ def new_verification_token() -> tuple[str, str, str]:
     return token, hash_token(token), expires
 
 
-# ── file storage ──────────────────────────────────────────────────
-# Documents go through backend.services.file_storage (local disk or S3/R2).
-
-from backend.services.file_storage import LocalStorage, get_storage  # noqa: E402,F401
-
 # ── repositories ──────────────────────────────────────────────────
 
 
 class MongoPlatformRepo:
     def _col(self):
-        from backend.db_services.mongodb import get_database
 
         return get_database()["hospitals"]
 
@@ -125,12 +120,10 @@ class MongoPlatformRepo:
         await self._col().delete_one({"_id": hospital_id})
 
     async def add_audit(self, entry: dict) -> None:
-        from backend.db_services.mongodb import get_database
 
         await get_database()["hospital_audit"].insert_one(dict(entry))
 
     async def audit_for(self, hospital_id: str) -> List[dict]:
-        from backend.db_services.mongodb import get_database
 
         cursor = (
             get_database()["hospital_audit"].find({"hospital_id": hospital_id}, {"_id": 0}).sort("at", -1).limit(100)

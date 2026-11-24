@@ -20,9 +20,13 @@ from fastapi.responses import Response
 
 from backend.api.websockets import manager
 from backend.config import settings
+from backend.db_services import get_donor_push_token
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusUpdate
+from backend.services.push_service import send_dispatch_notification
+from backend.services.twilio_service import send_sms
 from backend.services.twilio_signature import verify_twilio_request
+from backend.services.voice_pipeline import active_sessions, create_voice_session
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +227,6 @@ async def twilio_audio_stream(websocket: WebSocket):
     WebSocket endpoint for Twilio to stream live call audio.
     Twilio sends JSON messages with Base64 audio chunks.
     """
-    from backend.services.voice_pipeline import active_sessions, create_voice_session
 
     await websocket.accept()
     logger.info("Audio stream WebSocket connected")
@@ -442,9 +445,6 @@ async def _route_accepted_donor(
     dispatch: Optional[dict],
 ) -> bool:
     """Send the accepted donor directions. Returns True if something was sent."""
-    from backend.db_services import get_donor_push_token
-    from backend.services.push_service import send_dispatch_notification
-    from backend.services.twilio_service import send_sms
 
     if not donor or not dispatch:
         logger.warning("Cannot route donor %s — missing context", donor_id)

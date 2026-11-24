@@ -6,6 +6,7 @@ import pytest
 from backend.api import auth
 from backend.config import settings
 from backend.services import hospital_platform as hp
+from backend.services.file_storage import LocalStorage
 from backend.tests.platform_helpers import (
     PDF,
     PNG,
@@ -206,7 +207,7 @@ def test_admin_can_download_document_but_hospital_cannot(client, platform_repo, 
 
 
 def test_document_path_cannot_escape_upload_folder(uploads):
-    storage = hp.LocalStorage(str(uploads))
+    storage = LocalStorage(str(uploads))
     (uploads.parent / "secret.txt").write_text("x")
     assert storage.path("../secret.txt") is None
 

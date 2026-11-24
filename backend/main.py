@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -26,33 +27,38 @@ from backend.api.errors import register_error_handlers
 from backend.api.health import router as health_router
 from backend.api.hospital_account import router as hospital_account_router
 from backend.api.hospital_staff import router as hospital_staff_router
+from backend.api.websockets import manager as ws_manager
 from backend.api.websockets import router as ws_router
 from backend.config import settings
+from backend.db_services import close as close_database
+from backend.db_services import ensure_indexes
+from backend.db_services.mongodb import close as close_mongodb
 from backend.hardening import SecurityMiddleware
 from backend.observability import RequestIdMiddleware, configure_logging
+from backend.services.push_service import close as close_push
+from backend.services.redis_client import close as close_redis
+from backend.services.sarvam_service import close as close_sarvam
+from backend.services.twilio_service import close as close_twilio
 
-# ── Logging ───────────────────────────────────────────────────────
-
-configure_logging(
-    logging.DEBUG if settings.app_env == "development" else logging.INFO,
-    settings.log_format.lower(),
-)
 logger = logging.getLogger(__name__)
 
+SERVICE_NAME = "AI Blood Dispatch Network"
+SERVICE_VERSION = "0.1.0"
 
-# ── Sentry Setup ──────────────────────────────────────────────────
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-    )
+
+def _is_production() -> bool:
+    return settings.app_env.lower() == "production"
+
+
+# ── Startup and shutdown steps ────────────────────────────────────
+
+
+def _configure_sentry() -> None:
+    if not settings.sentry_dsn:
+        logger.warning("SENTRY_DSN not set. Sentry is disabled.")
+        return
+    sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
     logger.info("Sentry initialized")
-else:
-    logger.warning("SENTRY_DSN not set. Sentry is disabled.")
-
-
-# ── Lifespan (startup / shutdown) ─────────────────────────────────
 
 
 def _warn_if_uvloop() -> None:
@@ -73,18 +79,9 @@ def _warn_if_uvloop() -> None:
         )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Manage resources that need setup/teardown around the app's
-    lifecycle (e.g. HTTP clients, DB connections).
-    """
-    logger.info(
-        "🚀  Blood Dispatch Backend starting up (env=%s, database=%s)",
-        settings.app_env,
-        settings.db_backend,
-    )
-    _warn_if_uvloop()
+def _log_startup_configuration() -> None:
+    """Say what is and is not configured, so a misconfigured deploy is obvious from the logs."""
+    logger.info("Starting up (env=%s, database=%s)", settings.app_env, settings.db_backend)
     logger.info(
         "Voice interpretation mode=%s model=%s",
         settings.voice_intent_mode,
@@ -99,91 +96,101 @@ async def lifespan(app: FastAPI):
         logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:
         logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
-    try:
-        from backend.db_services import ensure_indexes
 
+
+async def _prepare_database() -> None:
+    try:
         await ensure_indexes()
     except Exception as exc:  # the app still starts; /api/health reports the problem
         logger.error("Could not prepare database indexes: %s", exc)
-    from backend.api.websockets import manager as ws_manager
 
-    await ws_manager.start_pubsub()
-    yield
-    await ws_manager.stop_pubsub()
-    # Shutdown — close service clients.
-    from backend.db_services import close as close_db
-    from backend.db_services.mongodb import close as close_mongodb
-    from backend.services.push_service import close as close_push
-    from backend.services.redis_client import close as close_redis
-    from backend.services.sarvam_service import close as close_sarvam
-    from backend.services.twilio_service import close as close_twilio
 
+async def _close_clients() -> None:
     await close_redis()
     await close_twilio()
     await close_sarvam()
     await close_push()
-    await close_db()
+    await close_database()
     await close_mongodb()
-    logger.info("🛑  Blood Dispatch Backend shut down cleanly.")
 
 
-# ── App Factory ───────────────────────────────────────────────────
-
-app = FastAPI(
-    title="AI Blood Dispatch Network",
-    description=(
-        "Real-time, AI-orchestrated emergency blood dispatch system. "
-        "Queries the donor database for eligible donors, orchestrates "
-        "concurrent multilingual AI voice calls, and streams live status "
-        "updates to hospital dashboards via WebSocket."
-    ),
-    version="0.1.0",
-    lifespan=lifespan,
-    # Interactive API docs list every endpoint; keep them off in production.
-    docs_url=None if settings.app_env.lower() == "production" else "/docs",
-    redoc_url=None,
-    openapi_url=None if settings.app_env.lower() == "production" else "/openapi.json",
-)
-
-register_error_handlers(app)
-
-app.add_middleware(SecurityMiddleware)
-app.add_middleware(RequestIdMiddleware)
-
-# ── CORS ──────────────────────────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ── Mount Routers ─────────────────────────────────────────────────
-app.include_router(health_router)
-app.include_router(dispatches_router)
-app.include_router(donors_router)
-app.include_router(ws_router)
-app.include_router(callback_router)
-app.include_router(auth_router)
-app.include_router(donor_auth_router)
-app.include_router(hospital_account_router)
-app.include_router(hospital_staff_router)
-app.include_router(admin_router)
-app.include_router(contact_router)
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Set up resources before serving and release them on shutdown."""
+    _log_startup_configuration()
+    _warn_if_uvloop()
+    await _prepare_database()
+    await ws_manager.start_pubsub()
+    yield
+    await ws_manager.stop_pubsub()
+    await _close_clients()
+    logger.info("Shut down cleanly.")
 
 
-# ── Root ──────────────────────────────────────────────────────────
+# ── App factory ───────────────────────────────────────────────────
 
 
-@app.get("/", tags=["meta"])
-async def root():
-    """API root — service identification."""
-    return {
-        "service": "AI Blood Dispatch Network",
-        "version": "0.1.0",
-        "docs": None if settings.app_env.lower() == "production" else "/docs",
-        "health": "/api/health",
-        "voice_intent_mode": settings.voice_intent_mode,
-        "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,
-    }
+def create_app() -> FastAPI:
+    """Build the application. Settings are read when this is called."""
+    configure_logging(logging.DEBUG if settings.app_env == "development" else logging.INFO, settings.log_format.lower())
+    _configure_sentry()
+
+    application = FastAPI(
+        title=SERVICE_NAME,
+        description=(
+            "Real-time, AI-orchestrated emergency blood dispatch system. "
+            "Finds eligible donors, orchestrates concurrent multilingual AI voice calls, "
+            "and streams live status updates to hospital dashboards via WebSocket."
+        ),
+        version=SERVICE_VERSION,
+        lifespan=lifespan,
+        # Interactive API docs list every endpoint; keep them off in production.
+        docs_url=None if _is_production() else "/docs",
+        redoc_url=None,
+        openapi_url=None if _is_production() else "/openapi.json",
+    )
+
+    register_error_handlers(application)
+
+    # Added innermost first: a request meets CORS, then request IDs, then security headers and size limits.
+    application.add_middleware(SecurityMiddleware)
+    application.add_middleware(RequestIdMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    for router in (
+        health_router,
+        dispatches_router,
+        donors_router,
+        ws_router,
+        callback_router,
+        auth_router,
+        donor_auth_router,
+        hospital_account_router,
+        hospital_staff_router,
+        admin_router,
+        contact_router,
+    ):
+        application.include_router(router)
+
+    @application.get("/", tags=["meta"])
+    async def root() -> dict:
+        """Service identification."""
+        return {
+            "service": SERVICE_NAME,
+            "version": SERVICE_VERSION,
+            "docs": None if _is_production() else "/docs",
+            "health": "/api/health",
+            "voice_intent_mode": settings.voice_intent_mode,
+            "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,
+        }
+
+    return application
+
+
+app = create_app()

@@ -22,8 +22,17 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
+from backend.config import settings
+from backend.db_services import find_eligible_donors, get_donor_push_token
+from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
+from backend.services.blood_groups import request_groups
+from backend.services.call_guard import cap_donors
+from backend.services.call_pacer import wait_for_slot
 from backend.services.error_reporting import report_exception
+from backend.services.geo import haversine_km
+from backend.services.push_service import send_dispatch_notification
+from backend.services.twilio_service import initiate_call, send_sms
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +81,6 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Query the database for eligible donors and populate the state.
     """
-    from backend.db_services import find_eligible_donors
-    from backend.services.blood_groups import request_groups
-    from backend.services.geo import haversine_km
 
     donors: List[DonorNode] = []
     for group in request_groups(state["blood_group"]):
@@ -85,8 +91,6 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 lng=state["lng"],
             )
         )
-
-    from backend.services.call_guard import cap_donors
 
     donors = cap_donors(donors, state["lat"], state["lng"])
 
@@ -116,9 +120,6 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     3. Maps each Twilio call SID back to (dispatch_id, donor_id).
     4. Emits RINGING updates for the WebSocket dashboard.
     """
-    from backend.config import settings
-    from backend.dispatch_store import dispatch_store
-    from backend.schemas.models import DonorNode
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -186,9 +187,6 @@ async def _initiate_single_call(
     Initiate a single Twilio call and register the call SID in the store.
     Errors are logged but do not crash the dispatch.
     """
-    from backend.dispatch_store import dispatch_store
-    from backend.services.call_pacer import wait_for_slot
-    from backend.services.twilio_service import initiate_call
 
     try:
         await wait_for_slot()
@@ -217,8 +215,6 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Post-acceptance routing: send push notification (native path)
     or SMS with web-tracking link (fallback path).
     """
-    from backend.db_services import get_donor_push_token
-    from backend.services.push_service import send_dispatch_notification
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -277,7 +273,6 @@ async def _send_sms_fallback(
     donor_data: Dict[str, Any], dispatch_id: str, donor_id: str, lat: float, lng: float
 ) -> None:
     """Send an SMS with a tracking link as a fallback routing path."""
-    from backend.services.twilio_service import send_sms
 
     tracking_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
     await send_sms(

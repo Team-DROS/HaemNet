@@ -58,19 +58,16 @@ def test_unhandled_errors_return_a_request_id_and_no_internals(monkeypatch):
     assert body["request_id"] == res.headers["x-request-id"]
 
 
-def test_docs_are_hidden_in_production():
-    from importlib import reload
+def test_docs_are_hidden_in_production(monkeypatch):
+    from backend.main import create_app
 
-    import backend.main as main
+    monkeypatch.setattr(settings, "app_env", "production")
+    production = create_app()
+    assert production.docs_url is None and production.openapi_url is None
+    assert TestClient(production).get("/").json()["docs"] is None
 
-    original = settings.app_env
-    try:
-        settings.app_env = "production"
-        production_app = reload(main).app
-        assert production_app.docs_url is None and production_app.openapi_url is None
-    finally:
-        settings.app_env = original
-        reload(main)
+    monkeypatch.setattr(settings, "app_env", "development")
+    assert create_app().docs_url == "/docs"
 
 
 # ── dispatch audit trail ──────────────────────────────────────────

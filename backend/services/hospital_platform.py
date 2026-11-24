@@ -7,8 +7,8 @@ existed before verification and counts as approved.
 
 Storage is MongoDB (the default data layer). With DB_BACKEND=neo4j the
 verification endpoints answer 501 and registration keeps the old behaviour.
-Licence files go to a private local folder behind `LocalStorage`; swap that
-class for S3 or R2 with signed URLs when the host has no persistent disk.
+Licence files are stored privately through `file_storage`: local disk by default,
+or an S3 or R2 bucket when S3_BUCKET is set (needed on hosts that wipe the disk).
 """
 
 from __future__ import annotations
@@ -74,36 +74,9 @@ def new_verification_token() -> tuple[str, str, str]:
 
 
 # ── file storage ──────────────────────────────────────────────────
+# Documents go through backend.services.file_storage (local disk or S3/R2).
 
-class LocalStorage:
-    """Private folder on disk. Paths never come from user input."""
-
-    def __init__(self, root: str):
-        self.root = Path(root)
-
-    def save(self, hospital_id: str, ext: str, data: bytes) -> str:
-        folder = self.root / re.sub(r"[^A-Za-z0-9_-]", "_", hospital_id)
-        folder.mkdir(parents=True, exist_ok=True)
-        key = f"{uuid.uuid4().hex}.{ext}"
-        (folder / key).write_bytes(data)
-        return f"{folder.name}/{key}"
-
-    def path(self, stored_key: str) -> Optional[Path]:
-        target = (self.root / stored_key).resolve()
-        if self.root.resolve() not in target.parents or not target.is_file():
-            return None
-        return target
-
-
-    def delete_folder(self, hospital_id: str) -> None:
-        import shutil
-        folder = (self.root / re.sub(r"[^A-Za-z0-9_-]", "_", hospital_id)).resolve()
-        if self.root.resolve() in folder.parents and folder.is_dir():
-            shutil.rmtree(folder, ignore_errors=True)
-
-
-def get_storage() -> LocalStorage:
-    return LocalStorage(settings.upload_dir)
+from backend.services.file_storage import LocalStorage, get_storage  # noqa: E402,F401
 
 
 # ── repositories ──────────────────────────────────────────────────

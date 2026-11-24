@@ -30,3 +30,5 @@ h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px}h2{font-size:
 .menu-toggle:checked~.nav{display:block}.menu-toggle{position:absolute;opacity:0;width:1px;height:1px}
 .menu-toggle:focus-visible~.menu-btn{outline:3px solid var(--brand)}
 .cta .btn{flex:1 1 100%;text-align:center}}
+.sticky-cta{display:none}
+@media (max-width:720px){.sticky-cta{display:block;position:fixed;left:0;right:0;bottom:0;padding:10px 16px;background:var(--bg);border-top:1px solid var(--line);z-index:6}.sticky-cta .btn{display:block;text-align:center}body{padding-bottom:70px}}

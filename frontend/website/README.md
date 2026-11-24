@@ -1,0 +1,73 @@
+# HaemNet public website
+
+The marketing site: home, how it works, hospitals, donors, about, contact,
+privacy, terms, 404 and a thank-you page. It is static HTML and CSS with a small
+zero-dependency build script. It is separate from the hospital dashboard
+(`../donor-web`) and the donor app (`../donor-mobile`).
+
+Owner: Role 2 (Web and Hospital Platform).
+
+## Run it
+
+Needs Node 18 or newer. There is nothing to install.
+
+```bash
+cd frontend/website
+npm run dev        # builds and serves http://localhost:4000
+npm run build      # builds into dist/ and runs the checks
+```
+
+The build fails if a page has a missing or badly sized title or description, no
+or more than one `<h1>`, an image without `alt`, a broken internal link or
+anchor, or leftover placeholder text.
+
+## Where things live
+
+| What | Where |
+| --- | --- |
+| Site-wide settings (email, URLs, store link) | `site.config.json` |
+| Pages (one file each, with a small header block for title and description) | `src/pages/*.html` |
+| Shared header, footer, head tags, icons | `src/partials/*.html` |
+| Page frame | `src/layout.html` |
+| Styles (colours follow `design/tokens.json`, dark mode follows the OS) | `src/css/styles.css` |
+| Menu and contact form scripts | `src/js/site.js` |
+| Icons, social image, favicon | `src/static/` (regenerate with `npm run assets`, needs Playwright) |
+
+`sitemap.xml`, `robots.txt` and `site.webmanifest` are generated at build time.
+
+## Settings in `site.config.json`
+
+| Key | Meaning | Before launch |
+| --- | --- | --- |
+| `siteUrl` | Public address, used for canonical links, sitemap and social cards | Set to the real domain (or set the `SITE_URL` environment variable in Vercel) |
+| `email` | Contact address shown on the site | Create this mailbox, then keep it here |
+| `dashboardUrl` | Where "Register your hospital" and "Hospital sign in" go | Point to the production dashboard |
+| `playStoreUrl` | Set to the Play Store link when the app is live. While `null`, the donors page shows an early-access button instead | Fill after release |
+| `formEndpoint` | Form service address (for example a Formspree form URL). While `null`, the contact form opens the visitor's email app | Create a form endpoint and paste it in |
+| `plausibleDomain` | Turns on cookie-free Plausible analytics when set | Optional |
+
+## Deploy on Vercel
+
+1. Import the GitHub repo in Vercel.
+2. Set **Root Directory** to `frontend/website`. Vercel reads `vercel.json` for the build command, output folder, clean URLs and security headers.
+3. Add the domain in Project Settings and set `SITE_URL` to it.
+4. After the first deploy, add the site to Google Search Console and submit `/sitemap.xml`.
+5. If you use a form service, add its host to `connect-src` in `vercel.json` if it is not already listed.
+
+## Before launch
+
+- [ ] Replace the assumed domain and email in `site.config.json`
+- [ ] Have the privacy policy and terms reviewed, then remove `draft: true` from both pages
+- [ ] Check these public claims are true on launch day:
+  - hospitals are verified before they can dispatch (`for-hospitals.html`)
+  - donors can delete their profile in the app (`for-donors.html`, `privacy.html`)
+  - call audio is not stored, and transcript logging is minimised (`privacy.html`)
+  - the 10 km radius and 56-day cooldown are still the defaults
+- [ ] Add the Play Store link
+- [ ] Test the contact form end to end with a real endpoint
+- [ ] Run Lighthouse on the live URL (target above 90 on every score)
+- [ ] The site sets no cookies. If analytics or any tool that sets cookies is added, add a cookie banner
+
+## Facts the copy relies on
+
+All numbers on the site come from the product and are listed in the root `README.md`: 10 km default radius, 56-day cooldown, English, Hindi and Tamil, explicit confirmation before acceptance. Do not add statistics, response times or hospital counts unless they come from real measured data.

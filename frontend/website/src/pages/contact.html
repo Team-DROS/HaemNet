@@ -1,0 +1,38 @@
+---
+title: Contact HaemNet
+description: Contact the HaemNet team about hospital onboarding, pilots, the donor app early access list, or any question about how emergency blood coordination works.
+---
+<section class="page-head">
+  <div class="container narrow">
+    <span class="eyebrow">Contact</span>
+    <h1>Talk to the HaemNet team.</h1>
+    <p class="lead">Hospitals, blood banks, donors and partners are all welcome. We read every message.</p>
+  </div>
+</section>
+
+<section class="section" style="padding-top:32px">
+  <div class="container narrow">
+    <p class="notice info" style="margin-bottom:24px"><strong>In a medical emergency, call your local emergency number or your hospital's blood bank directly.</strong> This form is not monitored around the clock.</p>
+    <form id="contact-form" class="form" novalidate data-email="{{site.email}}" data-endpoint="{{site.formEndpoint}}">
+      <div class="field"><label for="name">Your name</label><input id="name" name="name" type="text" autocomplete="name" required aria-describedby="name-error"><div class="field-error" id="name-error" aria-live="polite"></div></div>
+      <div class="field"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" required aria-describedby="email-error"><div class="field-error" id="email-error" aria-live="polite"></div></div>
+      <div class="field">
+        <label for="role">I am a</label>
+        <select id="role" name="role" required aria-describedby="role-error">
+          <option value="">Choose one</option>
+          <option>Hospital or blood bank</option>
+          <option>Blood donor</option>
+          <option>Student, researcher or partner</option>
+          <option>Other</option>
+        </select>
+        <div class="field-error" id="role-error" aria-live="polite"></div>
+      </div>
+      <div class="field"><label for="organisation">Organisation <span class="hint">(optional)</span></label><input id="organisation" name="organisation" type="text" autocomplete="organization"></div>
+      <div class="field"><label for="message">Message</label><textarea id="message" name="message" required aria-describedby="message-error"></textarea><div class="field-error" id="message-error" aria-live="polite"></div></div>
+      <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div id="form-status" class="form-status" role="status" hidden></div>
+      <div><button class="btn btn-primary" type="submit">Send message</button></div>
+      <p class="small muted">We use your details only to reply. See the <a href="/privacy">privacy policy</a>. You can also write to <a href="mailto:{{site.email}}">{{site.email}}</a>.</p>
+    </form>
+  </div>
+</section>

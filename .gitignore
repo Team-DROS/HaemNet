@@ -48,3 +48,4 @@ database/README.md
 !frontend/donor-mobile/tests/*.js
 !backend/README.md
 !design/README.md
+!docs/*.md

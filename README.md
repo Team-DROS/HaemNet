@@ -107,6 +107,7 @@ It is an optional legacy implementation, not the default data store.
 | Directory | Contents |
 | --- | --- |
 | [Backend](backend/README.md) | API, authentication, voice sessions, orchestration, tests |
+| [Website](frontend/website/README.md) | Public marketing site: static pages, legal pages, SEO, contact form |
 | [Frontend](frontend/README.md) | Hospital dashboard and separate donor mobile workspace |
 | [Donor app](frontend/donor-mobile/README.md) | Development, Android builds, sign-in, troubleshooting |
 | [Database](database/README.md) | Collections, indexes, recruitment queries, configuration |

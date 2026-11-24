@@ -1,0 +1,57 @@
+---
+title: Become a blood donor with HaemNet
+description: Join HaemNet as a blood donor. Get a short call in English, Hindi or Tamil when a nearby hospital needs your blood group, and choose yes or no.
+---
+<section class="page-head">
+  <div class="container narrow">
+    <span class="eyebrow">For donors</span>
+    <h1>Help when someone nearby needs your blood group.</h1>
+    <p class="lead">Create a profile once. When a hospital close to you urgently needs your group, HaemNet calls you in your language and you decide.</p>
+    <div class="btn-row">
+      {{#if site.playStoreUrl}}<a class="btn btn-primary" href="{{site.playStoreUrl}}">Get it on Google Play</a>{{else}}<a class="btn btn-primary" href="/contact">Join the early access list</a>{{/if}}
+    </div>
+    {{#if site.playStoreUrl}}{{else}}<p class="small muted" style="margin-top:14px">The Android app is in testing. Tell us you are interested and we will message you when it is on Google Play.</p>{{/if}}
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head"><span class="eyebrow">How it works for you</span><h2>Three simple steps.</h2></div>
+    <ol class="steps" style="grid-template-columns:repeat(3,1fr)">
+      <li><h3>Create your profile</h3><p>Sign up with your phone number and password. Add your name, blood group, preferred language and area.</p></li>
+      <li><h3>Get a call when needed</h3><p>If a nearby hospital needs your group and you are outside the 56-day cooldown, you may get a short call.</p></li>
+      <li><h3>Say yes or no</h3><p>You will be asked to confirm. If you accept, you receive directions to the hospital.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container split">
+    <div>
+      <span class="eyebrow">Your privacy</span>
+      <h2>Your information, handled with care.</h2>
+      <p class="lead">We collect only what is needed to match you to nearby requests and to call you.</p>
+      <p><a href="/privacy">Read the privacy policy</a></p>
+    </div>
+    <div class="card">
+      <ul class="ticks">
+        <li>Nothing is recorded as a yes until you clearly confirm.</li>
+        <li>Hospitals see your blood group and distance for matched requests, not your live location.</li>
+        <li>You can sign out or ask for your profile to be deleted at any time.</li>
+        <li>The 56-day cooldown helps you avoid giving blood again too soon.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-head center"><span class="eyebrow">Donor questions</span><h2>Before you sign up</h2></div>
+    <div class="faq">
+      <details><summary>Am I obliged to donate if I get a call?</summary><div><p>No. You can say no, and a decline is simply recorded. Nothing is recorded as a yes without your clear confirmation.</p></div></details>
+      <details><summary>Who decides if I can donate?</summary><div><p>The hospital. HaemNet uses the 56-day cooldown and your blood group to decide who to call, but it is not a medical check. The hospital will assess you before donation.</p></div></details>
+      <details><summary>Which languages can I be called in?</summary><div><p>English, Hindi and Tamil.</p></div></details>
+      <details><summary>How do I delete my data?</summary><div><p>You can delete your profile in the app. You can also write to <a href="mailto:{{site.email}}">{{site.email}}</a>. See the <a href="/privacy">privacy policy</a> for what is kept.</p></div></details>
+    </div>
+  </div>
+</section>

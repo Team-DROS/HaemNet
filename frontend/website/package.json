@@ -1,0 +1,13 @@
+{
+  "name": "haemnet-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HaemNet public marketing website (static, no runtime dependencies)",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --serve",
+    "assets": "node tools/make-brand-assets.cjs"
+  },
+  "engines": { "node": ">=18" }
+}

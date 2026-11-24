@@ -21,6 +21,7 @@ import uuid
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]{8,64}$")
 access_logger = logging.getLogger("haemnet.access")
+logger = logging.getLogger(__name__)
 
 
 class RequestIdFilter(logging.Filter):
@@ -70,15 +71,32 @@ class RequestIdMiddleware:
         token = request_id_var.set(rid)
         started = time.perf_counter()
         status = {"code": 500}
+        response_started = {"done": False}
 
         async def send_with_id(message):
             if message["type"] == "http.response.start":
                 status["code"] = message["status"]
+                response_started["done"] = True
                 message.setdefault("headers", []).append((b"x-request-id", rid.encode()))
             await send(message)
 
         try:
             await self.app(scope, receive, send_with_id)
+        except Exception as exc:
+            # Answer here, while the request ID is still set, so the client and the logs agree.
+            if response_started["done"]:
+                raise
+            logger.exception("Unhandled error on %s %s", scope["method"], scope["path"])
+            try:
+                import sentry_sdk
+                sentry_sdk.capture_exception(exc)
+            except Exception:
+                pass
+            body = json.dumps({"detail": "Something went wrong on our side.", "request_id": rid}).encode()
+            await send_with_id({"type": "http.response.start", "status": 500, "headers": [
+                (b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),
+                (b"x-content-type-options", b"nosniff")]})
+            await send_with_id({"type": "http.response.body", "body": body})
         finally:
             access_logger.info("%s %s -> %s in %dms", scope["method"], scope["path"], status["code"],
                                (time.perf_counter() - started) * 1000)

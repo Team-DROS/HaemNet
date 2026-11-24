@@ -23,6 +23,7 @@ from backend.api.hospital_platform import router as platform_router
 from backend.api.routes import router as api_router
 from backend.api.websockets import router as ws_router
 from backend.config import settings
+from backend.hardening import SecurityMiddleware
 from backend.observability import RequestIdMiddleware, configure_logging
 
 # ── Logging ───────────────────────────────────────────────────────
@@ -126,8 +127,13 @@ app = FastAPI(
     ),
     version="0.1.0",
     lifespan=lifespan,
+    # Interactive API docs list every endpoint; keep them off in production.
+    docs_url=None if settings.app_env.lower() == "production" else "/docs",
+    redoc_url=None,
+    openapi_url=None if settings.app_env.lower() == "production" else "/openapi.json",
 )
 
+app.add_middleware(SecurityMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
 # ── CORS ──────────────────────────────────────────────────────────
@@ -157,7 +163,7 @@ async def root():
     return {
         "service": "AI Blood Dispatch Network",
         "version": "0.1.0",
-        "docs": "/docs",
+        "docs": None if settings.app_env.lower() == "production" else "/docs",
         "health": "/api/health",
         "voice_intent_mode": settings.voice_intent_mode,
         "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,

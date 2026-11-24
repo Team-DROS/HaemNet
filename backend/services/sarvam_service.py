@@ -14,8 +14,12 @@ from typing import Any, Dict, Optional
 import httpx
 
 from backend.config import settings
+from backend.services.http_retry import post_with_retry
 
 logger = logging.getLogger(__name__)
+
+# Speech and translation requests are safe to repeat, so throttling and server errors are retried.
+_RETRY = {429, 500, 502, 503, 504}
 
 _client: httpx.AsyncClient | None = None
 
@@ -56,7 +60,7 @@ async def transcribe_audio(
     }
 
     try:
-        resp = await client.post("/speech-to-text", files=files, data=data)
+        resp = await post_with_retry(client, "/speech-to-text", retry_statuses=_RETRY, idempotent=True, files=files, data=data)
         resp.raise_for_status()
         result = resp.json()
         # Never log transcript text: donor speech is personal data (DPDP Act).
@@ -87,7 +91,7 @@ async def synthesize_speech(
     }
 
     try:
-        resp = await client.post("/text-to-speech", json=payload, headers={"Content-Type": "application/json"})
+        resp = await post_with_retry(client, "/text-to-speech", retry_statuses=_RETRY, idempotent=True, json=payload, headers={"Content-Type": "application/json"})
         resp.raise_for_status()
         result = resp.json()
         # Sarvam returns base64-encoded audio in the response.
@@ -123,7 +127,7 @@ async def translate_text(
     }
 
     try:
-        resp = await client.post("/translate", json=payload)
+        resp = await post_with_retry(client, "/translate", retry_statuses=_RETRY, idempotent=True, json=payload)
         resp.raise_for_status()
         result = resp.json()
         translated = result.get("translated_text", text)

@@ -179,9 +179,11 @@ async def _initiate_single_call(
     Errors are logged but do not crash the dispatch.
     """
     from backend.dispatch_store import dispatch_store
+    from backend.services.call_pacer import wait_for_slot
     from backend.services.twilio_service import initiate_call
 
     try:
+        await wait_for_slot()
         result = await initiate_call(donor_node, dispatch_id, callback_url)
         call_sid = result.get("sid", "")
         if call_sid:

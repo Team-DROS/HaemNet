@@ -184,6 +184,8 @@ async def test_stt_does_not_log_transcript(monkeypatch, caplog):
     from backend.services import sarvam_service
 
     class Resp:
+        status_code = 200
+
         def raise_for_status(self): pass
         def json(self): return {"transcript": SECRET}
 

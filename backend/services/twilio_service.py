@@ -14,6 +14,7 @@ import httpx
 
 from backend.config import settings
 from backend.schemas.models import DonorNode
+from backend.services.http_retry import post_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,10 @@ async def initiate_call(
     }
 
     try:
-        resp = await client.post(
-            f"/Accounts/{settings.twilio_account_sid}/Calls.json",
-            data=payload,
+        # 429 means Twilio did not start the call, so retrying cannot double-ring a donor.
+        resp = await post_with_retry(
+            client, f"/Accounts/{settings.twilio_account_sid}/Calls.json",
+            data=payload, retry_statuses={429}, idempotent=False,
         )
         resp.raise_for_status()
         data = resp.json()

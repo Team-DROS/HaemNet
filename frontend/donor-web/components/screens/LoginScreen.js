@@ -50,7 +50,7 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
           blood_centre_licence: form.licence.trim() || null, turnstile_token: botToken,
         });
         // Sign in straight away so the hospital lands on the verification steps.
-        try { await store.login(id, form.password); } catch (e) {
+        try { await store.login(id, form.password); } catch {
           setForm((f) => ({ ...f, id }));
           setMode('login');
           setSuccess(`Registered. Your hospital ID is ${id}. Sign in to finish verification.`);

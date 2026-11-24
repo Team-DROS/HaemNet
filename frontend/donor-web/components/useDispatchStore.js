@@ -195,7 +195,7 @@ export function useDispatchStore() {
     }
     const res = await fetch(`${API_URL}${path}`, { method, headers, body: payload });
     let data = null;
-    try { data = await res.json(); } catch (e) { data = null; }
+    try { data = await res.json(); } catch { data = null; }
     if (res.status === 401 && auth && profileRef.current) {
       await clearSession('Your session expired. Please sign in again.');
     }
@@ -235,7 +235,7 @@ export function useDispatchStore() {
           delete user.password_hash; // older builds stored the hash; never keep it
           setProfile(user);
         }
-      } catch (e) { /* ignore corrupt storage */ }
+      } catch { /* ignore corrupt storage */ }
       setBooting(false);
     })();
   }, []);
@@ -303,7 +303,7 @@ export function useDispatchStore() {
 
   const handleMessage = useCallback((raw) => {
     let msg;
-    try { msg = JSON.parse(raw); } catch (e) { return; }
+    try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || msg.type === 'pong') return;
     if (msg.type === 'auth_ok') { retry.current.attempts = 0; setWsState('live'); return; }
     if (msg.type === 'auth_error') return; // the close handler signs the user out
@@ -341,7 +341,7 @@ export function useDispatchStore() {
     let socket;
     try {
       socket = new WebSocket(WS_URL);
-    } catch (e) {
+    } catch {
       setWsState('offline');
       return;
     }
@@ -350,7 +350,7 @@ export function useDispatchStore() {
     socket.onopen = () => {
       // First message authenticates; the server confirms with auth_ok.
       socket.send(JSON.stringify({ type: 'auth', token: profileRef.current?.token || '' }));
-      heartbeat = setInterval(() => { try { socket.send('ping'); } catch (e) { /* closed */ } }, 25000);
+      heartbeat = setInterval(() => { try { socket.send('ping'); } catch { /* closed */ } }, 25000);
     };
     socket.onmessage = (event) => handleMessage(event.data);
     socket.onclose = (event) => {
@@ -379,7 +379,7 @@ export function useDispatchStore() {
         });
         return next;
       });
-    } catch (e) { /* dashboard still works from the live feed */ }
+    } catch { /* dashboard still works from the live feed */ }
   }, [request]);
 
   const refreshAvailability = useCallback(async () => {
@@ -398,7 +398,7 @@ export function useDispatchStore() {
       // The backend can run on MongoDB or Neo4j; database_status covers both,
       // and older builds only sent the engine's own field.
       setHealth({ ...data, dbOk: (data.database_status || data.mongodb || data.neo4j) === 'connected' });
-    } catch (e) {
+    } catch {
       setHealth({ status: 'unreachable' });
     }
   }, [request]);
@@ -420,7 +420,7 @@ export function useDispatchStore() {
         if (profileRef.current) AsyncStorage.setItem(historyKey(profileRef.current.id), JSON.stringify(next)).catch(() => {});
         return next;
       });
-    } catch (e) { /* keep showing the local copy */ }
+    } catch { /* keep showing the local copy */ }
   }, [request]);
 
   // Everything that starts when a hospital signs in.
@@ -435,13 +435,14 @@ export function useDispatchStore() {
       try {
         const saved = await AsyncStorage.getItem(historyKey(profile.id));
         if (saved) setHistory(JSON.parse(saved));
-      } catch (e) { /* ignore */ }
+      } catch { /* ignore */ }
       refreshHistory();
     })();
+    const retryState = retry.current;
     return () => {
       clearInterval(healthTimer);
-      retry.current.stopped = true;
-      if (retry.current.timer) clearTimeout(retry.current.timer);
+      retryState.stopped = true;
+      if (retryState.timer) clearTimeout(retryState.timer);
       if (ws.current) ws.current.close();
     };
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps

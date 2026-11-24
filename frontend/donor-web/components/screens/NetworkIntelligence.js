@@ -6,6 +6,7 @@
 // the same numbers and nothing here is a demo figure.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { downloadCsv } from '../exportCsv';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Alert as AlertIcon, Chart } from '../Icons';
 import { bg, BLOOD_GROUPS, color, font } from '../theme';
@@ -332,6 +333,20 @@ const STATUS_PILL = {
   active: ['Active', 'red'], fulfilled: ['Fulfilled', 'green'], partial: ['Partial', 'amber'], closed: ['Closed', 'muted'],
 };
 
+const CSV_COLUMNS = [
+  { label: 'Request ID', value: (h) => h.id },
+  { label: 'Created', value: (h) => new Date(h.createdAt).toISOString() },
+  { label: 'Blood group', value: (h) => h.bloodGroup },
+  { label: 'Units', value: (h) => h.units },
+  { label: 'Urgency', value: (h) => h.urgency },
+  { label: 'Status', value: (h) => h.status },
+  { label: 'Donors matched', value: (h) => h.matched },
+  { label: 'Contacted', value: (h) => h.contacted },
+  { label: 'Accepted', value: (h) => h.accepted },
+  { label: 'Donated', value: (h) => h.donated },
+  { label: 'Patient / ref', value: (h) => h.patient },
+];
+
 function HistoryTable({ history, now }) {
   const [status, setStatus] = useState('all');
   const [group, setGroup] = useState('all');
@@ -349,6 +364,11 @@ function HistoryTable({ history, now }) {
           <Text style={s.title}>Request history</Text>
           <Text style={s.sub}>{rows.length} of {history.length} records</Text>
         </View>
+        <Pressable onPress={() => downloadCsv(`haemnet-requests-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, rows)}
+          disabled={rows.length === 0} accessibilityRole="button" accessibilityLabel="Export request history as CSV"
+          style={{ opacity: rows.length ? 1 : 0.4 }}>
+          <Text style={{ color: color.blueText, fontFamily: font.body, fontSize: 13, fontWeight: '600' }}>Export CSV</Text>
+        </Pressable>
         <View style={[s.row, { gap: 10, flexWrap: 'wrap' }]}>
           <Segmented value={status} onChange={setStatus} options={[
             { value: 'all', label: 'All' }, { value: 'fulfilled', label: 'Fulfilled' },

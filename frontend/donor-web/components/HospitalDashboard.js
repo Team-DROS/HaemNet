@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { Activity, Chart, HaemNetMark, LogOut, Map as MapIcon, Plus } from './Icons';
+import { Activity, Chart, HaemNetMark, LogOut, Map as MapIcon, Network, Plus } from './Icons';
 import { applyWebTheme, color, font, getSavedTheme, loadWebFonts } from './theme';
 import ThemeToggle from './ThemeToggle';
 import { Button, LiveDot } from './ui';
@@ -14,14 +14,16 @@ import CommandCenter from './screens/CommandCenter';
 import DispatchMap from './screens/DispatchMap';
 import NetworkIntelligence from './screens/NetworkIntelligence';
 import NewRequestDrawer from './screens/NewRequestDrawer';
+import TeamScreen from './screens/TeamScreen';
 
 const NAV = [
   { key: 'command', label: 'Command Center', Icon: Activity },
   { key: 'map', label: 'Dispatch Map', Icon: MapIcon },
   { key: 'intel', label: 'Network Intelligence', Icon: Chart },
+  { key: 'team', label: 'Team', Icon: Network, adminOnly: true },
 ];
 
-const TITLES = { command: 'Command Center', map: 'Dispatch Map', intel: 'Network Intelligence' };
+const TITLES = { command: 'Command Center', map: 'Dispatch Map', intel: 'Network Intelligence', team: 'Team' };
 
 export default function HospitalDashboard() {
   useEffect(loadWebFonts, []);
@@ -44,6 +46,7 @@ export default function HospitalDashboard() {
 
   if (store.profile.status && store.profile.status !== 'approved') return <PendingReview store={store} />;
 
+  const canManage = !store.profile.staff || store.profile.staff.role === 'admin';
   const compactNav = width < 1180;
   const compactBody = width < 1320;
   const open = store.ordered.filter((e) => !e.closed);
@@ -51,7 +54,7 @@ export default function HospitalDashboard() {
 
   return (
     <View style={s.root}>
-      <Sidebar compact={compactNav} tab={tab} setTab={setTab} store={store} openCount={open.length} />
+      <Sidebar compact={compactNav} tab={tab} setTab={setTab} store={store} openCount={open.length} canManage={canManage} />
 
       <View style={s.main}>
         <View style={s.topbar}>
@@ -83,6 +86,7 @@ export default function HospitalDashboard() {
           {tab === 'command' && <CommandCenter store={store} compact={compactBody} onNew={() => setDrawerOpen(true)} />}
           {tab === 'map' && <DispatchMap store={store} compact={compactBody} />}
           {tab === 'intel' && <NetworkIntelligence store={store} compact={compactBody} />}
+          {tab === 'team' && canManage && <TeamScreen store={store} />}
         </View>
       </View>
 
@@ -96,7 +100,7 @@ export default function HospitalDashboard() {
   );
 }
 
-function Sidebar({ compact, tab, setTab, store, openCount }) {
+function Sidebar({ compact, tab, setTab, store, openCount, canManage }) {
   const healthy = store.wsState === 'live' && store.health?.dbOk;
   const initials = (store.profile.name || store.profile.id || '?')
     .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -113,7 +117,7 @@ function Sidebar({ compact, tab, setTab, store, openCount }) {
 
       <View style={{ paddingHorizontal: compact ? 10 : 12, paddingTop: 8 }}>
         {!compact && <Text style={s.navSection}>OPERATIONS</Text>}
-        {NAV.map(({ key, label, Icon }) => {
+        {NAV.filter((n) => !n.adminOnly || canManage).map(({ key, label, Icon }) => {
           const active = tab === key;
           return (
             <Pressable

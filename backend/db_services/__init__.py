@@ -39,6 +39,7 @@ if settings.db_backend == "neo4j":
         db_get_dispatch,
         db_get_hospital_by_id,
         db_clear_donor_password,
+        db_set_calls_opt_out,
         db_create_donor_password,
         db_get_donor_password_hash,
         db_health,
@@ -70,6 +71,7 @@ else:
         db_get_dispatch,
         db_get_hospital_by_id,
         db_clear_donor_password,
+        db_set_calls_opt_out,
         db_create_donor_password,
         db_get_donor_password_hash,
         db_health,
@@ -102,4 +104,5 @@ __all__ = [
     "db_dispatch_history", "db_requests_for_donor",
     "db_create_hospital", "db_get_hospital_by_id",
     "db_get_donor_password_hash", "db_create_donor_password", "db_clear_donor_password",
+    "db_set_calls_opt_out",
 ]

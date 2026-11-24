@@ -15,11 +15,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from backend.api.websockets import manager
 from backend.api.auth import get_current_donor, get_current_hospital
+from pydantic import BaseModel
+
 from backend.config import settings
 from backend.db_services import (
     db_eligible_counts_by_group,
     db_health,
     db_get_hospital_by_id,
+    db_set_calls_opt_out,
     delete_donor,
     find_eligible_donors,
     get_donor_by_phone,
@@ -398,11 +401,31 @@ async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depe
             language=normalise_language(payload.language),
             lat=payload.lat,
             lng=payload.lng,
+            **({} if payload.calls_consent is None else {"calls_consent": payload.calls_consent}),
         )
         return {"status": "ok", "message": "Donor successfully registered"}
     except Exception as exc:
         logger.exception("Failed to register donor: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to register donor")
+
+
+# ── POST /api/donor/calls/preference ───────────────────────────────
+
+class CallPreference(BaseModel):
+    opt_out: bool
+
+
+@router.post("/donor/calls/preference")
+async def set_call_preference(payload: CallPreference, donor_phone: str = Depends(get_current_donor)):
+    """Opt out of (or back into) automated emergency calls. Takes effect for the next request."""
+    try:
+        found = await db_set_calls_opt_out(donor_phone, payload.opt_out)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="Call preferences need the MongoDB data layer")
+    if not found:
+        raise HTTPException(status_code=404, detail="Complete your donor profile first")
+    logger.info("Donor …%s set calls_opt_out=%s", donor_phone[-4:], payload.opt_out)
+    return {"status": "ok", "calls_opt_out": payload.opt_out}
 
 
 # ── GET /api/donor/profile/{phone} ─────────────────────────────────
@@ -427,6 +450,7 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
                 "phone": donor.phone,
                 "blood_group": donor.blood_group,
                 "last_donated_date": donor.last_donated_date.isoformat() if donor.last_donated_date else None,
+                "calls_opt_out": donor.calls_opt_out,
             }
         }
     except HTTPException:

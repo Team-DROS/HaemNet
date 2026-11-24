@@ -102,6 +102,7 @@ def _doc_to_donor_node(doc: Dict[str, Any]) -> DonorNode:
         location=Coordinates(lat=coordinates[1], lng=coordinates[0]),
         has_app=doc.get("has_app", False),
         last_donated_date=_as_utc(doc.get("last_donated_date")),
+        calls_opt_out=bool(doc.get("calls_opt_out", False)),
     )
 
 
@@ -123,6 +124,10 @@ async def ensure_indexes() -> None:
     await db[CALLS].create_index([("dispatch_id", ASCENDING)])
     await db[CALLS].create_index([("donor_id", ASCENDING)])
     await db[CALLS].create_index([("call_sid", ASCENDING)], sparse=True)
+    # Hospital platform: review queue by status, token lookups and audit trails.
+    await db[HOSPITALS].create_index([("status", ASCENDING), ("registered_at", ASCENDING)])
+    await db[HOSPITALS].create_index([("email_verification_hash", ASCENDING)], sparse=True)
+    await db["hospital_audit"].create_index([("hospital_id", ASCENDING), ("at", ASCENDING)])
     _indexes_ready = True
     logger.info("MongoDB indexes ensured on %s", get_database().name)
 
@@ -167,6 +172,7 @@ async def find_eligible_donors(
             "spherical": True,
             "query": {
                 "blood_group": blood_group,
+                "calls_opt_out": {"$ne": True},  # donors who opted out of automated calls are never called
                 "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
             },
         }},
@@ -192,7 +198,8 @@ async def db_eligible_counts_by_group(
             "distanceField": "distance_m",
             "maxDistance": radius_km * 1000,
             "spherical": True,
-            "query": {"$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}]},
+            "query": {"calls_opt_out": {"$ne": True},
+                      "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}]},
         }},
         {"$group": {"_id": "$blood_group", "available": {"$sum": 1}}},
     ]
@@ -224,6 +231,7 @@ async def register_donor(
     lng: float,
     last_donated_date: Optional[str] = None,
     push_token: Optional[str] = None,
+    calls_consent: Optional[bool] = None,
 ) -> DonorNode:
     """
     Create or update the donor with this phone number.
@@ -248,6 +256,11 @@ async def register_donor(
         update["$set"]["last_donated_date"] = donated
     if push_token:
         update["$set"]["push_token"] = push_token
+    if calls_consent is True:
+        update["$set"]["calls_consent_at"] = _now()
+        update["$set"]["calls_opt_out"] = False
+    elif calls_consent is False:
+        update["$set"]["calls_opt_out"] = True
 
     doc = await get_database()[DONORS].find_one_and_update(
         {"phone": phone}, update, upsert=True, return_document=ReturnDocument.AFTER,
@@ -290,6 +303,15 @@ async def db_clear_donor_password(phone: str) -> bool:
     """Forget the password so the owner can create a new one (admin reset)."""
     result = await get_database()[DONOR_LOGINS].delete_one({"_id": phone})
     return bool(result.deleted_count)
+
+
+async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
+    """Stop (or resume) automated calls to this donor. False if there is no such donor."""
+    fields: Dict[str, Any] = {"calls_opt_out": bool(opt_out), "calls_preference_at": _now()}
+    if not opt_out:
+        fields["calls_consent_at"] = _now()
+    result = await get_database()[DONORS].update_one({"phone": phone}, {"$set": fields})
+    return result.matched_count > 0
 
 
 async def delete_donor(phone: str) -> bool:

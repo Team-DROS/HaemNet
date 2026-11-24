@@ -264,3 +264,38 @@ async def test_admin_reset_clears_only_the_password(db):
     assert await mongo_repo.db_clear_donor_password("+919000000001") is True
     assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
     assert await mongo_repo.get_donor_by_phone("+919000000001") is not None
+
+
+# ── call consent, opt-out and platform indexes ────────────────────
+
+async def test_opted_out_donors_are_never_matched_or_counted(db):
+    await seed_donor(phone="+919000000001", km=1.0)
+    await seed_donor(phone="+919000000002", km=2.0)
+    assert await mongo_repo.db_set_calls_opt_out("+919000000001", True) is True
+    donors = await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)
+    assert [d.phone for d in donors] == ["+919000000002"]
+    assert await mongo_repo.db_eligible_counts_by_group(HOSP_LAT, HOSP_LNG) == {"O-": 1}
+    await mongo_repo.db_set_calls_opt_out("+919000000001", False)
+    assert len(await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)) == 2
+
+
+async def test_opt_out_for_an_unknown_donor_is_reported(db):
+    assert await mongo_repo.db_set_calls_opt_out("+919999999999", True) is False
+
+
+async def test_consent_is_timestamped_and_survives_profile_edits(db):
+    lat, lng = _offset_km(1.0)
+    await mongo_repo.register_donor("A", "+919000000001", "O-", "english", lat, lng, calls_consent=True)
+    doc = await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"})
+    assert doc["calls_consent_at"] is not None and doc["calls_opt_out"] is False
+    await mongo_repo.register_donor("A2", "+919000000001", "O-", "english", lat, lng)  # edit without the flag
+    assert (await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"}))["calls_consent_at"] == doc["calls_consent_at"]
+    await mongo_repo.register_donor("A2", "+919000000001", "O-", "english", lat, lng, calls_consent=False)
+    assert (await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"}))["calls_opt_out"] is True
+
+
+async def test_platform_indexes_exist(db):
+    hospital_indexes = {i["name"] async for i in await db[mongo_repo.HOSPITALS].list_indexes()}
+    audit_indexes = {i["name"] async for i in await db["hospital_audit"].list_indexes()}
+    assert "status_1_registered_at_1" in hospital_indexes and "email_verification_hash_1" in hospital_indexes
+    assert "hospital_id_1_at_1" in audit_indexes

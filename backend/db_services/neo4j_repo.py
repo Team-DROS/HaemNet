@@ -383,6 +383,7 @@ async def register_donor(
     lng: float,
     last_donated_date: Optional[str] = None,
     push_token: Optional[str] = None,
+    calls_consent: Optional[bool] = None,  # accepted for API parity; consent is only stored on MongoDB
 ) -> DonorNode:
     """
     Create or update a donor who registered via the mobile app.
@@ -831,3 +832,7 @@ async def db_get_hospital_by_id(id: str) -> Optional[dict]:
         result = await session.run(_GET_HOSPITAL_QUERY, id=id)
         record = await result.single()
         return record["h"] if record else None
+
+
+async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
+    raise NotImplementedError("Call opt-out needs the MongoDB data layer")

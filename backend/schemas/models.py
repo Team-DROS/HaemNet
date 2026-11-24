@@ -149,6 +149,7 @@ class DonorNode(BaseModel):
     location: Coordinates
     has_app: bool = False
     last_donated_date: Optional[datetime] = None
+    calls_opt_out: bool = False
 
     @field_validator("language", mode="before")
     @classmethod
@@ -192,3 +193,7 @@ class DonorRegistration(BaseModel):
     language: str = Field(default="english", description="Preferred language for AI voice")
     lat: float = Field(..., description="Latitude")
     lng: float = Field(..., description="Longitude")
+    calls_consent: Optional[bool] = Field(
+        default=None,
+        description="True when the donor ticked consent to automated emergency calls; stored with a timestamp",
+    )

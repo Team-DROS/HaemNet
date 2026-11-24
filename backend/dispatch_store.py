@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 class DispatchStore:
     """
     Stateless store for active dispatch sessions.
-    Proxies all operations to Neo4j.
+    Proxies all operations to the configured database.
     """
 
     _instance: Optional[DispatchStore] = None
@@ -71,13 +71,13 @@ class DispatchStore:
             urgency=urgency,
             address=address,
         )
-        logger.info("Dispatch %s registered with %d donors in Neo4j", dispatch_id, len(donors))
+        logger.info("Dispatch %s registered with %d donors", dispatch_id, len(donors))
 
     async def register_call(self, call_sid: str, dispatch_id: str, donor_id: str) -> None:
         """Map a Twilio call SID to a dispatch + donor pair."""
         await db_register_call_sid(call_sid, dispatch_id, donor_id)
         logger.debug(
-            "Call SID %s registered → dispatch=%s donor=%s in Neo4j",
+            "Call SID %s registered → dispatch=%s donor=%s",
             call_sid,
             dispatch_id,
             donor_id,
@@ -139,7 +139,7 @@ class DispatchStore:
     async def remove_dispatch(self, dispatch_id: str) -> None:
         """Remove a finished dispatch and all its CallSession nodes."""
         await db_remove_dispatch(dispatch_id)
-        logger.info("Dispatch %s removed from Neo4j", dispatch_id)
+        logger.info("Dispatch %s removed", dispatch_id)
 
     # ── Diagnostics ───────────────────────────────────────────────
 

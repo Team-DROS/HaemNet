@@ -26,7 +26,7 @@ async def approved_hospital(hospital_id: str = Depends(get_current_hospital)) ->
 
 
 async def require_platform() -> None:
-    """Hospital verification needs the MongoDB data layer; answer 501 on the Neo4j one."""
+    """Hospital verification needs the MongoDB data layer; answer 501 on the Neo4j layer, which does not support it."""
     if not hp.platform_available():
         raise HTTPException(status_code=501, detail="Hospital verification needs the MongoDB data layer")
 

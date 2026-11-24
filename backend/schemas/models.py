@@ -148,7 +148,7 @@ class DonorStatusUpdate(BaseModel):
 
 class DonorNode(BaseModel):
     """
-    Mirrors the Donor Node properties stored in Neo4j.
+    A donor as stored in the database (MongoDB document or Neo4j node).
     Used internally — never exposed directly to the frontend.
     """
 
@@ -173,7 +173,7 @@ class DonorNode(BaseModel):
         if self.last_donated_date is None:
             return True
         last = self.last_donated_date
-        if last.tzinfo is None:  # Neo4j datetimes are aware; older payloads may be naive UTC
+        if last.tzinfo is None:  # stored datetimes are aware; older payloads may be naive UTC
             last = last.replace(tzinfo=timezone.utc)
         delta = datetime.now(timezone.utc) - last
         return delta.days > 56

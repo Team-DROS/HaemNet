@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
@@ -142,7 +142,11 @@ async def upload_document(
     ext, mime = detected
 
     doc_id = uuid.uuid4().hex
-    key = hp.get_storage().save(hospital_id, ext, data)
+    try:
+        key = await hp.get_storage().save(hospital_id, ext, data, mime)
+    except Exception as exc:
+        logger.error("Document storage failed for %s: %s", hospital_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Could not store the file right now. Please try again.")
     document = {
         "id": doc_id, "kind": kind, "key": key, "content_type": mime, "size": len(data),
         "filename": (file.filename or f"document.{ext}")[:120], "uploaded_at": hp.now_iso(),
@@ -192,12 +196,16 @@ async def admin_document(hospital_id: str, doc_id: str, admin: str = Depends(get
     _require_platform()
     hospital = await _load(hospital_id)
     doc = next((d for d in hospital.get("documents", []) if d["id"] == doc_id), None)
-    path = hp.get_storage().path(doc["key"]) if doc else None
-    if not doc or not path:
+    try:
+        content = await hp.get_storage().load(doc["key"]) if doc else None
+    except Exception as exc:
+        logger.error("Document read failed for %s: %s", hospital_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Could not read the file right now. Please try again.")
+    if not doc or content is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return FileResponse(path, media_type=doc["content_type"],
-                        headers={"Content-Disposition": f'inline; filename="{doc["id"]}.{doc["key"].rsplit(".", 1)[-1]}"',
-                                 "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+    return Response(content=content, media_type=doc["content_type"],
+                    headers={"Content-Disposition": f'inline; filename="{doc["id"]}.{doc["key"].rsplit(".", 1)[-1]}"',
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 class Decision(BaseModel):
@@ -358,7 +366,11 @@ async def delete_my_account(payload: DeleteAccount, hospital_id: str = Depends(g
     if payload.confirm_id.strip().upper() != hospital_id:
         raise HTTPException(status_code=422, detail="Type your hospital ID to confirm deletion")
     await _load(hospital_id)
-    hp.get_storage().delete_folder(hospital_id)
+    try:
+        await hp.get_storage().delete_prefix(hospital_id)
+    except Exception as exc:  # do not leave a half-deleted account: stop before removing the record
+        logger.error("Document deletion failed for %s: %s", hospital_id, type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Could not delete your documents right now. Please try again.")
     await hp.repo.add_audit({"hospital_id": hospital_id, "actor": "hospital", "action": "account_deleted", "reason": "", "at": hp.now_iso()})
     await hp.repo.delete(hospital_id)
     logger.info("Hospital %s deleted its account", hospital_id)

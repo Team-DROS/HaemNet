@@ -80,6 +80,9 @@ async def lifespan(app: FastAPI):
     _warn_if_uvloop()
     logger.info("Voice interpretation mode=%s model=%s", settings.voice_intent_mode,
                 settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords")
+    if settings.app_env.lower() in {"production", "staging"} and not settings.s3_bucket:
+        logger.warning("S3_BUCKET is not set: hospital documents are stored on local disk and are lost "
+                       "on hosts with an ephemeral disk (for example Render free). Set S3_BUCKET for production.")
     if not settings.twilio_configured:
         logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:

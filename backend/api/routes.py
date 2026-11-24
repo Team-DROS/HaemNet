@@ -567,7 +567,11 @@ async def deep_health_check():
     redis_ok = await redis_ping()
     if redis_ok is not None:
         checks["redis"] = redis_ok
-    healthy = checks["database"] and checks.get("sarvam", True) and checks.get("redis", True)
+    from backend.services.file_storage import get_storage, persistent
+    checks["storage"] = await get_storage().check()
+    checks["storage_persistent"] = persistent()
+    healthy = (checks["database"] and checks.get("sarvam", True) and checks.get("redis", True)
+               and checks["storage"])
     return {"status": "healthy" if healthy else "degraded", "checks": checks}
 
 

@@ -207,3 +207,7 @@ Staff accounts: the hospital owner login can create staff (`POST /api/hospitals/
 roles `admin` or `staff`, up to 20), list and remove them. Staff sign in through
 `POST /api/auth/staff-token` with hospital ID, email and password. Staff admins can manage
 staff; plain staff cannot. Removing someone revokes their access immediately.
+
+Bot protection: set `TURNSTILE_SECRET` to require a Cloudflare Turnstile token on hospital sign-up and `/api/contact`
+(clients send `turnstile_token`). Empty means the check is off. The dashboard reads `EXPO_PUBLIC_TURNSTILE_SITE_KEY`.
+`POST /api/contact` emails `CONTACT_TO` via SMTP and is limited to 5 messages per IP per hour.

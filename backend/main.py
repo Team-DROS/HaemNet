@@ -15,14 +15,17 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api.admin import router as admin_router
 from backend.api.auth import donor_router as donor_auth_router
 from backend.api.auth import router as auth_router
 from backend.api.callbacks import router as callback_router
 from backend.api.contact import router as contact_router
 from backend.api.dispatches import router as dispatches_router
 from backend.api.donors import router as donors_router
+from backend.api.errors import register_error_handlers
 from backend.api.health import router as health_router
-from backend.api.hospital_platform import router as platform_router
+from backend.api.hospital_account import router as hospital_account_router
+from backend.api.hospital_staff import router as hospital_staff_router
 from backend.api.websockets import router as ws_router
 from backend.config import settings
 from backend.hardening import SecurityMiddleware
@@ -134,6 +137,8 @@ app = FastAPI(
     openapi_url=None if settings.app_env.lower() == "production" else "/openapi.json",
 )
 
+register_error_handlers(app)
+
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
@@ -154,7 +159,9 @@ app.include_router(ws_router)
 app.include_router(callback_router)
 app.include_router(auth_router)
 app.include_router(donor_auth_router)
-app.include_router(platform_router)
+app.include_router(hospital_account_router)
+app.include_router(hospital_staff_router)
+app.include_router(admin_router)
 app.include_router(contact_router)
 
 

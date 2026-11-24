@@ -13,7 +13,6 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import bcrypt
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -27,8 +26,11 @@ from backend.db_services import (
     db_get_hospital_by_id,
     get_donor_by_phone,
 )
+from backend.services import hospital_platform as hp
+from backend.services.passwords import get_password_hash, verify_password  # noqa: F401  (re-exported)
 from backend.services.phone import normalise_phone
-from backend.services.rate_limit import Limiter
+from backend.services.rate_limit import Limiter, enforce
+from backend.services.turnstile import require_human
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +88,6 @@ async def _issue_hospital_id() -> str:
             return candidate
     return f"HOSP-{secrets.token_hex(4).upper()}"
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-    except Exception:
-        return False
-
-def get_password_hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -144,7 +137,6 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
     claims = _decode(token) or {}
     if claims.get("staff_id"):
         # A removed staff member loses access at once, not when the token expires.
-        from backend.services import hospital_platform as hp
         record = await hp.repo.get(hospital_id)
         member = next((m for m in (record or {}).get("staff", []) if m["id"] == claims["staff_id"]), None)
         if not member or not member.get("active", True):
@@ -189,10 +181,6 @@ async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depe
 
 @router.post("/register")
 async def register_hospital(hospital: HospitalRegister, request: Request):
-    from backend.api import hospital_platform as platform
-    from backend.services import hospital_platform as hp
-    from backend.services.turnstile import require_human
-
     await require_human(hospital.turnstile_token, request.client.host if request.client else None)
     profile = {}
     if hp.platform_available():
@@ -224,19 +212,14 @@ async def register_hospital(hospital: HospitalRegister, request: Request):
         password_hash=hashed_password
     )
     if profile:
-        await platform.begin_registration(hospital_id, hospital.name, profile)
+        await hp.register_pending(hospital_id, hospital.name, profile)
     return {"message": "Hospital registered successfully", "id": hospital_id,
             "status": "pending" if profile else "approved"}
 
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     hospital_id = form_data.username.strip().upper()
-    if not await _login_failures.try_acquire(hospital_id):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed sign-in attempts. Try again in a few minutes.",
-            headers={"Retry-After": str(await _login_failures.retry_after(hospital_id))},
-        )
+    await enforce(_login_failures, hospital_id, "Too many failed sign-in attempts. Try again in a few minutes.")
 
     hospital = await db_get_hospital_by_id(hospital_id)
     if not hospital or not verify_password(form_data.password, hospital.get("password_hash", "")):
@@ -305,9 +288,7 @@ async def register_donor_account(payload: DonorCredentials):
     """Create a donor account (phone + password) and sign it in."""
     phone = _donor_phone(payload.phone)
     _check_new_password(payload.password)
-    if not await _donor_signups.try_acquire(phone):
-        raise HTTPException(status_code=429, detail="Too many attempts. Try again later.",
-                            headers={"Retry-After": str(await _donor_signups.retry_after(phone))})
+    await enforce(_donor_signups, phone, "Too many attempts. Try again later.")
 
     created = await db_create_donor_password(phone, get_password_hash(payload.password))
     if not created:
@@ -320,9 +301,7 @@ async def register_donor_account(payload: DonorCredentials):
 async def login_donor(payload: DonorCredentials):
     """Exchange phone + password for a donor token (valid 30 days)."""
     phone = _donor_phone(payload.phone)
-    if not await _donor_failures.try_acquire(phone):
-        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.",
-                            headers={"Retry-After": str(await _donor_failures.retry_after(phone))})
+    await enforce(_donor_failures, phone, "Too many failed attempts. Try again in a few minutes.")
 
     stored = await db_get_donor_password_hash(phone)
     if not stored or not verify_password(payload.password, stored):

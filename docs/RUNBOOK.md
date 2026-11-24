@@ -1,0 +1,34 @@
+# Incident runbook
+
+Fill in the contact table before launch. Severity: **S1** donors cannot be reached or wrong answers are being recorded, **S2** a feature is broken, **S3** cosmetic.
+
+| Role | Name | Phone | Backup |
+| --- | --- | --- | --- |
+| Backend and voice (Role 1) | | | |
+| Web and hospital (Role 2) | | | |
+| Mobile and release (Role 3) | | | |
+
+## First five minutes
+
+1. Open `GET /api/health/deep`. `database: false` means MongoDB Atlas, `sarvam: false` means Sarvam is unreachable.
+2. Search logs for the request ID: every response has an `X-Request-ID`, and each log line carries it.
+3. Check Sentry for new errors, then the status pages of Twilio, Sarvam, Render and Atlas.
+4. Post in the team chat: what is broken, severity, who is on it.
+
+## Playbooks
+
+**Calls are not going out.** Check Twilio credentials and balance, then `TWILIO_*` env values. A hospital stuck at `403 hospital_pending` is not approved, not a telephony fault. If `429 Daily request limit` appears, raise `MAX_DISPATCHES_PER_HOSPITAL_DAY` for a real emergency.
+
+**Donors answer but the answer is wrong or missing.** Switch `VOICE_INTENT_MODE=legacy` (keyword mode) and redeploy. Never mark a donor accepted by hand without a call recording from the donor.
+
+**Sarvam is down.** The pipeline must not record acceptance on error. Tell hospitals to use the in-app or phone fallback and set `VOICE_INTENT_MODE=legacy` if keyword mode still works.
+
+**Dashboard shows "Live updates are disconnected".** The WebSocket dropped: use Reconnect. If it keeps failing, check the backend is awake (free Render sleeps) and `CORS_ORIGINS`.
+
+**Webhooks rejected (403 Invalid Twilio signature).** `SERVER_BASE_URL` must exactly match the public URL Twilio calls, including `https`. Wrong `TWILIO_AUTH_TOKEN` gives the same error.
+
+**Suspected data leak.** Rotate `JWT_SECRET`, Twilio, Sarvam, SMTP and Mongo credentials, revoke sessions, then follow the DPDP breach steps: notify affected users and the Data Protection Board as the law requires.
+
+## After the incident
+
+Write a short blameless note: timeline, cause, what detected it, what changes so it cannot repeat. File follow-ups as GitHub issues labelled `blocker` if they affect launch.

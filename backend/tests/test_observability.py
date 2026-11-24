@@ -23,7 +23,7 @@ def test_unsafe_incoming_ids_are_replaced(client):
 
 def test_access_log_has_the_request_id_and_no_query_string(client, caplog):
     with caplog.at_level(logging.INFO, logger="haemnet.access"):
-        res = client.get("/api/health?donor=secret-donor-id")
+        client.get("/api/health?donor=secret-donor-id")
     line = [r for r in caplog.records if r.name == "haemnet.access"][-1].getMessage()
     assert "/api/health" in line and "secret-donor-id" not in line
 

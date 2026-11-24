@@ -4,65 +4,20 @@ import bcrypt
 import pytest
 
 from backend.api import auth
-from backend.api import hospital_platform as api
 from backend.config import settings
 from backend.services import hospital_platform as hp
+from backend.tests.platform_helpers import (
+    PDF,
+    PNG,
+    SIGNUP,
+    add_staff,
+    signup,
+    staff_login,
+    upload,
+    verify,
+)
 
-PDF = b"%PDF-1.4 test file"
-PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
-
-SIGNUP = {
-    "name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "pw12345",
-    "official_email": "Admin@Apollo.example", "contact_person": "Dr Rao", "hfr_id": "IN123",
-}
-
-
-@pytest.fixture(autouse=True)
-def hospital_db(monkeypatch):
-    """Minimal fake for the hospital login/registration data layer."""
-    rows = {}
-
-    async def fake_get(hospital_id):
-        return rows.get(hospital_id)
-
-    async def fake_create(id, name, location, phone, password_hash):
-        rows[id] = {"id": id, "name": name, "location": location, "phone": phone, "password_hash": password_hash}
-
-    monkeypatch.setattr(auth, "db_get_hospital_by_id", fake_get)
-    monkeypatch.setattr(auth, "db_create_hospital", fake_create)
-    return rows
-
-
-@pytest.fixture
-def uploads(monkeypatch, tmp_path):
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
-    return tmp_path
-
-
-@pytest.fixture
-def admin(client, monkeypatch):
-    monkeypatch.setattr(settings, "admin_username", "root")
-    monkeypatch.setattr(settings, "admin_password_hash", bcrypt.hashpw(b"adminpass", bcrypt.gensalt()).decode())
-    token = client.post("/api/admin/token", data={"username": "root", "password": "adminpass"}).json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-def signup(client, platform_repo, hospital_db, **overrides):
-    body = {**SIGNUP, **overrides}
-    res = client.post("/api/auth/register", json=body)
-    assert res.status_code == 200, res.text
-    hospital_id = res.json()["id"]
-    # the fake auth table and the platform table are separate stores in tests
-    hospital_db[hospital_id].update(platform_repo.hospitals[hospital_id])
-    hospital_db[hospital_id]["id"] = hospital_id
-    token = auth.create_access_token({"sub": hospital_id, "role": "hospital"})
-    return hospital_id, {"Authorization": f"Bearer {token}"}
-
-
-def verify(client, platform_repo):
-    token = [e for e in platform_repo.emails if e[0] == "verify"][-1][2]
-    return client.post("/api/hospitals/verify-email", json={"token": token})
-
+pytestmark = pytest.mark.usefixtures("hospital_db")
 
 # ── sign-up ───────────────────────────────────────────────────────
 
@@ -120,11 +75,6 @@ def test_resend_verification_issues_new_token_and_is_limited(client, platform_re
 
 
 # ── documents ─────────────────────────────────────────────────────
-
-def upload(client, headers, data=PDF, name="licence.pdf", kind="hfr_certificate"):
-    return client.post("/api/hospitals/me/documents", headers=headers, data={"kind": kind},
-                       files={"file": (name, data, "application/octet-stream")})
-
 
 def test_upload_accepts_pdf_and_png_and_lists_them(client, platform_repo, hospital_db, uploads):
     hid, headers = signup(client, platform_repo, hospital_db)
@@ -257,24 +207,13 @@ def test_unapproved_hospital_cannot_dispatch(client, platform_repo, auth_headers
 @pytest.mark.asyncio
 async def test_approved_and_legacy_hospitals_pass_the_gate(platform_repo):
     platform_repo.hospitals["HOSP-1001"] = {"id": "HOSP-1001", "status": "approved"}
-    await api.ensure_hospital_approved("HOSP-1001")
-    await api.ensure_hospital_approved("HOSP-LEGACY")  # no record or no status: legacy approved
+    await hp.assert_approved("HOSP-1001")
+    await hp.assert_approved("HOSP-LEGACY")  # no record or no status: legacy approved
     platform_repo.hospitals["HOSP-2"] = {"id": "HOSP-2", "name": "Old hospital"}
-    await api.ensure_hospital_approved("HOSP-2")
+    await hp.assert_approved("HOSP-2")
 
 
 # ── staff accounts ────────────────────────────────────────────────
-
-STAFF = {"name": "Nurse Devi", "email": "Devi@Apollo.example", "role": "staff", "password": "staffpass1"}
-
-
-def add_staff(client, headers, **overrides):
-    return client.post("/api/hospitals/me/staff", headers=headers, json={**STAFF, **overrides})
-
-
-def staff_login(client, hid, email="devi@apollo.example", password="staffpass1"):
-    return client.post("/api/auth/staff-token", json={"hospital_id": hid, "email": email, "password": password})
-
 
 def test_owner_adds_lists_and_staff_can_sign_in(client, platform_repo, hospital_db):
     hid, owner = signup(client, platform_repo, hospital_db)

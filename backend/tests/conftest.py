@@ -149,8 +149,9 @@ def _reset_limits():
 @pytest.fixture(autouse=True)
 def platform_repo(monkeypatch):
     """Hospital verification data lives in memory; email is captured, never sent."""
-    from backend.api import hospital_platform as api
+    from backend.api import admin, hospital_account, hospital_staff
     from backend.services import hospital_platform as hp
+    from backend.services import hospital_review
 
     repo = hp.MemoryPlatformRepo()
     monkeypatch.setattr(hp, "repo", repo)
@@ -164,14 +165,55 @@ def platform_repo(monkeypatch):
         repo.emails.append((action, to, reason))
         return True
 
-    monkeypatch.setattr(api, "send_verification_email", fake_verification)
-    monkeypatch.setattr(api, "send_decision_email", fake_decision)
-    api._admin_failures.clear()
-    api._resend_limit.clear()
-    api._verify_limit.clear()
-    api._upload_limit.clear()
-    api._staff_failures.clear()
+    monkeypatch.setattr(hp, "send_verification_email", fake_verification)
+    monkeypatch.setattr(hospital_review, "send_decision_email", fake_decision)
+    for limiter in (admin._admin_failures, hospital_account._resend_limit, hospital_account._verify_limit,
+                    hospital_account._upload_limit, hospital_staff._staff_failures):
+        limiter.clear()
     return repo
+
+
+@pytest.fixture
+def hospital_db(monkeypatch):
+    """Minimal fake for the hospital login/registration data layer."""
+    from backend.api import auth
+
+    rows = {}
+
+    async def fake_get(hospital_id):
+        return rows.get(hospital_id)
+
+    async def fake_create(id, name, location, phone, password_hash):
+        rows[id] = {"id": id, "name": name, "location": location, "phone": phone, "password_hash": password_hash}
+
+    monkeypatch.setattr(auth, "db_get_hospital_by_id", fake_get)
+    monkeypatch.setattr(auth, "db_create_hospital", fake_create)
+    return rows
+
+
+@pytest.fixture
+def uploads(monkeypatch, tmp_path):
+    """Store uploaded documents in a temporary folder."""
+    from backend.config import settings
+    from backend.services import file_storage
+
+    monkeypatch.setattr(settings, "s3_bucket", "")
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+    file_storage.reset_cache()
+    return tmp_path
+
+
+@pytest.fixture
+def admin(client, monkeypatch):
+    """Authorization headers for a signed-in admin."""
+    import bcrypt
+
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "admin_username", "root")
+    monkeypatch.setattr(settings, "admin_password_hash", bcrypt.hashpw(b"adminpass", bcrypt.gensalt()).decode())
+    token = client.post("/api/admin/token", data={"username": "root", "password": "adminpass"}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(autouse=True)

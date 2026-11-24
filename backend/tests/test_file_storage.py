@@ -7,14 +7,7 @@ from moto import mock_aws
 from backend.config import settings
 from backend.services import file_storage
 from backend.services.file_storage import KEY_RE, LocalStorage, S3Storage
-from backend.tests.test_hospital_platform import (  # noqa: F401  (fixtures and helpers)
-    PDF,
-    PNG,
-    admin,
-    hospital_db,
-    signup,
-    upload,
-)
+from backend.tests.platform_helpers import PDF, PNG, signup, upload
 
 BUCKET = "haemnet-docs"
 

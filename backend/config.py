@@ -51,6 +51,8 @@ class Settings(BaseSettings):
 
     # ── App Settings ─────────────────────────────────────────────
     app_env: str = "development"
+    # "text" (default) or "json" for one JSON object per log line
+    log_format: str = "text"
     jwt_secret: str
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:19006", "http://localhost:8081"]
     server_base_url: str = "http://localhost:8000"

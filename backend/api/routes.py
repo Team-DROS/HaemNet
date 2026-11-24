@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from backend.api.websockets import manager
 from backend.api.auth import get_current_donor, get_current_hospital
+from backend.config import settings
 from backend.db_services import (
     db_eligible_counts_by_group,
     db_health,
@@ -547,6 +548,24 @@ async def donor_respond(payload: DonorResponse, donor_phone: str = Depends(get_c
 
 
 # ── GET /api/health ───────────────────────────────────────────────
+
+@router.get("/health/deep")
+async def deep_health_check():
+    """Readiness with outbound checks: database, plus Sarvam reachability when configured."""
+    import httpx
+    health = await db_health()
+    checks = {"database": health["status"] == "connected"}
+    if settings.sarvam_configured:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.get(settings.sarvam_base_url)  # any HTTP answer means reachable
+            checks["sarvam"] = True
+        except Exception:
+            checks["sarvam"] = False
+    checks["twilio_configured"] = settings.twilio_configured
+    healthy = checks["database"] and checks.get("sarvam", True)
+    return {"status": "healthy" if healthy else "degraded", "checks": checks}
+
 
 @router.get("/health")
 async def health_check():

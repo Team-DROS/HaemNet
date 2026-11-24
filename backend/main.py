@@ -23,13 +23,13 @@ from backend.api.hospital_platform import router as platform_router
 from backend.api.routes import router as api_router
 from backend.api.websockets import router as ws_router
 from backend.config import settings
+from backend.observability import RequestIdMiddleware, configure_logging
 
 # ── Logging ───────────────────────────────────────────────────────
 
-logging.basicConfig(
-    level=logging.DEBUG if settings.app_env == "development" else logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+configure_logging(
+    logging.DEBUG if settings.app_env == "development" else logging.INFO,
+    settings.log_format.lower(),
 )
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(RequestIdMiddleware)
 
 # ── CORS ──────────────────────────────────────────────────────────
 app.add_middleware(

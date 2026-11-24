@@ -143,7 +143,6 @@ def _reset_limits():
     auth._login_failures.clear()
     auth._donor_failures.clear()
     auth._donor_signups.clear()
-    yield
 
 
 @pytest.fixture(autouse=True)
@@ -220,11 +219,9 @@ def admin(client, monkeypatch):
 def _reset_contact_limit():
     from backend.api import contact
     contact._per_ip.clear()
-    yield
 
 
 @pytest.fixture(autouse=True)
 def _reset_call_quota():
     from backend.services import call_guard
     call_guard.reset_quotas()
-    yield

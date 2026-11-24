@@ -170,7 +170,7 @@ async def test_timeout_never_falls_back_to_keywords(monkeypatch):
 
 def test_rollback_selects_original_class(monkeypatch):
     from backend.config import settings
-    args = dict(call_sid="t", dispatch_id="t", donor_id="t", donor_name="Test")
+    args = {"call_sid": "t", "dispatch_id": "t", "donor_id": "t", "donor_name": "Test"}
     monkeypatch.setattr(settings, "voice_intent_mode", "legacy")
     assert type(voice_pipeline.create_voice_session(**args)) is voice_pipeline.VoiceSession
     monkeypatch.setattr(settings, "voice_intent_mode", "ai")

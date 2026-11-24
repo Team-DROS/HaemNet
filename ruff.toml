@@ -13,6 +13,6 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"backend/tests/*" = ["S101", "S105", "S106", "S311", "PT006", "PT007", "SIM117", "S108", "ASYNC"]
+"backend/tests/*" = ["S101", "S105", "S106", "S107", "S311", "PT006", "PT007", "SIM117", "S108", "ASYNC"]
 "backend/tools/*" = ["S101", "S311", "S110"]   # one-off scripts: demo data uses random, probes may swallow errors
 "backend/db_services/neo4j_repo.py" = ["S105"]  # Cypher query names containing "PASSWORD" / "TOKEN"

@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 async def geocode_address(address: str) -> Optional[Tuple[float, float]]:
     """
     Convert a text address into GPS coordinates using Nominatim.
-    
+
     Args:
         address: The text address (e.g. "MG Road, Bangalore, India")
-        
+
     Returns:
         A tuple of (latitude, longitude) on success, or None if failed.
     """

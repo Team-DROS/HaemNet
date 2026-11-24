@@ -140,7 +140,7 @@ async def test_call_starts_are_spaced_by_the_configured_rate(monkeypatch, no_rea
     monkeypatch.setattr(settings, "twilio_calls_per_second", 4)
     await asyncio.gather(*[call_pacer.wait_for_slot() for _ in range(5)])
     waits = sorted(no_real_sleep)
-    assert len(waits) == 4 and all(abs(b - a - 0.25) < 0.05 for a, b in zip(waits, waits[1:]))
+    assert len(waits) == 4 and all(abs(b - a - 0.25) < 0.05 for a, b in zip(waits, waits[1:], strict=False))
 
 
 @pytest.mark.asyncio

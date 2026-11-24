@@ -60,5 +60,5 @@ class SecurityMiddleware:
                                      "headers": [(b"content-type", b"application/json"),
                                                  (b"content-length", str(len(body)).encode())]})
             await send_with_headers({"type": "http.response.body", "body": body})
-            return None
-        await self.app(scope, receive, send_with_headers)
+        else:
+            await self.app(scope, receive, send_with_headers)

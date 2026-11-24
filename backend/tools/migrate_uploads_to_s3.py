@@ -24,21 +24,17 @@ CONTENT_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/pn
 
 async def migrate(root: Path, storage: S3Storage, dry_run: bool) -> dict:
     counts = {"copied": 0, "skipped_existing": 0, "ignored": 0}
-    for path in sorted(root.glob("*/*")):
+    paths = await asyncio.to_thread(lambda: sorted(root.glob("*/*")))
+    for path in paths:
         key = f"{path.parent.name}/{path.name}"
-        if not path.is_file() or not KEY_RE.match(key):
+        if not KEY_RE.match(key) or not await asyncio.to_thread(path.is_file):
             counts["ignored"] += 1
             continue
         if await storage.load(key) is not None:
             counts["skipped_existing"] += 1
             continue
         if not dry_run:
-            from asyncio import to_thread
-            extra = {"ServerSideEncryption": "AES256"} if storage.encrypt else {}
-            await to_thread(
-                storage.client.put_object, Bucket=storage.bucket, Key=storage._full(key), Body=path.read_bytes(),
-                ContentType=CONTENT_TYPES[path.suffix.lstrip(".")], **extra,
-            )
+            await storage.put(key, await asyncio.to_thread(path.read_bytes), CONTENT_TYPES[path.suffix.lstrip(".")])
         counts["copied"] += 1
     return counts
 

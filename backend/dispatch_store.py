@@ -1,12 +1,10 @@
 """
-Neo4j-backed dispatch state store.
+Dispatch state store.
 
-Provides a registry that tracks every active dispatch and maps Twilio 
-call SIDs back to (dispatch_id, donor_id) pairs by interacting with the 
-underlying Neo4j graph database.
-
-This enables multi-instance deployments (e.g. Cloud Run) to scale 
-without losing active dispatch or call states.
+Tracks every dispatch and maps Twilio call SIDs back to (dispatch_id, donor_id)
+pairs. All state lives in the configured database (MongoDB by default), never in
+process memory, so any backend instance can answer a webhook for a dispatch that
+another instance started.
 """
 
 from __future__ import annotations

@@ -89,13 +89,17 @@ class S3Storage:
     def _full(self, key: str) -> str:
         return f"{self.prefix}{key}"
 
-    async def save(self, hospital_id: str, ext: str, data: bytes, content_type: str = "application/octet-stream") -> str:
-        key = f"{folder_for(hospital_id)}/{uuid.uuid4().hex}.{ext}"
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        """Store `data` under an existing key (used by `save` and by the migration tool)."""
         extra = {"ServerSideEncryption": "AES256"} if self.encrypt else {}
         await asyncio.to_thread(
             self.client.put_object, Bucket=self.bucket, Key=self._full(key), Body=data,
             ContentType=content_type, **extra,
         )
+
+    async def save(self, hospital_id: str, ext: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        key = f"{folder_for(hospital_id)}/{uuid.uuid4().hex}.{ext}"
+        await self.put(key, data, content_type)
         return key
 
     async def load(self, key: str) -> Optional[bytes]:

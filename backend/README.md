@@ -238,3 +238,14 @@ redeploy on Render. In production set a bucket:
 
 Uploads are limited to PDF, JPG and PNG up to `MAX_UPLOAD_MB`, checked by file signature. Deleting a hospital account deletes its files; if the
 bucket cannot be reached the account is kept and the caller gets a 503 so it can retry.
+
+## Scale and safety limits
+
+- **Concurrency-safe limits:** sign-in lockouts, sign-up and upload limits, and the daily call quota reserve their slot atomically (`Limiter.try_acquire`), so a burst of simultaneous requests cannot slip past a limit. A request that ends up placing no calls gives its daily slot back.
+- **Call pacing:** call starts are spaced by `TWILIO_CALLS_PER_SECOND` per instance; Twilio 429s are retried (never after a timeout, so a donor is never rung twice). Sarvam speech, TTS and translation calls retry on throttling, 5xx and timeouts.
+- **Database:** `MONGODB_SERVER_SELECTION_TIMEOUT_MS` (default 5000) makes an outage fail in seconds, `MONGODB_MAX_POOL_SIZE` sizes the pool. Hospital review, audit and token lookups are indexed.
+- **API hardening:** security headers on every response (HSTS in staging and production), JSON bodies over `MAX_REQUEST_BODY_KB` get 413 (uploads use `MAX_UPLOAD_MB`), `/docs` and `/openapi.json` are off in production, and unexpected errors return a generic 500 with a `request_id`.
+- **Workers:** `WEB_CONCURRENCY` sets uvicorn workers per container. Above 1, set `REDIS_URL`.
+- **Audit trail:** each request raised, closed and donation logged writes an audit entry with the acting staff member (visible to admins and in the hospital export). A failed audit write never blocks a request.
+- **Donor calls:** `POST /api/donor/calls/preference` opts a donor out of (or back into) automated calls; opted-out donors are never matched. The mobile app should send `calls_consent: true` at sign-up; the time is stored.
+- **Load test:** `loadtest/locustfile.py` (staging only, it refuses to run without an explicit opt-in because dispatches place real calls).

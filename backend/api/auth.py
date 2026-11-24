@@ -138,6 +138,23 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
     hospital_id = hospital_from_token(token)
     if hospital_id is None:
         raise _unauthorized()
+    claims = _decode(token) or {}
+    if claims.get("staff_id"):
+        # A removed staff member loses access at once, not when the token expires.
+        from backend.services import hospital_platform as hp
+        record = await hp.repo.get(hospital_id)
+        member = next((m for m in (record or {}).get("staff", []) if m["id"] == claims["staff_id"]), None)
+        if not member or not member.get("active", True):
+            raise _unauthorized("This staff account was removed")
+    return hospital_id
+
+
+async def get_current_hospital_admin(token: str = Depends(oauth2_scheme)) -> str:
+    """Hospital owner or a staff member with the admin role."""
+    hospital_id = await get_current_hospital(token)
+    claims = _decode(token) or {}
+    if claims.get("staff_id") and claims.get("staff_role") != "admin":
+        raise HTTPException(status_code=403, detail="Only hospital admins can manage staff")
     return hospital_id
 
 

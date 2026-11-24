@@ -13,7 +13,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
 from backend.api.auth import (
-    ROLE_ADMIN, create_access_token, get_current_admin, get_current_hospital, verify_password,
+    ROLE_ADMIN, ROLE_HOSPITAL, create_access_token, get_current_admin, get_current_hospital,
+    get_current_hospital_admin, get_password_hash, public_hospital, verify_password,
 )
 from backend.config import settings
 from backend.services import hospital_platform as hp
@@ -28,6 +29,9 @@ _admin_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
 _resend_limit = SlidingWindowLimiter(max_events=3, window_seconds=3600)
 _verify_limit = SlidingWindowLimiter(max_events=20, window_seconds=3600)
 _upload_limit = SlidingWindowLimiter(max_events=20, window_seconds=3600)
+_staff_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
+MAX_STAFF = 20
+STAFF_ROLES = ("admin", "staff")
 
 
 def _require_platform() -> None:
@@ -233,3 +237,94 @@ async def admin_decide(hospital_id: str, payload: Decision, admin: str = Depends
     if hospital.get("official_email"):
         await send_decision_email(hospital["official_email"], hospital.get("name", ""), payload.action, reason)
     return {"id": hospital_id, "status": new_status}
+
+
+# ── staff accounts ────────────────────────────────────────────────
+#
+# The hospital's own sign-in (hospital ID + password) is the owner account and
+# can always manage staff. Each staff member signs in with hospital ID, their
+# email and their own password, and is either `admin` (can manage staff) or
+# `staff` (can raise and follow requests). Removing a member takes effect
+# immediately because every staff request re-checks the account.
+
+def _public_staff(m: dict) -> dict:
+    return {k: m.get(k) for k in ("id", "name", "email", "role", "active", "created_at")}
+
+
+class StaffCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str
+    role: str = "staff"
+    password: str = Field(min_length=8, max_length=72)
+
+
+class StaffLogin(BaseModel):
+    hospital_id: str
+    email: str
+    password: str
+
+
+@router.get("/api/hospitals/me/staff")
+async def list_staff(hospital_id: str = Depends(get_current_hospital_admin)):
+    _require_platform()
+    hospital = await _load(hospital_id)
+    return {"staff": [_public_staff(m) for m in hospital.get("staff", []) if m.get("active", True)]}
+
+
+@router.post("/api/hospitals/me/staff")
+async def add_staff(payload: StaffCreate, hospital_id: str = Depends(get_current_hospital_admin)):
+    _require_platform()
+    email = payload.email.strip().lower()
+    if not hp.valid_email(email):
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    if payload.role not in STAFF_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of: {', '.join(STAFF_ROLES)}")
+    hospital = await _load(hospital_id)
+    staff = list(hospital.get("staff", []))
+    if len([m for m in staff if m.get("active", True)]) >= MAX_STAFF:
+        raise HTTPException(status_code=409, detail=f"A hospital can have at most {MAX_STAFF} staff accounts")
+    if any(m["email"] == email and m.get("active", True) for m in staff):
+        raise HTTPException(status_code=409, detail="This email already has a staff account")
+    member = {"id": f"STF-{uuid.uuid4().hex[:8]}", "name": payload.name.strip(), "email": email, "role": payload.role,
+              "password_hash": get_password_hash(payload.password), "active": True, "created_at": hp.now_iso()}
+    await hp.repo.update(hospital_id, {"staff": staff + [member]})
+    await hp.repo.add_audit({"hospital_id": hospital_id, "actor": "hospital", "action": "staff_added", "reason": f"{email} ({payload.role})", "at": hp.now_iso()})
+    return _public_staff(member)
+
+
+@router.delete("/api/hospitals/me/staff/{staff_id}")
+async def remove_staff(staff_id: str, hospital_id: str = Depends(get_current_hospital_admin)):
+    _require_platform()
+    hospital = await _load(hospital_id)
+    staff = list(hospital.get("staff", []))
+    member = next((m for m in staff if m["id"] == staff_id and m.get("active", True)), None)
+    if not member:
+        raise HTTPException(status_code=404, detail="Staff account not found")
+    member["active"] = False
+    await hp.repo.update(hospital_id, {"staff": staff})
+    await hp.repo.add_audit({"hospital_id": hospital_id, "actor": "hospital", "action": "staff_removed", "reason": member["email"], "at": hp.now_iso()})
+    return {"removed": staff_id}
+
+
+@router.post("/api/auth/staff-token")
+async def staff_login(payload: StaffLogin):
+    _require_platform()
+    hospital_id = payload.hospital_id.strip().upper()
+    email = payload.email.strip().lower()
+    key = f"{hospital_id}:{email}"
+    if not _staff_failures.allowed(key):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.",
+                            headers={"Retry-After": str(_staff_failures.retry_after(key))})
+    hospital = await hp.repo.get(hospital_id)
+    member = next((m for m in (hospital or {}).get("staff", []) if m["email"] == email and m.get("active", True)), None)
+    if not member or not verify_password(payload.password, member["password_hash"]):
+        _staff_failures.hit(key)
+        raise HTTPException(status_code=401, detail="Incorrect hospital ID, email or password",
+                            headers={"WWW-Authenticate": "Bearer"})
+    _staff_failures.reset(key)
+    token = create_access_token(
+        {"sub": hospital_id, "role": ROLE_HOSPITAL, "staff_id": member["id"], "staff_role": member["role"]},
+        expires_delta=timedelta(hours=24))
+    user = public_hospital(hospital)
+    user["staff"] = {"id": member["id"], "name": member["name"], "role": member["role"]}
+    return {"access_token": token, "token_type": "bearer", "user": user}

@@ -261,3 +261,74 @@ async def test_approved_and_legacy_hospitals_pass_the_gate(platform_repo):
     await api.ensure_hospital_approved("HOSP-LEGACY")  # no record or no status: legacy approved
     platform_repo.hospitals["HOSP-2"] = {"id": "HOSP-2", "name": "Old hospital"}
     await api.ensure_hospital_approved("HOSP-2")
+
+
+# ── staff accounts ────────────────────────────────────────────────
+
+STAFF = {"name": "Nurse Devi", "email": "Devi@Apollo.example", "role": "staff", "password": "staffpass1"}
+
+
+def add_staff(client, headers, **overrides):
+    return client.post("/api/hospitals/me/staff", headers=headers, json={**STAFF, **overrides})
+
+
+def staff_login(client, hid, email="devi@apollo.example", password="staffpass1"):
+    return client.post("/api/auth/staff-token", json={"hospital_id": hid, "email": email, "password": password})
+
+
+def test_owner_adds_lists_and_staff_can_sign_in(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    created = add_staff(client, owner).json()
+    assert created["email"] == "devi@apollo.example" and "password_hash" not in created
+    assert [m["id"] for m in client.get("/api/hospitals/me/staff", headers=owner).json()["staff"]] == [created["id"]]
+    res = staff_login(client, hid.lower())
+    assert res.status_code == 200
+    assert res.json()["user"]["staff"] == {"id": created["id"], "name": "Nurse Devi", "role": "staff"}
+    token = {"Authorization": "Bearer " + res.json()["access_token"]}
+    assert client.get("/api/hospitals/me", headers=token).json()["id"] == hid  # acts inside the same hospital
+
+
+def test_staff_login_rejects_wrong_password_unknown_email_and_locks(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    add_staff(client, owner)
+    assert staff_login(client, hid, password="wrongwrong").status_code == 401
+    assert staff_login(client, hid, email="nobody@x.example").status_code == 401
+    for _ in range(10):
+        staff_login(client, hid, password="wrongwrong")
+    assert staff_login(client, hid).status_code == 429
+
+
+def test_plain_staff_cannot_manage_staff_but_staff_admin_can(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    add_staff(client, owner)
+    add_staff(client, owner, email="boss@apollo.example", role="admin", name="Boss")
+    plain = {"Authorization": "Bearer " + staff_login(client, hid).json()["access_token"]}
+    boss = {"Authorization": "Bearer " + staff_login(client, hid, "boss@apollo.example").json()["access_token"]}
+    assert client.get("/api/hospitals/me/staff", headers=plain).status_code == 403
+    assert add_staff(client, plain, email="x@apollo.example").status_code == 403
+    assert client.get("/api/hospitals/me/staff", headers=boss).status_code == 200
+
+
+def test_removed_staff_loses_access_immediately(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    member = add_staff(client, owner).json()
+    token = {"Authorization": "Bearer " + staff_login(client, hid).json()["access_token"]}
+    assert client.get("/api/hospitals/me", headers=token).status_code == 200
+    assert client.delete(f"/api/hospitals/me/staff/{member['id']}", headers=owner).status_code == 200
+    assert client.get("/api/hospitals/me", headers=token).status_code == 401
+    assert staff_login(client, hid).status_code == 401
+    assert client.delete(f"/api/hospitals/me/staff/{member['id']}", headers=owner).status_code == 404
+
+
+def test_staff_validation_and_duplicates(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    assert add_staff(client, owner, email="bad").status_code == 422
+    assert add_staff(client, owner, role="root").status_code == 422
+    assert add_staff(client, owner, password="short").status_code == 422
+    assert add_staff(client, owner).status_code == 200
+    assert add_staff(client, owner).status_code == 409
+
+
+def test_staff_endpoints_need_hospital_sign_in(client):
+    assert client.get("/api/hospitals/me/staff").status_code == 401
+    assert client.post("/api/auth/staff-token", json={"hospital_id": "HOSP-1", "email": "a@b.co", "password": "x"}).status_code == 401

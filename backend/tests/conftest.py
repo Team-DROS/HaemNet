@@ -169,4 +169,5 @@ def platform_repo(monkeypatch):
     api._resend_limit.clear()
     api._verify_limit.clear()
     api._upload_limit.clear()
+    api._staff_failures.clear()
     return repo

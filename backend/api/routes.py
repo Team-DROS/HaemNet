@@ -119,6 +119,9 @@ async def trigger_dispatch(
     the ``hospital_id`` in the body, so one hospital cannot raise requests
     in another's name.
     """
+    from backend.api.hospital_platform import ensure_hospital_approved
+    await ensure_hospital_approved(hospital_id)
+
     if payload.hospital_id != hospital_id:
         logger.warning(
             "Dispatch body hospital_id=%s differs from token hospital=%s; using token",

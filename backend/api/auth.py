@@ -37,6 +37,7 @@ DONOR_TOKEN_EXPIRE_DAYS = 30
 
 ROLE_HOSPITAL = "hospital"
 ROLE_DONOR = "donor"
+ROLE_ADMIN = "admin"
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 donor_bearer = HTTPBearer(auto_error=False)
@@ -54,15 +55,25 @@ class HospitalRegister(BaseModel):
     location: str
     phone: str
     password: str
+    # Verification details. Required together once the platform is available.
+    official_email: Optional[str] = None
+    contact_person: Optional[str] = None
+    hfr_id: Optional[str] = None
+    registration_number: Optional[str] = None
+    blood_centre_licence: Optional[str] = None
 
 
-_PUBLIC_HOSPITAL_FIELDS = ("id", "name", "location", "phone")
+_PUBLIC_HOSPITAL_FIELDS = ("id", "name", "location", "phone", "status", "email_verified", "decision_reason")
 
 
 def public_hospital(hospital) -> dict:
     """Hospital record safe to send to a client (never the password hash)."""
     data = dict(hospital)
-    return {key: data.get(key) for key in _PUBLIC_HOSPITAL_FIELDS}
+    out = {key: data.get(key) for key in _PUBLIC_HOSPITAL_FIELDS}
+    # Records created before verification existed count as approved.
+    out["status"] = out["status"] or "approved"
+    out["email_verified"] = True if out["email_verified"] is None else out["email_verified"]
+    return out
 
 
 async def _issue_hospital_id() -> str:
@@ -130,6 +141,20 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
     return hospital_id
 
 
+def admin_from_token(token: str) -> Optional[str]:
+    payload = _decode(token) if token else None
+    if not payload or payload.get("role") != ROLE_ADMIN:
+        return None
+    return payload.get("sub") or None
+
+
+async def get_current_admin(token: str = Depends(oauth2_scheme)) -> str:
+    admin = admin_from_token(token)
+    if admin is None:
+        raise _unauthorized()
+    return admin
+
+
 async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depends(donor_bearer)) -> str:
     phone = donor_from_token(creds.credentials) if creds else None
     if phone is None:
@@ -138,6 +163,25 @@ async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depe
 
 @router.post("/register")
 async def register_hospital(hospital: HospitalRegister):
+    from backend.api import hospital_platform as platform
+    from backend.services import hospital_platform as hp
+
+    profile = {}
+    if hp.platform_available():
+        email = (hospital.official_email or "").strip().lower()
+        if not hp.valid_email(email):
+            raise HTTPException(status_code=422, detail="Enter the hospital's official email address")
+        if not (hospital.contact_person or "").strip():
+            raise HTTPException(status_code=422, detail="Enter a contact person")
+        if not ((hospital.hfr_id or "").strip() or (hospital.registration_number or "").strip()):
+            raise HTTPException(status_code=422, detail="Enter your HFR ID or state registration number")
+        profile = {
+            "official_email": email,
+            "contact_person": hospital.contact_person.strip()[:120],
+            "hfr_id": (hospital.hfr_id or "").strip()[:60] or None,
+            "registration_number": (hospital.registration_number or "").strip()[:60] or None,
+            "blood_centre_licence": (hospital.blood_centre_licence or "").strip()[:60] or None,
+        }
     hospital_id = (hospital.id or "").strip().upper() or await _issue_hospital_id()
     existing = await db_get_hospital_by_id(hospital_id)
     if existing:
@@ -151,7 +195,10 @@ async def register_hospital(hospital: HospitalRegister):
         phone=hospital.phone,
         password_hash=hashed_password
     )
-    return {"message": "Hospital registered successfully", "id": hospital_id}
+    if profile:
+        await platform.begin_registration(hospital_id, hospital.name, profile)
+    return {"message": "Hospital registered successfully", "id": hospital_id,
+            "status": "pending" if profile else "approved"}
 
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):

@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 import os
 
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-0123456789")
 os.environ.setdefault("APP_ENV", "development")
 
 import pytest

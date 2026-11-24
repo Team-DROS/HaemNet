@@ -33,6 +33,11 @@ def test_production_rejects_placeholder_or_missing_secret():
         make(jwt_secret="  ")
 
 
+def test_production_rejects_a_short_secret():
+    with pytest.raises(ValidationError, match="at least 32"):
+        make(jwt_secret="a" * 20)
+
+
 def test_development_allows_local_everything():
     settings = make(app_env="development", mongodb_uri="mongodb://localhost:27017")
     assert settings.db_backend == "mongodb"

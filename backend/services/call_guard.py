@@ -29,9 +29,14 @@ def cap_donors(donors: List[T], lat: float, lng: float) -> List[T]:
     return sorted(donors, key=lambda d: haversine_km(lat, lng, d.location.lat, d.location.lng))[:limit]
 
 
-async def check_daily_quota(hospital_id: str) -> None:
+async def reserve_daily_quota(hospital_id: str) -> None:
+    """Take one of the hospital's daily requests, or raise 429.
+
+    The slot is taken before donors are searched so a burst of simultaneous requests cannot
+    overshoot the cap. Call `release_daily_quota` if the request ends up not placing any calls.
+    """
     _daily.max_events = settings.max_dispatches_per_hospital_day
-    if not await _daily.allowed(hospital_id):
+    if not await _daily.try_acquire(hospital_id):
         raise HTTPException(
             status_code=429,
             detail=f"Daily request limit reached ({settings.max_dispatches_per_hospital_day} per 24 hours). Contact HaemNet support if this is an emergency.",
@@ -39,8 +44,8 @@ async def check_daily_quota(hospital_id: str) -> None:
         )
 
 
-async def record_dispatch(hospital_id: str) -> None:
-    await _daily.hit(hospital_id)
+async def release_daily_quota(hospital_id: str) -> None:
+    await _daily.release_one(hospital_id)
 
 
 def reset_quotas() -> None:

@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from backend.api.websockets import manager
-from backend.api.auth import get_current_donor, get_current_hospital
+from backend.api.auth import get_actor, get_current_donor, get_current_hospital
 from pydantic import BaseModel
 
 from backend.config import settings
@@ -110,7 +110,8 @@ def _require_same_donor(claimed_phone: Optional[str], token_phone: str) -> None:
 async def trigger_dispatch(
     payload: DispatchRequest,
     background_tasks: BackgroundTasks,
-    hospital_id: str = Depends(get_current_hospital)
+    hospital_id: str = Depends(get_current_hospital),
+    actor: str = Depends(get_actor),
 ):
     """
     Emergency dispatch trigger.
@@ -125,8 +126,16 @@ async def trigger_dispatch(
     """
     from backend.api.hospital_platform import ensure_hospital_approved
     await ensure_hospital_approved(hospital_id)
-    from backend.services.call_guard import cap_donors, check_daily_quota, record_dispatch
-    await check_daily_quota(hospital_id)
+    from backend.services.call_guard import cap_donors, release_daily_quota, reserve_daily_quota
+    await reserve_daily_quota(hospital_id)  # reserved first so a burst cannot overshoot the daily cap
+    try:
+        return await _place_dispatch(payload, background_tasks, hospital_id, actor, cap_donors, release_daily_quota)
+    except BaseException:
+        await release_daily_quota(hospital_id)  # nothing was dispatched: give the slot back
+        raise
+
+
+async def _place_dispatch(payload, background_tasks, hospital_id, actor, cap_donors, release_daily_quota):
 
     if payload.hospital_id != hospital_id:
         logger.warning(
@@ -154,6 +163,7 @@ async def trigger_dispatch(
 
     donors = cap_donors(donors, lat, lng)
     if not donors:
+        await release_daily_quota(hospital_id)  # no calls placed, so it does not count
         return DispatchResponse(
             dispatch_id=dispatch_id,
             donors_matched=0,
@@ -176,7 +186,9 @@ async def trigger_dispatch(
     # Step 3 — run orchestration in the background so we return fast.
     # Bind ownership first so live events only reach this hospital.
     manager.bind(dispatch_id, hospital_id)
-    await record_dispatch(hospital_id)
+    from backend.services import hospital_platform as hp
+    await hp.audit(hospital_id, actor, "dispatch_created",
+                   f"{dispatch_id} {payload.blood_group} x{payload.units} {payload.urgency.value} matched={len(donors)}")
     background_tasks.add_task(_run_dispatch_graph, dispatch_id, initial_state)
 
     logger.info(
@@ -317,11 +329,13 @@ async def network_availability(
 # ── POST /api/dispatches/{dispatch_id}/close ──────────────────────
 
 @router.post("/dispatches/{dispatch_id}/close")
-async def close_dispatch(dispatch_id: str, hospital_id: str = Depends(get_current_hospital)):
+async def close_dispatch(dispatch_id: str, hospital_id: str = Depends(get_current_hospital), actor: str = Depends(get_actor)):
     """Mark a dispatch as finished (fulfilled or cancelled by the hospital)."""
     await _owned_dispatch(dispatch_id, hospital_id)
     await dispatch_store.mark_complete(dispatch_id)
     await manager.broadcast_raw(dispatch_id, {"type": "dispatch_closed"})
+    from backend.services import hospital_platform as hp
+    await hp.audit(hospital_id, actor, "dispatch_closed", dispatch_id)
     return {"status": "ok", "dispatch_id": dispatch_id}
 
 
@@ -330,7 +344,8 @@ async def close_dispatch(dispatch_id: str, hospital_id: str = Depends(get_curren
 @router.post("/donate")
 async def log_donation(
     payload: DonationLog,
-    hospital_id: str = Depends(get_current_hospital)
+    hospital_id: str = Depends(get_current_hospital),
+    actor: str = Depends(get_actor),
 ):
     """
     Called by hospital staff after a successful transfusion.
@@ -353,6 +368,8 @@ async def log_donation(
         raise HTTPException(status_code=500, detail="Failed to update donation record.")
 
     logger.info("Donation logged for donor %s at hospital %s", payload.donor_id, hospital_id)
+    from backend.services import hospital_platform as hp
+    await hp.audit(hospital_id, actor, "donation_logged", f"donor={payload.donor_id} dispatch={payload.dispatch_id or '-'}")
 
     fulfilled = False
     if dispatch is not None:

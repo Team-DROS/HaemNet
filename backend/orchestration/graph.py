@@ -22,6 +22,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
+from backend.services.error_reporting import report_exception
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,8 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Query the database for eligible donors and populate the state.
     """
     from backend.db_services import find_eligible_donors
-    from backend.services.geo import haversine_km
-
     from backend.services.blood_groups import request_groups
+    from backend.services.geo import haversine_km
     donors: List[DonorNode] = []
     for group in request_groups(state["blood_group"]):
         donors.extend(await find_eligible_donors(
@@ -108,7 +108,6 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     from backend.config import settings
     from backend.dispatch_store import dispatch_store
     from backend.schemas.models import DonorNode
-    from backend.services.twilio_service import initiate_call
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -169,7 +168,7 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _initiate_single_call(
-    donor_node: "DonorNode",
+    donor_node: DonorNode,
     dispatch_id: str,
     donor_id: str,
     callback_url: str,
@@ -189,8 +188,7 @@ async def _initiate_single_call(
         if call_sid:
             await dispatch_store.register_call(call_sid, dispatch_id, donor_id)
     except Exception as exc:
-        import sentry_sdk
-        sentry_sdk.capture_exception(exc)
+        report_exception(exc)
         logger.error(
             "Failed to initiate call for donor %s in dispatch %s: %s",
             donor_id, dispatch_id, exc,
@@ -207,7 +205,6 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     or SMS with web-tracking link (fallback path).
     """
     from backend.db_services import get_donor_push_token
-    from backend.services.twilio_service import send_sms
     from backend.services.push_service import send_dispatch_notification
 
     dispatch_id = state.get("dispatch_id", "")
@@ -240,8 +237,7 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                     # Fall through to SMS.
                     await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
             except Exception as exc:
-                import sentry_sdk
-                sentry_sdk.capture_exception(exc)
+                report_exception(exc)
                 logger.error("Push notification failed for donor %s: %s", donor_id, exc)
                 # Fall through to SMS on push failure.
                 await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))

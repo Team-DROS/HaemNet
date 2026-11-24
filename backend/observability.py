@@ -18,6 +18,8 @@ import re
 import time
 import uuid
 
+from backend.services.error_reporting import report_exception
+
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]{8,64}$")
 access_logger = logging.getLogger("haemnet.access")
@@ -65,7 +67,8 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
         incoming = dict(scope.get("headers") or []).get(b"x-request-id", b"").decode("latin-1")
         rid = incoming if _SAFE_ID.match(incoming) else uuid.uuid4().hex
         token = request_id_var.set(rid)
@@ -87,11 +90,7 @@ class RequestIdMiddleware:
             if response_started["done"]:
                 raise
             logger.exception("Unhandled error on %s %s", scope["method"], scope["path"])
-            try:
-                import sentry_sdk
-                sentry_sdk.capture_exception(exc)
-            except Exception:
-                pass
+            report_exception(exc)
             body = json.dumps({"detail": "Something went wrong on our side.", "request_id": rid}).encode()
             await send_with_id({"type": "http.response.start", "status": 500, "headers": [
                 (b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),

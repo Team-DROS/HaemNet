@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from backend.api import routes
 from backend.config import settings
 from backend.main import app
-from backend.services import hospital_platform as hp
 from backend.tests.conftest import HOSPITAL
 
 BODY = {"hospital_id": HOSPITAL, "blood_group": "O-", "urgency": "critical",
@@ -54,6 +53,7 @@ def test_unhandled_errors_return_a_request_id_and_no_internals(monkeypatch):
 
 def test_docs_are_hidden_in_production():
     from importlib import reload
+
     import backend.main as main
 
     original = settings.app_env
@@ -108,3 +108,15 @@ def test_closing_a_dispatch_is_audited(client, auth_headers, store, broadcasts, 
     store.add("dp-1")
     assert client.post("/api/dispatches/dp-1/close", headers=auth_headers).status_code == 200
     assert platform_repo.audit[-1]["action"] == "dispatch_closed" and platform_repo.audit[-1]["reason"] == "dp-1"
+
+
+def test_error_reporting_never_raises(monkeypatch):
+    import sentry_sdk
+
+    from backend.services.error_reporting import report_exception
+
+    def broken(exc):
+        raise TypeError("cannot pickle 'FrameLocalsProxy' object")
+
+    monkeypatch.setattr(sentry_sdk, "capture_exception", broken)
+    report_exception(RuntimeError("original problem"))  # must not raise

@@ -59,7 +59,8 @@ async def transcribe_audio(
         resp = await client.post("/speech-to-text", files=files, data=data)
         resp.raise_for_status()
         result = resp.json()
-        logger.info("STT transcript (%s): %s", language, result.get("transcript", "")[:80])
+        # Never log transcript text: donor speech is personal data (DPDP Act).
+        logger.info("STT ok (%s): transcript_len=%d", language, len(result.get("transcript", "")))
         return result
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam STT error: %s", exc.response.text)
@@ -94,7 +95,7 @@ async def synthesize_speech(
         audio_b64 = result.get("audios", [None])[0]
         if audio_b64:
             return base64.b64decode(audio_b64)
-        logger.warning("TTS returned empty audio for text: %s", text[:60])
+        logger.warning("TTS returned empty audio (text_len=%d)", len(text))
         return b""
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam TTS error: %s", exc.response.text)
@@ -126,7 +127,7 @@ async def translate_text(
         resp.raise_for_status()
         result = resp.json()
         translated = result.get("translated_text", text)
-        logger.info("Translated (%s→%s): %s", source_lang, target_lang, translated[:80])
+        logger.info("Translated (%s→%s): text_len=%d", source_lang, target_lang, len(translated))
         return translated
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam translate error: %s", exc.response.text)

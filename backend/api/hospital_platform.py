@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
@@ -87,9 +87,8 @@ class VerifyEmail(BaseModel):
 async def verify_email(payload: VerifyEmail):
     """Public: the link in the email posts its token here."""
     _require_platform()
-    if not await _verify_limit.allowed("global"):
+    if not await _verify_limit.try_acquire("global"):
         raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
-    await _verify_limit.hit("global")
     hospital = await hp.repo.find_by_token_hash(hp.hash_token(payload.token))
     expires = (hospital or {}).get("email_verification_expires") or ""
     if not hospital or expires < hp.now_iso():
@@ -105,9 +104,8 @@ async def resend_verification(hospital_id: str = Depends(get_current_hospital)):
     hospital = await _load(hospital_id)
     if hospital.get("email_verified", True):
         return {"sent": False, "detail": "Email is already verified"}
-    if not await _resend_limit.allowed(hospital_id):
+    if not await _resend_limit.try_acquire(hospital_id):
         raise HTTPException(status_code=429, detail="Too many requests. Try again in an hour.")
-    await _resend_limit.hit(hospital_id)
     token, token_hash, expires = hp.new_verification_token()
     await hp.repo.update(hospital_id, {"email_verification_hash": token_hash, "email_verification_expires": expires})
     sent = await send_verification_email(hospital["official_email"], hospital.get("name", ""), token)
@@ -123,9 +121,8 @@ async def upload_document(
     _require_platform()
     if kind not in hp.DOC_KINDS:
         raise HTTPException(status_code=422, detail=f"kind must be one of: {', '.join(hp.DOC_KINDS)}")
-    if not await _upload_limit.allowed(hospital_id):
+    if not await _upload_limit.try_acquire(hospital_id):
         raise HTTPException(status_code=429, detail="Too many uploads. Try again later.")
-    await _upload_limit.hit(hospital_id)
     hospital = await _load(hospital_id)
     if len(hospital.get("documents", [])) >= hp.MAX_DOCS:
         raise HTTPException(status_code=409, detail=f"You can upload at most {hp.MAX_DOCS} documents")
@@ -163,12 +160,11 @@ async def admin_login(form: OAuth2PasswordRequestForm = Depends()):
     if not settings.admin_configured:
         raise HTTPException(status_code=503, detail="Admin sign-in is not configured")
     key = form.username.strip().lower()
-    if not await _admin_failures.allowed(key):
+    if not await _admin_failures.try_acquire(key):
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.",
                             headers={"Retry-After": str(await _admin_failures.retry_after(key))})
     ok = form.username == settings.admin_username and verify_password(form.password, settings.admin_password_hash)
     if not ok:
-        await _admin_failures.hit(key)
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     await _admin_failures.reset(key)
     token = create_access_token({"sub": settings.admin_username, "role": ROLE_ADMIN}, expires_delta=timedelta(hours=8))
@@ -176,12 +172,17 @@ async def admin_login(form: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.get("/api/admin/hospitals")
-async def admin_list(status: Optional[str] = None, admin: str = Depends(get_current_admin)):
+async def admin_list(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    admin: str = Depends(get_current_admin),
+):
     _require_platform()
     if status and status not in hp.STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of: {', '.join(hp.STATUSES)}")
-    rows = await hp.repo.list(status)
-    return {"hospitals": [hp.admin_summary(h) for h in rows]}
+    rows, total = await hp.repo.list(status, limit, offset)
+    return {"hospitals": [hp.admin_summary(h) for h in rows], "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/api/admin/hospitals/{hospital_id}")
@@ -320,13 +321,12 @@ async def staff_login(payload: StaffLogin):
     hospital_id = payload.hospital_id.strip().upper()
     email = payload.email.strip().lower()
     key = f"{hospital_id}:{email}"
-    if not await _staff_failures.allowed(key):
+    if not await _staff_failures.try_acquire(key):
         raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.",
                             headers={"Retry-After": str(await _staff_failures.retry_after(key))})
     hospital = await hp.repo.get(hospital_id)
     member = next((m for m in (hospital or {}).get("staff", []) if m["email"] == email and m.get("active", True)), None)
     if not member or not verify_password(payload.password, member["password_hash"]):
-        await _staff_failures.hit(key)
         raise HTTPException(status_code=401, detail="Incorrect hospital ID, email or password",
                             headers={"WWW-Authenticate": "Bearer"})
     await _staff_failures.reset(key)

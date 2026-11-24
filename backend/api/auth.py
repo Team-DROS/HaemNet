@@ -150,6 +150,12 @@ async def get_current_hospital(token: str = Depends(oauth2_scheme)) -> str:
     return hospital_id
 
 
+async def get_actor(token: str = Depends(oauth2_scheme)) -> str:
+    """Who is acting: the staff member's ID, or "owner" for the hospital's own login."""
+    claims = _decode(token) or {}
+    return claims.get("staff_id") or "owner"
+
+
 async def get_current_hospital_admin(token: str = Depends(oauth2_scheme)) -> str:
     """Hospital owner or a staff member with the admin role."""
     hospital_id = await get_current_hospital(token)
@@ -223,7 +229,7 @@ async def register_hospital(hospital: HospitalRegister, request: Request):
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     hospital_id = form_data.username.strip().upper()
-    if not await _login_failures.allowed(hospital_id):
+    if not await _login_failures.try_acquire(hospital_id):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed sign-in attempts. Try again in a few minutes.",
@@ -232,7 +238,6 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
     hospital = await db_get_hospital_by_id(hospital_id)
     if not hospital or not verify_password(form_data.password, hospital.get("password_hash", "")):
-        await _login_failures.hit(hospital_id)
         raise _unauthorized("Incorrect username or password")
     await _login_failures.reset(hospital_id)
 
@@ -298,10 +303,9 @@ async def register_donor_account(payload: DonorCredentials):
     """Create a donor account (phone + password) and sign it in."""
     phone = _donor_phone(payload.phone)
     _check_new_password(payload.password)
-    if not await _donor_signups.allowed(phone):
+    if not await _donor_signups.try_acquire(phone):
         raise HTTPException(status_code=429, detail="Too many attempts. Try again later.",
                             headers={"Retry-After": str(await _donor_signups.retry_after(phone))})
-    await _donor_signups.hit(phone)
 
     created = await db_create_donor_password(phone, get_password_hash(payload.password))
     if not created:
@@ -314,13 +318,12 @@ async def register_donor_account(payload: DonorCredentials):
 async def login_donor(payload: DonorCredentials):
     """Exchange phone + password for a donor token (valid 30 days)."""
     phone = _donor_phone(payload.phone)
-    if not await _donor_failures.allowed(phone):
+    if not await _donor_failures.try_acquire(phone):
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.",
                             headers={"Retry-After": str(await _donor_failures.retry_after(phone))})
 
     stored = await db_get_donor_password_hash(phone)
     if not stored or not verify_password(payload.password, stored):
-        await _donor_failures.hit(phone)
         raise HTTPException(status_code=401, detail="Wrong mobile number or password")
     await _donor_failures.reset(phone)
     return await _donor_session(phone)

@@ -50,6 +50,21 @@ class SlidingWindowLimiter:
             return 0
         return max(1, int(self.window - (now - events[0]) + 0.999))
 
+    def try_acquire(self, key: str, now: Optional[float] = None) -> bool:
+        """Check and record in one step (nothing can run in between)."""
+        now = time.monotonic() if now is None else now
+        events = self._prune(key, now)
+        if len(events) >= self.max_events:
+            return False
+        events.append(now)
+        return True
+
+    def release_one(self, key: str) -> None:
+        """Give back the most recent slot (used when a reserved action did not happen)."""
+        events = self._events.get(key)
+        if events:
+            events.pop()
+
     def reset(self, key: str) -> None:
         self._events.pop(key, None)
 
@@ -93,6 +108,32 @@ class Limiter:
             _, count = await pipe.execute()
             return count < self.max_events
         return await self._run(op, lambda l: l.allowed(key, now), now)
+
+    async def try_acquire(self, key: str, now: Optional[float] = None) -> bool:
+        """Atomically take one slot. False means the limit is reached (nothing is recorded).
+
+        Use this instead of allowed() followed by hit(): with a database call in between,
+        a burst of concurrent requests would all pass the check before any is counted.
+        """
+        async def op(r):
+            k, t = self._key(key), time.time()
+            member = f"{t}:{uuid.uuid4().hex[:8]}"
+            pipe = r.pipeline(transaction=True)
+            pipe.zremrangebyscore(k, 0, t - self.window)
+            pipe.zadd(k, {member: t})
+            pipe.zcard(k)
+            pipe.expire(k, int(self.window) + 1)
+            _, _, count, _ = await pipe.execute()
+            if count > self.max_events:
+                await r.zrem(k, member)
+                return False
+            return True
+        return await self._run(op, lambda l: l.try_acquire(key, now), now)
+
+    async def release_one(self, key: str) -> None:
+        async def op(r):
+            await r.zpopmax(self._key(key))
+        await self._run(op, lambda l: l.release_one(key), None)
 
     async def hit(self, key: str, now: Optional[float] = None) -> None:
         async def op(r):

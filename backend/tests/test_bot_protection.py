@@ -92,8 +92,8 @@ def test_contact_validation_and_unavailable(client, smtp, monkeypatch):
 
 
 def test_contact_needs_token_when_enabled_and_is_rate_limited(client, smtp, turnstile_on):
-    assert client.post("/api/contact", json=MESSAGE).status_code == 400
+    assert client.post("/api/contact", json=MESSAGE).status_code == 400  # a failed bot check still uses a slot
     ok = {**MESSAGE, "turnstile_token": "good"}
-    for _ in range(5):
+    for _ in range(4):
         assert client.post("/api/contact", json=ok).status_code == 200
     assert client.post("/api/contact", json=ok).status_code == 429

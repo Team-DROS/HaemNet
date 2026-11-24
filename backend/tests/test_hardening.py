@@ -3,9 +3,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api import routes
+from backend.api import dispatches, health
 from backend.config import settings
 from backend.main import app
+from backend.services import dispatching as planning
 from backend.tests.conftest import HOSPITAL
 
 BODY = {"hospital_id": HOSPITAL, "blood_group": "O-", "urgency": "critical",
@@ -44,7 +45,7 @@ def test_unhandled_errors_return_a_request_id_and_no_internals(monkeypatch):
     async def boom(*a, **k):
         raise RuntimeError("secret database password in message")
 
-    monkeypatch.setattr(routes, "db_health", boom)
+    monkeypatch.setattr(health, "db_health", boom)
     res = TestClient(app, raise_server_exceptions=False).get("/api/health")
     body = res.json()
     assert res.status_code == 500 and "secret" not in res.text
@@ -77,8 +78,8 @@ def dispatching(monkeypatch):
     async def fake_run(dispatch_id, state):
         pass
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
 
 
 def test_dispatch_is_audited_with_the_owner(client, auth_headers, dispatching, platform_repo):

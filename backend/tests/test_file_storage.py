@@ -140,12 +140,12 @@ def test_missing_object_is_a_404_and_storage_outage_a_503(client, platform_repo,
 
 
 def test_deep_health_reports_storage(client, s3, monkeypatch):
-    from backend.api import routes
+    from backend.api import health
 
     async def db_ok():
         return {"status": "connected", "backend": "mongodb"}
 
-    monkeypatch.setattr(routes, "db_health", db_ok)
+    monkeypatch.setattr(health, "db_health", db_ok)
     monkeypatch.setattr(settings, "sarvam_api_key", "")
     body = client.get("/api/health/deep").json()
     assert body["checks"]["storage"] is True and body["checks"]["storage_persistent"] is True

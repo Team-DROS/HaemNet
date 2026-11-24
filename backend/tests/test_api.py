@@ -3,9 +3,10 @@
 import bcrypt
 import pytest
 
-from backend.api import auth, routes
+from backend.api import auth, dispatches
 from backend.api.websockets import DashboardConnectionManager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
+from backend.services import dispatching as planning
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
 
 # ── auth ──────────────────────────────────────────────────────────
@@ -59,8 +60,8 @@ def test_dispatch_is_recorded_against_the_authenticated_hospital(client, auth_he
     async def fake_run(dispatch_id, state):
         captured.update(state)
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
 
     res = client.post("/api/dispatch", headers=auth_headers, json={
         "hospital_id": "HOSP-SOMEONE-ELSE", "blood_group": "O-", "urgency": "critical",
@@ -108,7 +109,7 @@ def test_close_marks_complete_and_notifies(client, auth_headers, store, broadcas
 def fake_donation_date(monkeypatch):
     async def ok(**kwargs):
         return True
-    monkeypatch.setattr(routes, "update_donation_date", ok)
+    monkeypatch.setattr(dispatches, "update_donation_date", ok)
 
 
 def test_donation_closes_dispatch_once_units_are_met(client, auth_headers, store, broadcasts, fake_donation_date):
@@ -208,7 +209,7 @@ async def test_broadcast_stamps_dispatch_id_and_time():
 # ── network availability ──────────────────────────────────────────
 
 def test_availability_returns_every_group_with_zero_fill(client, auth_headers, monkeypatch):
-    routes._hospital_coords_cache.clear()
+    dispatches._hospital_coords_cache.clear()
 
     async def fake_hospital(hospital_id):
         return {"id": hospital_id, "location": "Greams Road, Chennai"}
@@ -220,10 +221,9 @@ def test_availability_returns_every_group_with_zero_fill(client, auth_headers, m
         assert (lat, lng) == (13.06, 80.25)
         return {"O-": 12, "B+": 38}
 
-    import backend.services.geocoding as geocoding
-    monkeypatch.setattr(routes, "db_get_hospital_by_id", fake_hospital)
-    monkeypatch.setattr(geocoding, "geocode_address", fake_geocode)
-    monkeypatch.setattr(routes, "db_eligible_counts_by_group", fake_counts)
+    monkeypatch.setattr(dispatches, "db_get_hospital_by_id", fake_hospital)
+    monkeypatch.setattr(dispatches, "geocode_address", fake_geocode)
+    monkeypatch.setattr(dispatches, "db_eligible_counts_by_group", fake_counts)
 
     body = client.get("/api/network/availability", headers=auth_headers).json()
     assert body["groups"]["O-"] == 12 and body["groups"]["AB-"] == 0
@@ -231,7 +231,7 @@ def test_availability_returns_every_group_with_zero_fill(client, auth_headers, m
 
 
 def test_availability_explains_ungeocodable_location(client, auth_headers, monkeypatch):
-    routes._hospital_coords_cache.clear()
+    dispatches._hospital_coords_cache.clear()
 
     async def fake_hospital(hospital_id):
         return {"id": hospital_id, "location": "???"}
@@ -239,9 +239,8 @@ def test_availability_explains_ungeocodable_location(client, auth_headers, monke
     async def fake_geocode(address):
         return None
 
-    import backend.services.geocoding as geocoding
-    monkeypatch.setattr(routes, "db_get_hospital_by_id", fake_hospital)
-    monkeypatch.setattr(geocoding, "geocode_address", fake_geocode)
+    monkeypatch.setattr(dispatches, "db_get_hospital_by_id", fake_hospital)
+    monkeypatch.setattr(dispatches, "geocode_address", fake_geocode)
     res = client.get("/api/network/availability", headers=auth_headers)
     assert res.status_code == 422
 

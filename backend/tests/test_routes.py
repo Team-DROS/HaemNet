@@ -7,7 +7,7 @@ from backend.main import app
 
 
 @pytest.mark.asyncio
-@patch("backend.api.routes.db_health", new_callable=AsyncMock)
+@patch("backend.api.health.db_health", new_callable=AsyncMock)
 async def test_health_check(mock_health):
     mock_health.return_value = {"backend": "mongodb", "status": "connected"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -23,7 +23,7 @@ async def test_health_check(mock_health):
 
 
 @pytest.mark.asyncio
-@patch("backend.api.routes.db_health", new_callable=AsyncMock)
+@patch("backend.api.health.db_health", new_callable=AsyncMock)
 async def test_health_check_reports_a_broken_database(mock_health):
     mock_health.return_value = {"backend": "mongodb", "status": "disconnected: refused"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -45,7 +45,7 @@ async def test_unauthorized_dispatch():
     assert response.status_code == 401
 
 @pytest.mark.asyncio
-@patch("backend.api.routes.find_eligible_donors")
+@patch("backend.services.dispatching.find_eligible_donors")
 @patch("backend.api.auth.db_get_hospital_by_id")
 @patch("backend.api.auth.verify_password")
 async def test_authorized_dispatch(mock_verify, mock_get_hospital, mock_find_donors):

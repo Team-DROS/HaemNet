@@ -8,10 +8,11 @@ import fakeredis.aioredis
 import httpx
 import pytest
 
-from backend.api import auth, routes
+from backend.api import auth, dispatches
 from backend.api.auth import create_access_token
 from backend.config import settings
 from backend.main import app
+from backend.services import dispatching as planning
 from backend.services import rate_limit, redis_client
 
 
@@ -82,8 +83,8 @@ async def test_fifty_hospitals_dispatch_at_once_without_mixing_anything_up(monke
     async def fake_run(dispatch_id, state):
         ran.append((state["hospital_id"], dispatch_id))
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
 
     def body(h):
         return {"hospital_id": h, "blood_group": "O-", "urgency": "critical",
@@ -112,8 +113,8 @@ async def test_one_hospital_hammering_dispatch_is_stopped_by_the_daily_quota(mon
     async def fake_run(dispatch_id, state):
         pass
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
     body = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
             "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
     headers = {"Authorization": "Bearer " + create_access_token({"sub": "HOSP-1001", "role": "hospital"})}
@@ -138,8 +139,8 @@ async def test_failed_or_empty_requests_give_their_daily_slot_back(monkeypatch):
     async def fake_run(dispatch_id, state):
         pass
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
     body = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
             "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
     headers = {"Authorization": "Bearer " + create_access_token({"sub": "HOSP-1001", "role": "hospital"})}

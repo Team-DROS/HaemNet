@@ -6,7 +6,7 @@ import bcrypt
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from backend.api import auth, routes
+from backend.api import auth, donors
 from backend.api.websockets import manager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
@@ -57,7 +57,7 @@ def test_register_uses_verified_phone(client, monkeypatch):
     async def fake_register(**kwargs):
         saved.update(kwargs)
 
-    monkeypatch.setattr(routes, "register_donor", fake_register)
+    monkeypatch.setattr(donors, "register_donor", fake_register)
     body = {"name": "Ramesh", "phone": "9000000001", "blood_group": "O-", "language": "Tamil", "lat": 13.0, "lng": 80.2}
     assert client.post("/api/donor/register", json=body, headers=donor_headers("+919333333333")).status_code == 403
     assert client.post("/api/donor/register", json=body, headers=donor_headers()).status_code == 200

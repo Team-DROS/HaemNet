@@ -2,9 +2,10 @@
 
 from types import SimpleNamespace
 
-from backend.api import routes
+from backend.api import dispatches
 from backend.config import settings
 from backend.services import call_guard
+from backend.services import dispatching as planning
 
 BODY = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
         "coordinates": {"lat": 13.06, "lng": 80.25}, "units": 1}
@@ -36,8 +37,8 @@ def test_dispatch_response_reports_the_capped_count(client, auth_headers, monkey
     async def fake_run(dispatch_id, state):
         pass
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
     assert client.post("/api/dispatch", headers=auth_headers, json=BODY).json()["donors_matched"] == 2
 
 
@@ -50,8 +51,8 @@ def test_daily_quota_blocks_extra_requests_with_retry_after(client, auth_headers
     async def fake_run(dispatch_id, state):
         pass
 
-    monkeypatch.setattr(routes, "find_eligible_donors", fake_find)
-    monkeypatch.setattr(routes, "_run_dispatch_graph", fake_run)
+    monkeypatch.setattr(planning, "find_eligible_donors", fake_find)
+    monkeypatch.setattr(dispatches, "run_dispatch_graph", fake_run)
     assert client.post("/api/dispatch", headers=auth_headers, json=BODY).status_code == 200
     assert client.post("/api/dispatch", headers=auth_headers, json=BODY).status_code == 200
     res = client.post("/api/dispatch", headers=auth_headers, json=BODY)
@@ -64,6 +65,6 @@ def test_requests_that_match_nobody_do_not_use_the_quota(client, auth_headers, m
     async def none_found(**kwargs):
         return []
 
-    monkeypatch.setattr(routes, "find_eligible_donors", none_found)
+    monkeypatch.setattr(planning, "find_eligible_donors", none_found)
     for _ in range(3):
         assert client.post("/api/dispatch", headers=auth_headers, json=BODY).json()["donors_matched"] == 0

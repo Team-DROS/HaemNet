@@ -6,7 +6,7 @@ import logging
 import httpx
 
 from backend import observability
-from backend.api import routes
+from backend.api import health
 from backend.config import settings
 
 
@@ -49,7 +49,7 @@ def test_deep_health_reports_sarvam_down(client, monkeypatch):
         async def __aexit__(self, *a): return False
         async def get(self, url): raise httpx.ConnectError("down")
 
-    monkeypatch.setattr(routes, "db_health", db_ok)
+    monkeypatch.setattr(health, "db_health", db_ok)
     monkeypatch.setattr(settings, "sarvam_api_key", "key")
     monkeypatch.setattr(httpx, "AsyncClient", Down)
     body = client.get("/api/health/deep").json()

@@ -14,7 +14,7 @@ os.environ.setdefault("APP_ENV", "development")
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api import routes
+from backend.api import dispatches, donors
 from backend.api.auth import create_access_token
 from backend.main import app
 
@@ -99,7 +99,8 @@ def donor(donor_id, phone, status="ringing", distance_km=2.4, name=None):
 @pytest.fixture
 def store(monkeypatch):
     fake = FakeStore()
-    monkeypatch.setattr(routes, "dispatch_store", fake)
+    monkeypatch.setattr(dispatches, "dispatch_store", fake)
+    monkeypatch.setattr(donors, "dispatch_store", fake)
     return fake
 
 
@@ -114,8 +115,8 @@ def broadcasts(monkeypatch):
     async def fake_broadcast_raw(dispatch_id, data):
         sent.append((dispatch_id, data))
 
-    monkeypatch.setattr(routes.manager, "broadcast", fake_broadcast)
-    monkeypatch.setattr(routes.manager, "broadcast_raw", fake_broadcast_raw)
+    monkeypatch.setattr(dispatches.manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(dispatches.manager, "broadcast_raw", fake_broadcast_raw)
     return sent
 
 

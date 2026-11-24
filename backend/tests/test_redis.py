@@ -213,12 +213,12 @@ async def test_malformed_message_does_not_stop_the_feed(redis_server):
 
 
 def test_deep_health_reports_redis(client, redis_server, monkeypatch):
-    from backend.api import routes
+    from backend.api import health
 
     async def db_ok():
         return {"status": "connected", "backend": "mongodb"}
 
-    monkeypatch.setattr(routes, "db_health", db_ok)
+    monkeypatch.setattr(health, "db_health", db_ok)
     monkeypatch.setattr(settings, "sarvam_api_key", "")
     assert client.get("/api/health/deep").json()["checks"]["redis"] is True
 

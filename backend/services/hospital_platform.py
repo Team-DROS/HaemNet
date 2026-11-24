@@ -106,10 +106,11 @@ class MongoPlatformRepo:
     async def find_by_token_hash(self, token_hash: str) -> Optional[dict]:
         return self._out(await self._col().find_one({"email_verification_hash": token_hash}))
 
-    async def list(self, status: Optional[str]) -> List[dict]:
+    async def list(self, status: Optional[str], limit: int = 50, offset: int = 0) -> tuple[List[dict], int]:
         query = {"status": status} if status else {}
-        cursor = self._col().find(query).sort("registered_at", -1).limit(500)
-        return [self._out(d) async for d in cursor]
+        total = await self._col().count_documents(query)
+        cursor = self._col().find(query).sort("registered_at", -1).skip(offset).limit(limit)
+        return [self._out(d) async for d in cursor], total
 
     async def delete(self, hospital_id: str) -> None:
         await self._col().delete_one({"_id": hospital_id})
@@ -147,9 +148,10 @@ class MemoryPlatformRepo:
                 return dict(h)
         return None
 
-    async def list(self, status):
+    async def list(self, status, limit=50, offset=0):
         rows = [dict(h) for h in self.hospitals.values() if not status or h.get("status") == status]
-        return sorted(rows, key=lambda h: h.get("registered_at") or "", reverse=True)
+        rows = sorted(rows, key=lambda h: h.get("registered_at") or "", reverse=True)
+        return rows[offset:offset + limit], len(rows)
 
     async def delete(self, hospital_id):
         self.hospitals.pop(hospital_id, None)
@@ -166,6 +168,16 @@ repo: Any = MongoPlatformRepo()
 
 def platform_available() -> bool:
     return settings.db_backend == "mongodb"
+
+
+async def audit(hospital_id: str, actor: str, action: str, detail: str = "") -> None:
+    """Best-effort audit entry. A logging problem must never block an emergency request."""
+    if not platform_available():
+        return
+    try:
+        await repo.add_audit({"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()})
+    except Exception as exc:
+        logger.error("Audit write failed for %s (%s): %s", hospital_id, action, type(exc).__name__)
 
 
 # ── public (client-safe) shapes ───────────────────────────────────

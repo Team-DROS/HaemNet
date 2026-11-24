@@ -81,14 +81,14 @@ function AdminLogin({ onToken }) {
 function Review({ token, onSignOut }) {
   const api = useAdminApi(token, onSignOut);
   const [tab, setTab] = useState('pending');
-  const [list, setList] = useState({ loading: true, rows: [], error: null });
+  const [list, setList] = useState({ loading: true, rows: [], total: 0, error: null });
   const [selected, setSelected] = useState(null);
 
   const load = useCallback(async () => {
     setList((l) => ({ ...l, loading: true, error: null }));
     try {
-      const data = await api(`/api/admin/hospitals?status=${tab}`);
-      setList({ loading: false, rows: data.hospitals, error: null });
+      const data = await api(`/api/admin/hospitals?status=${tab}&limit=200`);
+      setList({ loading: false, rows: data.hospitals, total: data.total, error: null });
     } catch (e) { setList({ loading: false, rows: [], error: e.message }); }
   }, [api, tab]);
   useEffect(() => { load(); }, [load]);

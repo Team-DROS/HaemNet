@@ -364,3 +364,17 @@ def test_delete_needs_the_hospital_id_then_removes_account_and_files(client, pla
     assert hid not in platform_repo.hospitals
     assert not any(uploads.rglob("*.pdf"))
     assert platform_repo.audit[-1]["action"] == "account_deleted"
+
+
+# ── pagination and audit ──────────────────────────────────────────
+
+def test_admin_list_is_paginated_and_reports_the_total(client, platform_repo, admin):
+    for i in range(5):
+        platform_repo.hospitals[f"H{i}"] = {"id": f"H{i}", "name": f"Hospital {i}", "status": "pending",
+                                            "registered_at": f"2026-01-0{i + 1}T00:00:00+00:00"}
+    first = client.get("/api/admin/hospitals?status=pending&limit=2", headers=admin).json()
+    assert first["total"] == 5 and [h["id"] for h in first["hospitals"]] == ["H4", "H3"]  # newest first
+    second = client.get("/api/admin/hospitals?status=pending&limit=2&offset=2", headers=admin).json()
+    assert [h["id"] for h in second["hospitals"]] == ["H2", "H1"]
+    assert client.get("/api/admin/hospitals?limit=0", headers=admin).status_code == 422
+    assert client.get("/api/admin/hospitals?limit=201", headers=admin).status_code == 422

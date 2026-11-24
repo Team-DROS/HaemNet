@@ -11,6 +11,7 @@ and style objects/theme tokens. It is not a Next.js or NativeWind application.
 
 - Hospital registration (official email, contact person, HFR ID or state registration number), email verification, document upload and a review status screen. Only approved hospitals can send requests.
 - Admin panel at `/admin`: review pending hospitals, open uploaded documents, approve, reject or suspend with a reason, and see the audit trail.
+- Staff accounts with admin and staff roles (Team screen) and a staff sign-in option.
 - Hospital-ID/password sign-in; a confirmation step before a dispatch places real calls; request history export to CSV.
 - Command Center for blood group, units, urgency, address, and donor responses.
 - Individual groups plus All positive / All negative recruitment options.

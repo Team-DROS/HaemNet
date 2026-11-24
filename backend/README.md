@@ -202,3 +202,8 @@ status and count as approved.
 - Setup: set `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `DASHBOARD_URL`, `UPLOAD_DIR` and the `SMTP_*`
   values (see `.env.example`). Without SMTP no email is sent. Uploads live on local disk, so use a
   persistent disk or move `LocalStorage` to S3 or R2. Needs `DB_BACKEND=mongodb`.
+
+Staff accounts: the hospital owner login can create staff (`POST /api/hospitals/me/staff`,
+roles `admin` or `staff`, up to 20), list and remove them. Staff sign in through
+`POST /api/auth/staff-token` with hospital ID, email and password. Staff admins can manage
+staff; plain staff cannot. Removing someone revokes their access immediately.

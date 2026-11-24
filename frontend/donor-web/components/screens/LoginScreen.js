@@ -7,6 +7,7 @@ import { Check, HaemNetMark, Hospital, Lock, Mic, Navigation, Network, Phone, Ma
 import { color, font, radius } from '../theme';
 import { Button } from '../ui';
 import ThemeToggle from '../ThemeToggle';
+import Turnstile, { TURNSTILE_SITE_KEY } from '../Turnstile';
 
 export default function LoginScreen({ store, theme, onToggleTheme }) {
   const { width } = useWindowDimensions();
@@ -16,6 +17,7 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [asStaff, setAsStaff] = useState(false);
+  const [botToken, setBotToken] = useState(null);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
@@ -38,13 +40,14 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
       if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setError('Enter the hospital\'s official email address.');
       if (!/^\d{10}$/.test(form.phone)) return setError('Enter a 10-digit mobile number.');
       if (!form.hfr.trim() && !form.regNo.trim()) return setError('Enter your HFR ID or state registration number.');
+      if (TURNSTILE_SITE_KEY && !botToken) return setError('Complete the spam check first.');
       setBusy(true);
       try {
         const id = await store.register({
           name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password,
           official_email: form.email.trim(), contact_person: form.contact.trim(),
           hfr_id: form.hfr.trim() || null, registration_number: form.regNo.trim() || null,
-          blood_centre_licence: form.licence.trim() || null,
+          blood_centre_licence: form.licence.trim() || null, turnstile_token: botToken,
         });
         // Sign in straight away so the hospital lands on the verification steps.
         try { await store.login(id, form.password); } catch (e) {
@@ -104,6 +107,8 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
           )}
           <Field label={mode === 'login' ? 'Password' : 'Create a password'} icon={<Lock size={16} color={color.faint} />}
             value={form.password} onChangeText={set('password')} placeholder="••••••••" secureTextEntry onSubmitEditing={submit} />
+
+          {mode === 'register' && <Turnstile onToken={setBotToken} />}
 
           {error ? <Text style={s.error}>{error}</Text> : null}
 

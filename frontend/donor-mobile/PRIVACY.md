@@ -13,7 +13,7 @@ The app uses phone/password accounts; phone ownership is not verified by OTP.
 | Sign-in token | Authenticated requests and restoring a session | Expo SecureStore on supported devices; web preview falls back to app storage |
 | Donation information | Last donation date, cooldown, request fulfillment | Backend records; the donor's displayed donation log is also maintained locally |
 | Call audio | Speech recognition and conversation | Twilio streams audio to the backend; Sarvam processes speech/translation/TTS |
-| Transcribed replies and conversation | AI interpretation and confirmation | In AI mode, bounded recent conversation is sent to Sarvam's chat API; current speech code also logs transcripts on the backend |
+| Transcribed replies and conversation | AI interpretation and confirmation | In AI mode, bounded recent conversation is sent to Sarvam's chat API; transcripts are not written to application logs |
 
 ## Device permissions
 

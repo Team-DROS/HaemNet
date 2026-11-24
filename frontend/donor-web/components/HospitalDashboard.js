@@ -82,6 +82,13 @@ export default function HospitalDashboard() {
           </View>
         </View>
 
+        {store.wsState === 'offline' && (
+          <View style={s.offlineBanner} accessibilityRole="alert">
+            <Text style={s.offlineText}>Live updates are disconnected. Donor responses on screen may be out of date.</Text>
+            <Button variant="secondary" onPress={store.reconnect}>Reconnect</Button>
+          </View>
+        )}
+
         <View style={{ flex: 1 }}>
           {tab === 'command' && <CommandCenter store={store} compact={compactBody} onNew={() => setDrawerOpen(true)} />}
           {tab === 'map' && <DispatchMap store={store} compact={compactBody} />}
@@ -187,6 +194,8 @@ function ConnectionChip({ state, onRetry }) {
 }
 
 const s = StyleSheet.create({
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', paddingVertical: 10, paddingHorizontal: 20, backgroundColor: color.amberSurface },
+  offlineText: { color: color.amberText, fontFamily: font.body, fontSize: 13.5, flexShrink: 1 },
   root: { flex: 1, flexDirection: 'row', backgroundColor: color.canvas, minHeight: '100%' },
   row: { flexDirection: 'row', alignItems: 'center' },
   main: { flex: 1, minWidth: 0 },

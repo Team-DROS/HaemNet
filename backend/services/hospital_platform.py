@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from backend.config import settings
+from backend.services.email_service import send_verification_email
+from backend.services.errors import BadRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -220,3 +222,43 @@ def admin_summary(h: dict) -> dict:
     p["registered_at"] = h.get("registered_at")
     p["decided_at"] = h.get("decided_at")
     return p
+
+
+# ── registration and email verification ───────────────────────────
+
+async def record(hospital_id: str, actor: str, action: str, detail: str = "") -> None:
+    """Write an audit entry. Failures propagate: account changes must not go unrecorded."""
+    await repo.add_audit({"hospital_id": hospital_id, "actor": actor, "action": action, "reason": detail, "at": now_iso()})
+
+
+async def register_pending(hospital_id: str, name: str, profile: dict) -> None:
+    """Mark a freshly created hospital as pending review and email it the verification link."""
+    if not platform_available():
+        return
+    token, token_hash, expires = new_verification_token()
+    await repo.update(hospital_id, {
+        "status": PENDING, "email_verified": False, "registered_at": now_iso(),
+        "email_verification_hash": token_hash, "email_verification_expires": expires,
+        "documents": [], **profile,
+    })
+    await record(hospital_id, "hospital", "registered")
+    await send_verification_email(profile["official_email"], name, token)
+
+
+async def verify_email(token: str) -> None:
+    """Confirm the official email from the link's token. Raises InvalidInputError if it is bad or expired."""
+    hospital = await repo.find_by_token_hash(hash_token(token))
+    expires = (hospital or {}).get("email_verification_expires") or ""
+    if not hospital or expires < now_iso():
+        raise BadRequestError("This verification link is invalid or has expired. Request a new one.")
+    await repo.update(hospital["id"], {
+        "email_verified": True, "email_verification_hash": None, "email_verification_expires": None,
+    })
+    await record(hospital["id"], "hospital", "email_verified")
+
+
+async def resend_verification(hospital: dict) -> bool:
+    """Issue a fresh link. Returns whether the email could be sent."""
+    token, token_hash, expires = new_verification_token()
+    await repo.update(hospital["id"], {"email_verification_hash": token_hash, "email_verification_expires": expires})
+    return await send_verification_email(hospital["official_email"], hospital.get("name", ""), token)

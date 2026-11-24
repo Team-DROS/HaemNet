@@ -48,6 +48,14 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class HospitalNotApproved(Exception):  # noqa: N818  (a domain condition, not a fault)
+    """The hospital exists but may not place calls yet. `status` says why."""
+
+    def __init__(self, status: str):
+        super().__init__(status)
+        self.status = status
+
+
 def hospital_status(hospital: Optional[dict]) -> str:
     """Status of a hospital record; missing status means a legacy approved one."""
     return (hospital or {}).get("status") or APPROVED
@@ -165,6 +173,15 @@ repo: Any = MongoPlatformRepo()
 
 def platform_available() -> bool:
     return settings.db_backend == "mongodb"
+
+
+async def assert_approved(hospital_id: str) -> None:
+    """Raise HospitalNotApproved unless this hospital may send requests (each one places real calls)."""
+    if not platform_available():
+        return
+    status = hospital_status(await repo.get(hospital_id))
+    if status != APPROVED:
+        raise HospitalNotApproved(status)
 
 
 async def audit(hospital_id: str, actor: str, action: str, detail: str = "") -> None:

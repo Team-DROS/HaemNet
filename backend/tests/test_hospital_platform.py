@@ -332,3 +332,35 @@ def test_staff_validation_and_duplicates(client, platform_repo, hospital_db):
 def test_staff_endpoints_need_hospital_sign_in(client):
     assert client.get("/api/hospitals/me/staff").status_code == 401
     assert client.post("/api/auth/staff-token", json={"hospital_id": "HOSP-1", "email": "a@b.co", "password": "x"}).status_code == 401
+
+
+# ── data export and deletion ──────────────────────────────────────
+
+def test_export_contains_profile_staff_and_audit_but_no_secrets(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    add_staff(client, owner)
+    data = client.get("/api/hospitals/me/export", headers=owner).json()
+    text = str(data)
+    assert data["hospital"]["id"] == hid and data["hospital"]["staff"][0]["email"] == "devi@apollo.example"
+    assert data["audit"][0]["action"] in {"staff_added", "registered"}
+    assert "password_hash" not in text and "email_verification_hash" not in text
+
+
+def test_plain_staff_cannot_export_or_delete(client, platform_repo, hospital_db):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    add_staff(client, owner)
+    plain = {"Authorization": "Bearer " + staff_login(client, hid).json()["access_token"]}
+    assert client.get("/api/hospitals/me/export", headers=plain).status_code == 403
+    assert client.post("/api/hospitals/me/delete", headers=plain, json={"confirm_id": hid}).status_code == 403
+
+
+def test_delete_needs_the_hospital_id_then_removes_account_and_files(client, platform_repo, hospital_db, uploads):
+    hid, owner = signup(client, platform_repo, hospital_db)
+    upload(client, owner)
+    assert any(uploads.rglob("*.pdf"))
+    assert client.post("/api/hospitals/me/delete", headers=owner, json={"confirm_id": "HOSP-0000"}).status_code == 422
+    assert hid in platform_repo.hospitals
+    assert client.post("/api/hospitals/me/delete", headers=owner, json={"confirm_id": hid.lower()}).json() == {"deleted": hid}
+    assert hid not in platform_repo.hospitals
+    assert not any(uploads.rglob("*.pdf"))
+    assert platform_repo.audit[-1]["action"] == "account_deleted"

@@ -95,6 +95,13 @@ class LocalStorage:
         return target
 
 
+    def delete_folder(self, hospital_id: str) -> None:
+        import shutil
+        folder = (self.root / re.sub(r"[^A-Za-z0-9_-]", "_", hospital_id)).resolve()
+        if self.root.resolve() in folder.parents and folder.is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 def get_storage() -> LocalStorage:
     return LocalStorage(settings.upload_dir)
 
@@ -130,6 +137,9 @@ class MongoPlatformRepo:
         query = {"status": status} if status else {}
         cursor = self._col().find(query).sort("registered_at", -1).limit(500)
         return [self._out(d) async for d in cursor]
+
+    async def delete(self, hospital_id: str) -> None:
+        await self._col().delete_one({"_id": hospital_id})
 
     async def add_audit(self, entry: dict) -> None:
         from backend.db_services.mongodb import get_database
@@ -167,6 +177,9 @@ class MemoryPlatformRepo:
     async def list(self, status):
         rows = [dict(h) for h in self.hospitals.values() if not status or h.get("status") == status]
         return sorted(rows, key=lambda h: h.get("registered_at") or "", reverse=True)
+
+    async def delete(self, hospital_id):
+        self.hospitals.pop(hospital_id, None)
 
     async def add_audit(self, entry):
         self.audit.append(dict(entry))

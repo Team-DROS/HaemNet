@@ -328,3 +328,38 @@ async def staff_login(payload: StaffLogin):
     user = public_hospital(hospital)
     user["staff"] = {"id": member["id"], "name": member["name"], "role": member["role"]}
     return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+# ── data export and account deletion (DPDP Act) ───────────────────
+
+@router.get("/api/hospitals/me/export")
+async def export_my_data(hospital_id: str = Depends(get_current_hospital_admin)):
+    """Everything we hold about this hospital's account, as JSON. Never secrets."""
+    _require_platform()
+    hospital = await _load(hospital_id)
+    profile = hp.hospital_profile(hospital)
+    profile["registered_at"] = hospital.get("registered_at")
+    profile["staff"] = [_public_staff(m) for m in hospital.get("staff", [])]
+    return {"exported_at": hp.now_iso(), "hospital": profile, "audit": await hp.repo.audit_for(hospital_id)}
+
+
+class DeleteAccount(BaseModel):
+    confirm_id: str
+
+
+@router.post("/api/hospitals/me/delete")
+async def delete_my_account(payload: DeleteAccount, hospital_id: str = Depends(get_current_hospital_admin)):
+    """Permanently delete this hospital, its staff logins and uploaded documents.
+
+    The caller must type the hospital ID. Past dispatch records are kept for
+    audit and safety and are no longer linked to a login.
+    """
+    _require_platform()
+    if payload.confirm_id.strip().upper() != hospital_id:
+        raise HTTPException(status_code=422, detail="Type your hospital ID to confirm deletion")
+    await _load(hospital_id)
+    hp.get_storage().delete_folder(hospital_id)
+    await hp.repo.add_audit({"hospital_id": hospital_id, "actor": "hospital", "action": "account_deleted", "reason": "", "at": hp.now_iso()})
+    await hp.repo.delete(hospital_id)
+    logger.info("Hospital %s deleted its account", hospital_id)
+    return {"deleted": hospital_id}

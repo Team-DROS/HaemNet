@@ -11,10 +11,11 @@ import ThemeToggle from '../ThemeToggle';
 export default function LoginScreen({ store, theme, onToggleTheme }) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '', email: '', contact: '', hfr: '', regNo: '', licence: '' });
+  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '', email: '', staffEmail: '', contact: '', hfr: '', regNo: '', licence: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [asStaff, setAsStaff] = useState(false);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
@@ -22,8 +23,12 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
     if (mode === 'login') {
       if (!form.id.trim() || !form.password) return setError('Enter your hospital ID and password.');
       setBusy(true);
-      try { await store.login(form.id, form.password); } catch (e) {
-        setError(e.status === 401 ? 'Hospital ID or password is incorrect.' : `Could not sign in: ${e.message}`);
+      if (asStaff && !form.staffEmail.trim()) { setBusy(false); return setError('Enter your staff email address.'); }
+      try {
+        if (asStaff) await store.loginStaff(form.id, form.staffEmail, form.password);
+        else await store.login(form.id, form.password);
+      } catch (e) {
+        setError(e.status === 401 ? (asStaff ? 'Hospital ID, email or password is incorrect.' : 'Hospital ID or password is incorrect.') : `Could not sign in: ${e.message}`);
       }
       setBusy(false);
     } else {
@@ -93,6 +98,10 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
               onChangeText={(t) => set('id')(t.toUpperCase())} placeholder="HOSP-1001" autoCapitalize="characters" mono
               right={/^HOSP-\w+$/.test(form.id) ? <Check size={13} color={color.green} /> : null} />
           )}
+          {mode === 'login' && asStaff && (
+            <Field label="Staff email" icon={<Phone size={16} color={color.faint} />} value={form.staffEmail}
+              onChangeText={set('staffEmail')} placeholder="you@hospital.in" keyboardType="email-address" autoCapitalize="none" />
+          )}
           <Field label={mode === 'login' ? 'Password' : 'Create a password'} icon={<Lock size={16} color={color.faint} />}
             value={form.password} onChangeText={set('password')} placeholder="••••••••" secureTextEntry onSubmitEditing={submit} />
 
@@ -102,6 +111,12 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
             icon={busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}>
             {mode === 'login' ? 'Sign in' : 'Register hospital'}
           </Button>
+
+          {mode === 'login' && (
+            <Pressable onPress={() => { setAsStaff(!asStaff); setError(null); }} accessibilityRole="button" style={{ marginTop: 14, alignSelf: 'center' }}>
+              <Text style={s.switchLink}>{asStaff ? 'Sign in as the hospital owner' : 'Sign in as staff'}</Text>
+            </Pressable>
+          )}
 
           <Pressable onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setSuccess(null); }}
             accessibilityRole="button" style={{ marginTop: 22, alignSelf: 'center' }}>

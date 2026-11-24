@@ -251,6 +251,21 @@ export function useDispatchStore() {
     return user;
   }, [request]);
 
+  const loginStaff = useCallback(async (hospitalId, email, password) => {
+    const data = await request('/api/auth/staff-token', {
+      method: 'POST', body: { hospital_id: hospitalId.trim(), email: email.trim(), password }, auth: false,
+    });
+    const user = { ...data.user, token: data.access_token };
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+    setNotice(null);
+    setProfile(user);
+    return user;
+  }, [request]);
+
+  const listStaff = useCallback(async () => (await request('/api/hospitals/me/staff')).staff, [request]);
+  const addStaff = useCallback((member) => request('/api/hospitals/me/staff', { method: 'POST', body: member }), [request]);
+  const removeStaff = useCallback((id) => request(`/api/hospitals/me/staff/${id}`, { method: 'DELETE' }), [request]);
+
   const register = useCallback(async (fields) => {
     const data = await request('/api/auth/register', { method: 'POST', body: fields, auth: false });
     return data.id;
@@ -500,7 +515,7 @@ export function useDispatchStore() {
   }, [request, update]);
 
   return {
-    booting, profile, login, register, refreshProfile, uploadDocument, resendVerification, logout, notice, setNotice,
+    booting, profile, login, loginStaff, listStaff, addStaff, removeStaff, register, refreshProfile, uploadDocument, resendVerification, logout, notice, setNotice,
     emergencies, ordered, selectedId, setSelectedId, selected: selectedId ? emergencies[selectedId] : null,
     history, wsState, health, availability, now,
     triggerDispatch, markDonated, closeEmergency, refreshAvailability, refreshHistory, reconnect: connect,

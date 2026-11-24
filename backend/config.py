@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:19006", "http://localhost:8081"]
     server_base_url: str = "http://localhost:8000"
 
+    # ── Call cost guards ─────────────────────────────────────────
+    # Most donors called for one request, and most requests per hospital per day.
+    max_donors_per_dispatch: int = 50
+    max_dispatches_per_hospital_day: int = 30
+
     # ── Hospital platform (verification, admin, uploads, email) ──
     # Admin sign-in is disabled until both values are set. Generate the hash with
     # python -c "import bcrypt;print(bcrypt.hashpw(b'PASSWORD', bcrypt.gensalt()).decode())"

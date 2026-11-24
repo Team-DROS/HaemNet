@@ -121,6 +121,8 @@ async def trigger_dispatch(
     """
     from backend.api.hospital_platform import ensure_hospital_approved
     await ensure_hospital_approved(hospital_id)
+    from backend.services.call_guard import cap_donors, check_daily_quota, record_dispatch
+    check_daily_quota(hospital_id)
 
     if payload.hospital_id != hospital_id:
         logger.warning(
@@ -146,6 +148,7 @@ async def trigger_dispatch(
     for group in request_groups(payload.blood_group):
         donors.extend(await find_eligible_donors(blood_group=group, lat=lat, lng=lng))
 
+    donors = cap_donors(donors, lat, lng)
     if not donors:
         return DispatchResponse(
             dispatch_id=dispatch_id,
@@ -169,6 +172,7 @@ async def trigger_dispatch(
     # Step 3 — run orchestration in the background so we return fast.
     # Bind ownership first so live events only reach this hospital.
     manager.bind(dispatch_id, hospital_id)
+    record_dispatch(hospital_id)
     background_tasks.add_task(_run_dispatch_graph, dispatch_id, initial_state)
 
     logger.info(

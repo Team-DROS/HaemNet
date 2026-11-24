@@ -76,6 +76,9 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
             blood_group=group, lat=state["lat"], lng=state["lng"],
         ))
 
+    from backend.services.call_guard import cap_donors
+    donors = cap_donors(donors, state["lat"], state["lng"])
+
     donor_states = {}
     for d in donors:
         distance = haversine_km(state["lat"], state["lng"], d.location.lat, d.location.lng)

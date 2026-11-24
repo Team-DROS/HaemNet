@@ -54,7 +54,7 @@ async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depe
             language=normalise_language(payload.language),
             lat=payload.lat,
             lng=payload.lng,
-            **({} if payload.calls_consent is None else {"calls_consent": payload.calls_consent}),
+            calls_consent=payload.calls_consent,
         )
         return {"status": "ok", "message": "Donor successfully registered"}
     except Exception as exc:

@@ -72,7 +72,8 @@ def _iso(value) -> Optional[str]:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return _as_utc(value).isoformat()
+        utc = _as_utc(value)
+        return utc.isoformat() if utc is not None else None
     return str(value)
 
 
@@ -202,7 +203,7 @@ async def db_eligible_counts_by_group(
     """How many donors of each blood group could be called right now."""
     cutoff = _now() - timedelta(days=cooldown_days)
     db = get_database()
-    pipeline = [
+    pipeline: list[dict[str, Any]] = [
         {
             "$geoNear": {
                 "near": _point(lat, lng),
@@ -282,6 +283,8 @@ async def register_donor(
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
+    if doc is None:  # an upsert always returns the document
+        raise RuntimeError("Donor upsert returned no document")
     logger.info("Donor registered/updated: phone=%s", phone)
     return _doc_to_donor_node(doc)
 
@@ -614,7 +617,10 @@ async def db_create_hospital(id: str, name: str, location: str, phone: str, pass
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
-    return _hospital_out(doc)
+    created = _hospital_out(doc)
+    if created is None:  # an upsert always returns the document
+        raise RuntimeError("Hospital upsert returned no document")
+    return created
 
 
 async def db_get_hospital_by_id(id: str) -> Optional[dict]:

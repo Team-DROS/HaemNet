@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
@@ -296,7 +297,7 @@ def should_route(state: Dict[str, Any]) -> str:
 # ── Build the Graph ──────────────────────────────────────────────
 
 
-def build_dispatch_graph() -> StateGraph:
+def build_dispatch_graph() -> CompiledStateGraph:
     """
     Construct and compile the LangGraph StateGraph for emergency
     dispatch orchestration.

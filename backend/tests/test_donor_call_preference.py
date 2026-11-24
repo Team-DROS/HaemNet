@@ -26,7 +26,7 @@ def test_old_apps_without_the_flag_still_register(client, monkeypatch):
 
     monkeypatch.setattr(donors, "register_donor", fake_register)
     assert client.post("/api/donor/register", json=REGISTER, headers=donor_headers(PHONE)).status_code == 200
-    assert "calls_consent" not in saved
+    assert saved["calls_consent"] is None
 
 
 def test_opt_out_and_back_in(client, monkeypatch):

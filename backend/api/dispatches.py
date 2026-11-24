@@ -309,9 +309,8 @@ async def log_donation(
     When ``dispatch_id`` is given, the donor is also marked as donated in
     that dispatch, and the dispatch closes itself once enough units are in.
     """
-    dispatch = None
-    if payload.dispatch_id:
-        dispatch = await _owned_dispatch(payload.dispatch_id, hospital_id)
+    dispatch_id = payload.dispatch_id
+    dispatch = await _owned_dispatch(dispatch_id, hospital_id) if dispatch_id else None
 
     success = await update_donation_date(
         donor_id=payload.donor_id,
@@ -327,15 +326,15 @@ async def log_donation(
     )
 
     fulfilled = False
-    if dispatch is not None:
+    if dispatch_id and dispatch is not None:
         await dispatch_store.update_donor_status(
-            payload.dispatch_id,
+            dispatch_id,
             payload.donor_id,
             CallStatus.DONATED,
         )
         donor = (dispatch.get("donors") or {}).get(payload.donor_id, {})
         await manager.broadcast(
-            payload.dispatch_id,
+            dispatch_id,
             DonorStatusUpdate(
                 donor_id=payload.donor_id,
                 name=donor.get("name", "Donor"),
@@ -353,8 +352,8 @@ async def log_donation(
         )
         if donated >= (dispatch.get("units") or 1):
             fulfilled = True
-            await dispatch_store.mark_complete(payload.dispatch_id, fulfilled=True)
-            await manager.broadcast_raw(payload.dispatch_id, {"type": "dispatch_fulfilled"})
+            await dispatch_store.mark_complete(dispatch_id, fulfilled=True)
+            await manager.broadcast_raw(dispatch_id, {"type": "dispatch_fulfilled"})
 
     return {
         "status": "ok",

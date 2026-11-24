@@ -91,7 +91,7 @@ async def initiate_bulk_calls(
 
     successes: List[Dict[str, Any]] = []
     for donor, result in zip(donors, results, strict=True):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             logger.error("Failed to call donor %s: %s", donor.id, result)
         else:
             successes.append(result)

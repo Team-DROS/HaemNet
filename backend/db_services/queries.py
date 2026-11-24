@@ -220,6 +220,8 @@ def register_donor(
             last_donated_date=last_donated_date,
         )
         record = result.single()
+        if record is None:  # the MERGE always returns the donor
+            raise RuntimeError("Donor upsert returned no record")
         return record.data()
 
 

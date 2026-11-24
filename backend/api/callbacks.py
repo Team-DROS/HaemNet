@@ -235,7 +235,8 @@ async def twilio_audio_stream(websocket: WebSocket):
 
     async def send_audio(audio):
         # Only the AI engine uses playback acknowledgements; preserve legacy flow.
-        mark = session.playback_started() if hasattr(session, "playback_started") else None
+        playback_started = getattr(session, "playback_started", None)
+        mark = playback_started() if callable(playback_started) else None
         await websocket.send_text(
             json.dumps(
                 {

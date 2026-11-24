@@ -8,13 +8,22 @@ in Redis when REDIS_URL is set (shared by all instances), otherwise in process.
 
 from __future__ import annotations
 
-from typing import List, TypeVar
+from typing import List, Protocol, TypeVar
 
 from backend.config import settings
+from backend.schemas.models import Coordinates
 from backend.services.geo import haversine_km
 from backend.services.rate_limit import Limiter, enforce
 
-T = TypeVar("T")
+
+class _Located(Protocol):
+    """Anything with a map position, such as a donor."""
+
+    @property
+    def location(self) -> Coordinates: ...
+
+
+T = TypeVar("T", bound=_Located)
 
 _daily = Limiter("hospital_daily_dispatch", max_events=1, window_seconds=24 * 3600)
 

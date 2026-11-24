@@ -415,6 +415,8 @@ async def register_donor(
         )
         record = await result.single()
 
+    if record is None:
+        raise RuntimeError("Donor upsert returned no record")
     logger.info("Donor registered/updated: phone=%s", phone)
     return _record_to_donor_node(record.data())
 
@@ -855,7 +857,7 @@ RETURN h
 """
 
 
-async def db_create_hospital(id: str, name: str, location: str, phone: str, password_hash: str) -> dict:
+async def db_create_hospital(id: str, name: str, location: str, phone: str, password_hash: str) -> Optional[dict]:
     driver = _get_driver()
     async with driver.session() as session:
         result = await session.run(

@@ -190,13 +190,14 @@ async def register_hospital(hospital: HospitalRegister, request: Request):
         email = (hospital.official_email or "").strip().lower()
         if not hp.valid_email(email):
             raise HTTPException(status_code=422, detail="Enter the hospital's official email address")
-        if not (hospital.contact_person or "").strip():
+        contact_person = (hospital.contact_person or "").strip()
+        if not contact_person:
             raise HTTPException(status_code=422, detail="Enter a contact person")
         if not ((hospital.hfr_id or "").strip() or (hospital.registration_number or "").strip()):
             raise HTTPException(status_code=422, detail="Enter your HFR ID or state registration number")
         profile = {
             "official_email": email,
-            "contact_person": hospital.contact_person.strip()[:120],
+            "contact_person": contact_person[:120],
             "hfr_id": (hospital.hfr_id or "").strip()[:60] or None,
             "registration_number": (hospital.registration_number or "").strip()[:60] or None,
             "blood_centre_licence": (hospital.blood_centre_licence or "").strip()[:60] or None,

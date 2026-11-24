@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:19006", "http://localhost:8081"]
     server_base_url: str = "http://localhost:8000"
 
+    # ── Hospital platform (verification, admin, uploads, email) ──
+    # Admin sign-in is disabled until both values are set. Generate the hash with
+    # python -c "import bcrypt;print(bcrypt.hashpw(b'PASSWORD', bcrypt.gensalt()).decode())"
+    admin_username: str = ""
+    admin_password_hash: str = ""
+    dashboard_url: str = "http://localhost:8081"
+    upload_dir: str = "uploads"
+    max_upload_mb: int = 5
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     # ── Expo Push Notifications ──────────────────────────────────
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
 
@@ -114,6 +128,14 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("MONGODB_URI points at localhost; use the Atlas connection string in production")
         return self
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from)
+
+    @property
+    def admin_configured(self) -> bool:
+        return bool(self.admin_username and self.admin_password_hash)
 
     @property
     def twilio_configured(self) -> bool:

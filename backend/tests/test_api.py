@@ -40,9 +40,11 @@ def test_register_issues_an_id_when_none_given(client, monkeypatch):
     monkeypatch.setattr(auth, "db_create_hospital", fake_create)
     res = client.post("/api/auth/register", json={
         "name": "Apollo", "location": "Chennai", "phone": "+91", "password": "pw",
+        "official_email": "admin@apollo.example", "contact_person": "Dr Rao", "hfr_id": "IN123",
     })
     assert res.status_code == 200
     assert res.json()["id"].startswith("HOSP-")
+    assert res.json()["status"] == "pending"
     assert created["id"] == res.json()["id"]
     assert created["password_hash"] != "pw"
 

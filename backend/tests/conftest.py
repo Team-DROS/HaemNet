@@ -143,3 +143,30 @@ def _reset_limits():
     auth._donor_failures.clear()
     auth._donor_signups.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def platform_repo(monkeypatch):
+    """Hospital verification data lives in memory; email is captured, never sent."""
+    from backend.api import hospital_platform as api
+    from backend.services import hospital_platform as hp
+
+    repo = hp.MemoryPlatformRepo()
+    monkeypatch.setattr(hp, "repo", repo)
+    repo.emails = []
+
+    async def fake_verification(to, name, token):
+        repo.emails.append(("verify", to, token))
+        return True
+
+    async def fake_decision(to, name, action, reason=""):
+        repo.emails.append((action, to, reason))
+        return True
+
+    monkeypatch.setattr(api, "send_verification_email", fake_verification)
+    monkeypatch.setattr(api, "send_decision_email", fake_decision)
+    api._admin_failures.clear()
+    api._resend_limit.clear()
+    api._verify_limit.clear()
+    api._upload_limit.clear()
+    return repo

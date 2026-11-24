@@ -9,6 +9,7 @@ import ThemeToggle from './ThemeToggle';
 import { Button, LiveDot } from './ui';
 import { useDispatchStore } from './useDispatchStore';
 import LoginScreen from './screens/LoginScreen';
+import PendingReview from './screens/PendingReview';
 import CommandCenter from './screens/CommandCenter';
 import DispatchMap from './screens/DispatchMap';
 import NetworkIntelligence from './screens/NetworkIntelligence';
@@ -40,6 +41,8 @@ export default function HospitalDashboard() {
     );
   }
   if (!store.profile) return <LoginScreen store={store} theme={theme} onToggleTheme={toggleTheme} />;
+
+  if (store.profile.status && store.profile.status !== 'approved') return <PendingReview store={store} />;
 
   const compactNav = width < 1180;
   const compactBody = width < 1320;

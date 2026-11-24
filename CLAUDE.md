@@ -21,6 +21,8 @@ and release. Do not merge into another role's folders without that owner's revie
 ## Commands
 
 ```bash
+make check                                             # everything CI runs: ruff, format check, mypy, tests, website links
+make help                                              # list the individual commands (lint, format, typecheck, test)
 python -m pytest backend/tests -q                      # backend tests (JWT_SECRET needs 32+ chars outside tests)
 cd frontend/donor-web && node node_modules/expo/bin/cli export --platform web --output-dir dist
 cd frontend/donor-mobile && npm run lint && npm test
@@ -28,8 +30,22 @@ python frontend/website/check_links.py                 # public site links
 pip-audit -r backend/requirements.txt --no-deps --disable-pip
 ```
 
+## Backend architecture
+
+Layers, from the outside in. Dependencies point inward only: an API module may import services, never the reverse.
+
+| Layer | Where | Responsibility |
+| --- | --- | --- |
+| API | `backend/api/*.py` | HTTP only: parse the request, call a service, shape the response. Routers: `dispatches` (hospital), `donors`, `health`, `admin`, `hospital_account`, `hospital_staff`, `contact`, `auth`, `callbacks` (Twilio), `websockets` |
+| Services | `backend/services/*.py` | Business rules, no HTTP. They raise `DomainError` subclasses (`services/errors.py`); `api/errors.py` turns them into responses in one place |
+| Data | `backend/db_services/`, `backend/dispatch_store.py` | MongoDB (default) or Neo4j behind one function surface |
+| Cross-cutting | `observability.py`, `hardening.py`, `config.py` | Request IDs and logs, security headers and size limits, settings |
+
+New endpoint checklist: put the rule in a service and raise a domain error, keep the handler a few lines, add a service-level test and an API-level test.
+
 ## Rules
 
+- Code must pass `make check` (ruff, ruff format, mypy, tests). Install the hooks with `pip install pre-commit && pre-commit install`.
 - Work on a branch, never on `main`. Commit style: `feat:`, `fix:`, `docs:`, `test:`, `chore:`.
 - Every change comes with a test. Show the plan before a large change.
 - Never log or print donor speech, transcripts, phone numbers or tokens. Donor speech is personal data under the DPDP Act.

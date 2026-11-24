@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:19006", "http://localhost:8081"]
     server_base_url: str = "http://localhost:8000"
 
+    # ── Redis (shared limits and live-update fan-out across instances) ──
+    # Empty keeps everything in process memory (fine for a single instance).
+    redis_url: str = ""
+
     # ── Call cost guards ─────────────────────────────────────────
     # Most donors called for one request, and most requests per hospital per day.
     max_donors_per_dispatch: int = 50

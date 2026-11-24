@@ -155,8 +155,8 @@ class VoiceSession:
         # Log the donor's speech.
         self._conversation.append({"role": "donor", "text": transcript})
         logger.info(
-            "Donor %s said (%s): %s",
-            self.donor_id, self.language, transcript,
+            "Donor %s replied (%s): transcript_len=%d",
+            self.donor_id, self.language, len(transcript),
         )
 
         # Check for intent.
@@ -206,16 +206,14 @@ class VoiceSession:
         for keyword in decline_words:
             if keyword in text_lower:
                 logger.info(
-                    "Intent DECLINED detected for donor %s (keyword='%s')",
-                    self.donor_id, keyword,
+                    "Intent DECLINED detected for donor %s", self.donor_id,
                 )
                 return "declined"
 
         for keyword in accept_words:
             if keyword in text_lower:
                 logger.info(
-                    "Intent ACCEPTED detected for donor %s (keyword='%s')",
-                    self.donor_id, keyword,
+                    "Intent ACCEPTED detected for donor %s", self.donor_id,
                 )
                 return "accepted"
 

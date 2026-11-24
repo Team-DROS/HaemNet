@@ -56,6 +56,29 @@ services:
         value: sarvam-105b
       - key: SENTRY_DSN
         sync: false
+      # Optional, needed for more than one instance: a Render Key Value (Redis) URL.
+      # Shares rate limits, call quotas and live dashboard updates across instances.
+      - key: REDIS_URL
+        sync: false
+      # Hospital verification and admin panel.
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: TURNSTILE_SECRET
+        sync: false
+      - key: CONTACT_TO
+        sync: false
       - key: SERVER_BASE_URL
         sync: false
       - key: CORS_ORIGINS

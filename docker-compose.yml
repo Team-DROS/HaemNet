@@ -17,6 +17,13 @@ services:
       # Mount code so changes reflect locally (remove for production)
       - ./backend:/app/backend
 
+  redis:
+    # Optional locally. Set REDIS_URL=redis://redis:6379 in .env to share limits and live updates.
+    image: redis:7-alpine
+    container_name: blood_dispatch_redis
+    ports:
+      - "6379:6379"
+
   neo4j:
     image: neo4j:5
     container_name: blood_dispatch_neo4j

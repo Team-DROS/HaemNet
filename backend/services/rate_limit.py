@@ -17,6 +17,7 @@ from collections import defaultdict, deque
 from typing import Deque, Dict, Optional
 
 from backend.services import redis_client
+from backend.services.errors import RateLimitedError
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +164,9 @@ class Limiter:
     def clear(self) -> None:
         """Forget local counters (tests). Redis keys expire on their own."""
         self._local.clear()
+
+
+async def enforce(limiter: Limiter, key: str, message: str) -> None:
+    """Take a slot or raise RateLimitedError (answered as 429 with Retry-After)."""
+    if not await limiter.try_acquire(key):
+        raise RateLimitedError(message, await limiter.retry_after(key))

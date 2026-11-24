@@ -10,11 +10,9 @@ from __future__ import annotations
 
 from typing import List, TypeVar
 
-from fastapi import HTTPException
-
 from backend.config import settings
 from backend.services.geo import haversine_km
-from backend.services.rate_limit import Limiter
+from backend.services.rate_limit import Limiter, enforce
 
 T = TypeVar("T")
 
@@ -36,12 +34,11 @@ async def reserve_daily_quota(hospital_id: str) -> None:
     overshoot the cap. Call `release_daily_quota` if the request ends up not placing any calls.
     """
     _daily.max_events = settings.max_dispatches_per_hospital_day
-    if not await _daily.try_acquire(hospital_id):
-        raise HTTPException(
-            status_code=429,
-            detail=f"Daily request limit reached ({settings.max_dispatches_per_hospital_day} per 24 hours). Contact HaemNet support if this is an emergency.",
-            headers={"Retry-After": str(await _daily.retry_after(hospital_id))},
-        )
+    await enforce(
+        _daily, hospital_id,
+        f"Daily request limit reached ({settings.max_dispatches_per_hospital_day} per 24 hours). "
+        "Contact HaemNet support if this is an emergency.",
+    )
 
 
 async def release_daily_quota(hospital_id: str) -> None:

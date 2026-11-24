@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    # Cloudflare Turnstile secret. Empty disables the bot check (development).
+    turnstile_secret: str = ""
+    # Where contact form messages are delivered.
+    contact_to: str = ""
 
     # ── Expo Push Notifications ──────────────────────────────────
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"

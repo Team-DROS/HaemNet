@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # ── MongoDB (default data store) ─────────────────────────────
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "haemnet"
+    # Fail fast instead of hanging 30 seconds when MongoDB is unreachable.
+    mongodb_server_selection_timeout_ms: int = 5000
+    mongodb_max_pool_size: int = 100
 
     # Which data layer to use: "mongodb" (default) or "neo4j".
     db_backend: str = "mongodb"
@@ -60,6 +63,12 @@ class Settings(BaseSettings):
     # ── Redis (shared limits and live-update fan-out across instances) ──
     # Empty keeps everything in process memory (fine for a single instance).
     redis_url: str = ""
+
+    # ── Outbound call pacing ─────────────────────────────────────
+    # Twilio starts calls from API requests; firing 50 at once can trigger 429s.
+    # This spaces call starts per backend instance (divide by instance count).
+    twilio_calls_per_second: float = 10.0
+    max_request_body_kb: int = 256
 
     # ── Call cost guards ─────────────────────────────────────────
     # Most donors called for one request, and most requests per hospital per day.

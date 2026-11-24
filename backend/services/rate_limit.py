@@ -1,15 +1,24 @@
-"""
-Small in-process sliding-window rate limiter.
+"""Sliding-window rate limiting, shared through Redis when it is configured.
 
-Good enough for a single backend instance. Behind several instances, move
-the counters to a shared store (Redis or MongoDB) so limits hold globally.
+`Limiter` is the one to use. Counters live in Redis (a sorted set per key) so
+limits hold across several backend instances. With no REDIS_URL, or if Redis
+errors, it falls back to in-process counters (per instance) and logs a warning,
+so a Redis outage weakens limits instead of breaking sign-in.
+
+`SlidingWindowLimiter` is the in-process implementation.
 """
 
 from __future__ import annotations
 
+import logging
 import time
+import uuid
 from collections import defaultdict, deque
 from typing import Deque, Dict, Optional
+
+from backend.services import redis_client
+
+logger = logging.getLogger(__name__)
 
 
 class SlidingWindowLimiter:
@@ -46,3 +55,70 @@ class SlidingWindowLimiter:
 
     def clear(self) -> None:
         self._events.clear()
+
+
+class Limiter:
+    """Async sliding-window limiter: Redis when configured, memory otherwise."""
+
+    def __init__(self, name: str, max_events: int, window_seconds: float) -> None:
+        self.name = name
+        self.max_events = max_events
+        self.window = window_seconds
+        self._local = SlidingWindowLimiter(max_events, window_seconds)
+
+    def _key(self, key: str) -> str:
+        return f"rl:{self.name}:{key}"
+
+    def _sync_local(self) -> SlidingWindowLimiter:
+        self._local.max_events = self.max_events
+        self._local.window = self.window
+        return self._local
+
+    async def _run(self, redis_op, local_op, now: Optional[float]):
+        client = redis_client.get_redis()
+        if client is None or now is not None:  # an explicit `now` is for tests of the memory path
+            return local_op(self._sync_local())
+        try:
+            return await redis_op(client)
+        except Exception as exc:
+            logger.warning("Redis rate limit unavailable (%s); using local counters", type(exc).__name__)
+            return local_op(self._sync_local())
+
+    async def allowed(self, key: str, now: Optional[float] = None) -> bool:
+        async def op(r):
+            k, t = self._key(key), time.time()
+            pipe = r.pipeline()
+            pipe.zremrangebyscore(k, 0, t - self.window)
+            pipe.zcard(k)
+            _, count = await pipe.execute()
+            return count < self.max_events
+        return await self._run(op, lambda l: l.allowed(key, now), now)
+
+    async def hit(self, key: str, now: Optional[float] = None) -> None:
+        async def op(r):
+            k, t = self._key(key), time.time()
+            pipe = r.pipeline()
+            pipe.zadd(k, {f"{t}:{uuid.uuid4().hex[:8]}": t})
+            pipe.expire(k, int(self.window) + 1)
+            await pipe.execute()
+        await self._run(op, lambda l: l.hit(key, now), now)
+
+    async def retry_after(self, key: str, now: Optional[float] = None) -> int:
+        async def op(r):
+            k, t = self._key(key), time.time()
+            if await r.zcard(k) < self.max_events:
+                return 0
+            oldest = await r.zrange(k, 0, 0, withscores=True)
+            if not oldest:
+                return 0
+            return max(1, int(self.window - (t - oldest[0][1]) + 0.999))
+        return await self._run(op, lambda l: l.retry_after(key, now), now)
+
+    async def reset(self, key: str) -> None:
+        async def op(r):
+            await r.delete(self._key(key))
+        await self._run(op, lambda l: l.reset(key), None)
+
+    def clear(self) -> None:
+        """Forget local counters (tests). Redis keys expire on their own."""
+        self._local.clear()

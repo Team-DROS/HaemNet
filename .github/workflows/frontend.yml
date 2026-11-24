@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   dashboard:
-    name: Hospital dashboard builds
+    name: Hospital dashboard lint and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,6 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/donor-web/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: node node_modules/expo/bin/cli export --platform web --output-dir dist
 
   mobile:

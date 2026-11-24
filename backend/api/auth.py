@@ -26,7 +26,9 @@ from backend.db_services import (
     get_donor_by_phone,
 )
 from backend.services.phone import normalise_phone
-from backend.services.rate_limit import SlidingWindowLimiter
+from redis.asyncio import Redis
+
+from backend.services.rate_limit import AuthRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,16 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 donor_router = APIRouter(prefix="/api/donor/auth", tags=["donor-auth"])
 
 # Failed hospital sign-ins: 10 per ID per 15 minutes, then 429.
-_login_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
+_auth_redis = (
+    Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+    if settings.redis_url else None
+)
+_login_failures = AuthRateLimiter("hospital-login", 10, 15 * 60, _auth_redis)
+
+
+async def close_rate_limit_client() -> None:
+    if _auth_redis is not None:
+        await _auth_redis.aclose()
 
 class HospitalRegister(BaseModel):
     # Optional: when omitted the server issues a unique ID. Clients used to
@@ -156,18 +167,19 @@ async def register_hospital(hospital: HospitalRegister):
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     hospital_id = form_data.username.strip().upper()
-    if not _login_failures.allowed(hospital_id):
+    retry_after = await _login_failures.check(hospital_id)
+    if retry_after:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed sign-in attempts. Try again in a few minutes.",
-            headers={"Retry-After": str(_login_failures.retry_after(hospital_id))},
+            headers={"Retry-After": str(retry_after)},
         )
 
     hospital = await db_get_hospital_by_id(hospital_id)
     if not hospital or not verify_password(form_data.password, hospital.get("password_hash", "")):
-        _login_failures.hit(hospital_id)
+        await _login_failures.record(hospital_id)
         raise _unauthorized("Incorrect username or password")
-    _login_failures.reset(hospital_id)
+    await _login_failures.reset(hospital_id)
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -191,9 +203,9 @@ MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_BYTES = 72  # bcrypt ignores anything longer
 
 # Failed donor sign-ins: 10 per number per 15 minutes, then 429.
-_donor_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
+_donor_failures = AuthRateLimiter("donor-login", 10, 15 * 60, _auth_redis)
 # New accounts: 5 per number per hour (stops scripted squatting on numbers).
-_donor_signups = SlidingWindowLimiter(max_events=5, window_seconds=3600)
+_donor_signups = AuthRateLimiter("donor-signup", 5, 3600, _auth_redis)
 
 
 class DonorCredentials(BaseModel):
@@ -231,10 +243,10 @@ async def register_donor_account(payload: DonorCredentials):
     """Create a donor account (phone + password) and sign it in."""
     phone = _donor_phone(payload.phone)
     _check_new_password(payload.password)
-    if not _donor_signups.allowed(phone):
+    retry_after = await _donor_signups.record(phone)
+    if retry_after:
         raise HTTPException(status_code=429, detail="Too many attempts. Try again later.",
-                            headers={"Retry-After": str(_donor_signups.retry_after(phone))})
-    _donor_signups.hit(phone)
+                            headers={"Retry-After": str(retry_after)})
 
     created = await db_create_donor_password(phone, get_password_hash(payload.password))
     if not created:
@@ -247,13 +259,14 @@ async def register_donor_account(payload: DonorCredentials):
 async def login_donor(payload: DonorCredentials):
     """Exchange phone + password for a donor token (valid 30 days)."""
     phone = _donor_phone(payload.phone)
-    if not _donor_failures.allowed(phone):
+    retry_after = await _donor_failures.check(phone)
+    if retry_after:
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in a few minutes.",
-                            headers={"Retry-After": str(_donor_failures.retry_after(phone))})
+                            headers={"Retry-After": str(retry_after)})
 
     stored = await db_get_donor_password_hash(phone)
     if not stored or not verify_password(payload.password, stored):
-        _donor_failures.hit(phone)
+        await _donor_failures.record(phone)
         raise HTTPException(status_code=401, detail="Wrong mobile number or password")
-    _donor_failures.reset(phone)
+    await _donor_failures.reset(phone)
     return await _donor_session(phone)

@@ -89,12 +89,14 @@ async def lifespan(app: FastAPI):
         logger.error("Could not prepare database indexes: %s", exc)
     yield
     # Shutdown — close service clients.
+    from backend.api.auth import close_rate_limit_client
     from backend.db_services import close as close_db
     from backend.db_services.mongodb import close as close_mongodb
     from backend.services.twilio_service import close as close_twilio
     from backend.services.push_service import close as close_push
     from backend.services.sarvam_service import close as close_sarvam
 
+    await close_rate_limit_client()
     await close_twilio()
     await close_sarvam()
     await close_push()

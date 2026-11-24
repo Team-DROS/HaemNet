@@ -183,3 +183,7 @@ Do not initiate calls to generated donor numbers.
 
 For Render environment setup, live verification, and rollback, see
 [DEPLOY.md](../DEPLOY.md).
+
+### Shared authentication limits
+
+Set `REDIS_URL` to a shared Redis instance on every backend replica before scaling. Use a separate Redis database or instance for each environment. An unset value retains single-process counters for local development and existing single-replica deployments. A configured Redis outage returns HTTP 503 for affected authentication endpoints.

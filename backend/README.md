@@ -183,3 +183,22 @@ Do not initiate calls to generated donor numbers.
 
 For Render environment setup, live verification, and rollback, see
 [DEPLOY.md](../DEPLOY.md).
+
+
+## Hospital verification and admin review
+
+New hospitals register as `pending` and must verify their official email, upload
+registration documents and be approved by an admin before `POST /api/dispatch`
+works (it returns 403 with code `hospital_pending`, `hospital_rejected` or
+`hospital_suspended`). Hospital records created before this feature have no
+status and count as approved.
+
+- Hospital: `GET /api/hospitals/me`, `POST /api/hospitals/verify-email`,
+  `POST /api/hospitals/resend-verification`, `POST /api/hospitals/me/documents`
+  (PDF, JPG or PNG up to `MAX_UPLOAD_MB`, checked by file signature)
+- Admin (token from `POST /api/admin/token`): `GET /api/admin/hospitals?status=`,
+  `GET /api/admin/hospitals/{id}`, `GET /api/admin/hospitals/{id}/documents/{doc_id}`,
+  `POST /api/admin/hospitals/{id}/decision` with `approve`, `reject`, `suspend` or `reinstate`
+- Setup: set `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `DASHBOARD_URL`, `UPLOAD_DIR` and the `SMTP_*`
+  values (see `.env.example`). Without SMTP no email is sent. Uploads live on local disk, so use a
+  persistent disk or move `LocalStorage` to S3 or R2. Needs `DB_BACKEND=mongodb`.

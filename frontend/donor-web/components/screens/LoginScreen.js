@@ -11,7 +11,7 @@ import ThemeToggle from '../ThemeToggle';
 export default function LoginScreen({ store, theme, onToggleTheme }) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '' });
+  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '', email: '', contact: '', hfr: '', regNo: '', licence: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -27,16 +27,26 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
       }
       setBusy(false);
     } else {
-      if (!form.name.trim() || !form.location.trim() || form.password.length < 6) {
-        return setError('Fill in every field. Passwords need at least 6 characters.');
+      if (!form.name.trim() || !form.location.trim() || !form.contact.trim() || form.password.length < 8) {
+        return setError('Fill in every required field. Passwords need at least 8 characters.');
       }
+      if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setError('Enter the hospital\'s official email address.');
       if (!/^\d{10}$/.test(form.phone)) return setError('Enter a 10-digit mobile number.');
+      if (!form.hfr.trim() && !form.regNo.trim()) return setError('Enter your HFR ID or state registration number.');
       setBusy(true);
       try {
-        const id = await store.register({ name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password });
-        setForm((f) => ({ ...f, id }));
-        setMode('login');
-        setSuccess(`Registered. Your hospital ID is ${id}. Keep it safe; you sign in with it.`);
+        const id = await store.register({
+          name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password,
+          official_email: form.email.trim(), contact_person: form.contact.trim(),
+          hfr_id: form.hfr.trim() || null, registration_number: form.regNo.trim() || null,
+          blood_centre_licence: form.licence.trim() || null,
+        });
+        // Sign in straight away so the hospital lands on the verification steps.
+        try { await store.login(id, form.password); } catch (e) {
+          setForm((f) => ({ ...f, id }));
+          setMode('login');
+          setSuccess(`Registered. Your hospital ID is ${id}. Sign in to finish verification.`);
+        }
       } catch (e) { setError(`Registration failed: ${e.message}`); }
       setBusy(false);
     }
@@ -69,6 +79,11 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
             <>
               <Field label="Hospital name" icon={<Hospital size={16} color={color.faint} />} value={form.name} onChangeText={set('name')} placeholder="Apollo Hospital" />
               <Field label="Full address" icon={<MapPin size={16} color={color.faint} />} value={form.location} onChangeText={set('location')} placeholder="21 Greams Lane, Chennai 600006" />
+              <Field label="Official hospital email" icon={<Phone size={16} color={color.faint} />} value={form.email} onChangeText={set('email')} placeholder="blood.bank@hospital.in" keyboardType="email-address" autoCapitalize="none" />
+              <Field label="Contact person" icon={<Hospital size={16} color={color.faint} />} value={form.contact} onChangeText={set('contact')} placeholder="Dr A. Rao, Blood bank in-charge" />
+              <Field label="ABDM HFR ID" icon={<Hospital size={16} color={color.faint} />} value={form.hfr} onChangeText={set('hfr')} placeholder="IN0410000000" autoCapitalize="characters" mono />
+              <Field label="State registration number" icon={<Hospital size={16} color={color.faint} />} value={form.regNo} onChangeText={set('regNo')} placeholder="Clinical Establishments registration" />
+              <Field label="Blood centre licence (optional)" icon={<Hospital size={16} color={color.faint} />} value={form.licence} onChangeText={set('licence')} placeholder="If you store blood" />
               <Field label="Blood bank in-charge phone (+91)" icon={<Phone size={16} color={color.faint} />} value={form.phone}
                 onChangeText={(t) => set('phone')(t.replace(/\D/g, '').slice(0, 10))} placeholder="9876543210" keyboardType="number-pad" maxLength={10} />
             </>

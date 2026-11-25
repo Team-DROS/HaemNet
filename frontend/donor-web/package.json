@@ -15,7 +15,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@sentry/react": "8.55.0",
     "expo": "~54.0.0",
-    "expo-constants": "~18.0.13",
+    "expo-constants": "~18.0.14",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.24",
     "expo-status-bar": "~3.0.9",

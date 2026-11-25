@@ -268,4 +268,14 @@ export default {
   'trip.noteEta': 'The blood bank can see you are on your way (about {minutes} min). Bring a photo ID and eat something light before you donate.',
   'trip.directions': 'Get directions',
   'trip.hide': 'Hide this card',
+
+  // Phone verification codes
+  'otp.noConnection': 'Could not reach HaemNet. Check your connection and try again.',
+  'otp.tooManyWrong': 'Too many wrong codes. Ask for a new code and try again.',
+  'otp.tooManyRequested': 'Too many codes requested. Wait a while and try again.',
+  'otp.wrongOrExpired': 'That code is wrong or has expired.',
+  'otp.invalidNumber': 'Enter a valid 10-digit mobile number.',
+  'otp.serverDown': 'We could not send a code right now. Try again shortly.',
+  'otp.checkFailed': 'Could not check the code.',
+  'otp.sendFailed': 'Could not send the code.',
 };

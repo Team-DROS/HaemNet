@@ -292,7 +292,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       setOtpSentAt(Date.now()); setOtpCode('');
       setAuthNotice(t('auth.codeSent', { phone: loginId }));
     } catch (err) {
-      setAuthError(codeErrorMessage(err, 'send'));
+      setAuthError(codeErrorMessage(err, 'send', t));
     }
     setOtpBusy(false);
   };
@@ -317,7 +317,7 @@ function DonorExperience({ theme, onToggleTheme }) {
             { phone: loginId, code: otpCode.trim() }, { timeout: WAKE_TIMEOUT_MS });
           otpToken = proof.data?.otp_token;
         } catch (err) {
-          setAuthError(codeErrorMessage(err, 'verify'));
+          setAuthError(codeErrorMessage(err, 'verify', t));
           setAuthLoading(false);
           return;
         }

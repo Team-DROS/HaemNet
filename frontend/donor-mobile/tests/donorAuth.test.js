@@ -51,3 +51,9 @@ test('call consent is needed to join, and only sent when joining', () => {
   assert.deepEqual(callsConsentField(false, false), { calls_consent: false });
   assert.deepEqual(callsConsentField(true, true), {}); // editing a profile must not rewrite consent
 });
+
+test('code errors follow the donor\'s language', () => {
+  const t = (key) => `[${key}]`;
+  assert.equal(codeErrorMessage({ response: { status: 400 } }, 'verify', t), '[otp.wrongOrExpired]');
+  assert.equal(codeErrorMessage({}, 'send', t), '[otp.noConnection]');
+});

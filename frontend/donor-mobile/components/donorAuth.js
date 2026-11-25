@@ -1,5 +1,7 @@
 // Pure helpers for the donor sign-up flow, kept free of React so they can be tested with `npm test`.
 
+import en from './i18n/en.js';
+
 export const CODE_LENGTH = 6;
 export const RESEND_SECONDS = 30;
 
@@ -20,19 +22,20 @@ export function registerBody(phone, password, otpToken) {
   return otpToken ? { phone, password, otp_token: otpToken } : { phone, password };
 }
 
-// Plain-language message for a failed code request or check. `err` is an axios-style error.
-export function codeErrorMessage(err, step) {
+// Text key for a failed code request or check. `err` is an axios-style error.
+export function codeErrorKey(err, step) {
   const status = err?.response?.status;
-  if (!status) return 'Could not reach HaemNet. Check your connection and try again.';
-  if (status === 429) {
-    return step === 'verify'
-      ? 'Too many wrong codes. Ask for a new code and try again.'
-      : 'Too many codes requested. Wait a while and try again.';
-  }
-  if (status === 400) return 'That code is wrong or has expired.';
-  if (status === 422) return 'Enter a valid 10-digit mobile number.';
-  if (status >= 500) return 'We could not send a code right now. Try again shortly.';
-  return step === 'verify' ? 'Could not check the code.' : 'Could not send the code.';
+  if (!status) return 'otp.noConnection';
+  if (status === 429) return step === 'verify' ? 'otp.tooManyWrong' : 'otp.tooManyRequested';
+  if (status === 400) return 'otp.wrongOrExpired';
+  if (status === 422) return 'otp.invalidNumber';
+  if (status >= 500) return 'otp.serverDown';
+  return step === 'verify' ? 'otp.checkFailed' : 'otp.sendFailed';
+}
+
+// Plain-language message in the donor's language (`t` from i18n.js; English when omitted).
+export function codeErrorMessage(err, step, t = (key) => en[key]) {
+  return t(codeErrorKey(err, step));
 }
 
 // Seconds left before another code may be requested.

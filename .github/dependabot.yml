@@ -1,4 +1,7 @@
 # Weekly dependency and security update pull requests.
+#
+# Some upgrades are left out on purpose because they change behaviour and CI cannot prove
+# they are safe. Do those by hand, one at a time, as described next to each ecosystem.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -9,26 +12,54 @@ updates:
     groups:
       python-minor:
         update-types: [minor, patch]
+    # Majors (langgraph 1.x, redis 8, bcrypt 5, websockets 17 and similar) change runtime
+    # behaviour. Upgrade one at a time on staging and run docs/VOICE_TEST_PLAN.md first.
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /frontend/donor-mobile
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # Expo pins compatible React Native versions; let `npx expo install --fix`
-    # handle major upgrades instead of Dependabot.
+    # Expo SDK 54 pins React, React Native and its native modules to tested versions, and
+    # react must match react-dom exactly. Move them together with `npx expo install --fix`
+    # when upgrading the Expo SDK. For 0.x packages a "minor" bump can be breaking, so these
+    # are listed by name. Expo packages get patch updates only.
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: react-native
+      - dependency-name: react-native-safe-area-context
+      - dependency-name: react-native-screens
+      - dependency-name: react-native-svg
+      - dependency-name: "expo*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: "@expo/*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /frontend/donor-web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Same Expo pinning rules as the donor app above.
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: react-native
+      - dependency-name: react-native-safe-area-context
+      - dependency-name: react-native-screens
+      - dependency-name: react-native-svg
+      - dependency-name: "expo*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: "@expo/*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /

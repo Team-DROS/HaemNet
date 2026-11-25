@@ -57,7 +57,14 @@
           "microphonePermission": false
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#D92D20",
+          "defaultChannel": "emergency-requests"
+        }
+      ]
     ],
     "extra": {
       "router": {},

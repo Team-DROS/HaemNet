@@ -23,6 +23,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
     # Expo SDK 54 pins React, React Native and its native modules to tested versions, and
     # react must match react-dom exactly. Move them together with `npx expo install --fix`
     # when upgrading the Expo SDK. For 0.x packages a "minor" bump can be breaking, so these
@@ -40,12 +43,19 @@ updates:
         update-types: [version-update:semver-minor, version-update:semver-major]
       - dependency-name: "@expo/*"
         update-types: [version-update:semver-minor, version-update:semver-major]
+      # Native modules that Expo SDK 54 bundles at a tested version.
+      - dependency-name: "@sentry/react-native"
+      - dependency-name: "@react-native-async-storage/async-storage"
+      - dependency-name: "@react-native-community/netinfo"
 
   - package-ecosystem: npm
     directory: /frontend/donor-web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
     # Same Expo pinning rules as the donor app above.
     ignore:
       - dependency-name: "*"
@@ -60,6 +70,10 @@ updates:
         update-types: [version-update:semver-minor, version-update:semver-major]
       - dependency-name: "@expo/*"
         update-types: [version-update:semver-minor, version-update:semver-major]
+      # Native modules that Expo SDK 54 bundles at a tested version.
+      - dependency-name: "@sentry/react-native"
+      - dependency-name: "@react-native-async-storage/async-storage"
+      - dependency-name: "@react-native-community/netinfo"
 
   - package-ecosystem: github-actions
     directory: /

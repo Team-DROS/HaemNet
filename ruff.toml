@@ -1,0 +1,11 @@
+# Lint configuration for the Python backend.
+# Rules focus on correctness (pyflakes, bugbear, syntax/import errors)
+# rather than style churn. Run: ruff check backend
+target-version = "py311"
+line-length = 120
+extend-exclude = ["frontend", "database"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]
+# FastAPI's Depends()/Query() defaults are the framework's idiom, not a bug.
+ignore = ["B008"]

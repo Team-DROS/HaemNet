@@ -65,6 +65,9 @@ class FakeStore:
         self.dispatches[dispatch_id]["fulfilled"] = fulfilled
         self.completed.append(dispatch_id)
 
+    async def register_call(self, call_id, dispatch_id, donor_id):
+        self.registered_calls = getattr(self, "registered_calls", []) + [(call_id, dispatch_id, donor_id)]
+
     async def history_for_hospital(self, hospital_id, since_iso):
         self.history_since = since_iso
         return [dict(r) for r in getattr(self, "history_rows", []) if r["hospital_id"] == hospital_id]
@@ -262,3 +265,10 @@ def _reset_otp():
     otp.reset_for_tests()
     auth._otp_by_phone.clear()
     auth._otp_by_ip.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_call_retries():
+    from backend.services import call_retry
+
+    call_retry.reset_for_tests()

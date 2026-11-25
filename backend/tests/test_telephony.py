@@ -5,8 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.config import settings
-from backend.orchestration import graph
-from backend.services import telephony, twilio_service
+from backend.services import calling, telephony, twilio_service
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +77,7 @@ async def test_the_pipeline_works_with_any_provider(monkeypatch):
 
     monkeypatch.setitem(telephony._PROVIDERS, "other", OtherProvider)
     monkeypatch.setattr(settings, "telephony_provider", "other")
-    monkeypatch.setattr(graph, "wait_for_slot", no_wait)
-    monkeypatch.setattr(graph, "dispatch_store", Store())
-    await graph._initiate_single_call(SimpleNamespace(), "dp-1", "d1", "cb")
+    monkeypatch.setattr(calling, "wait_for_slot", no_wait)
+    monkeypatch.setattr(calling, "dispatch_store", Store())
+    assert await calling.place_call(SimpleNamespace(), "dp-1", "d1") is True
     assert placed == ["dp-1"] and registered == [("OTHER-1", "dp-1", "d1")]

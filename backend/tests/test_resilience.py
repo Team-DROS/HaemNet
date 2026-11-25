@@ -173,8 +173,8 @@ def test_mongo_client_fails_fast(monkeypatch):
 async def test_a_call_that_cannot_be_started_shows_no_answer_not_declined(monkeypatch):
     from types import SimpleNamespace
 
-    from backend.orchestration import graph
     from backend.schemas.models import CallStatus
+    from backend.services import calling
 
     recorded = []
 
@@ -188,13 +188,13 @@ async def test_a_call_that_cannot_be_started_shows_no_answer_not_declined(monkey
         async def update_donor_status(self, dispatch_id, donor_id, status, **kwargs):
             recorded.append((dispatch_id, donor_id, status))
 
-    monkeypatch.setattr(graph, "wait_for_slot", no_wait)
+    monkeypatch.setattr(calling, "wait_for_slot", no_wait)
 
     class Provider:
         async def start_call(self, *args, **kwargs):
             await boom()
 
-    monkeypatch.setattr(graph, "get_telephony", Provider)
-    monkeypatch.setattr(graph, "dispatch_store", Store())
-    await graph._initiate_single_call(SimpleNamespace(), "dp-1", "d1", "cb")
+    monkeypatch.setattr(calling, "get_telephony", Provider)
+    monkeypatch.setattr(calling, "dispatch_store", Store())
+    assert await calling.place_call(SimpleNamespace(), "dp-1", "d1") is False
     assert recorded == [("dp-1", "d1", CallStatus.NO_ANSWER)]

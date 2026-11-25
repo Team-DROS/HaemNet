@@ -37,7 +37,7 @@ Production services have `autoDeploy: false`: a merge never changes production b
    | `RENDER_DEPLOY_HOOK_API` | secret | Render > `haemnet-api` > Settings > Deploy Hook |
    | `RENDER_DEPLOY_HOOK_DASHBOARD` | secret | Render > `haemnet-dashboard` > Settings > Deploy Hook |
    | `PRODUCTION_API_URL` | variable | Public API origin, for example `https://api.haemnet.in` (defaults to `https://haemnet-api.onrender.com`) |
-   | `EXPO_TOKEN` | secret | expo.dev > Account settings > Access tokens (a robot user is best) |
+   | `EXPO_TOKEN` | secret | Access token of a robot user (Developer role) in the `haemnet` Expo organisation, never a personal token |
 
 4. **Render staging**: after syncing the blueprint, fill in the `sync: false` values for the
    two `-staging` services. Use the same Atlas cluster with database `haemnet_staging`

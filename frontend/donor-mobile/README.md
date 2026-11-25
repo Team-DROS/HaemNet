@@ -13,7 +13,7 @@ phone conversations independently; the app is a second, faster way to answer.
 | Version | 1.2.0 (versionCode managed by EAS, see Versioning) |
 | Supported Android | **Android 7.0 (API 24) and newer.** Android 6 and older cannot install it. |
 | Expo SDK / React Native | 54 / 0.81.5 |
-| Expo account / project | `umasuthan` / `donor-mobile` ([project page](https://expo.dev/accounts/umasuthan/projects/donor-mobile)) |
+| Expo organisation / project | `haemnet` / `donor-mobile` ([project page](https://expo.dev/accounts/haemnet/projects/donor-mobile)) |
 | EAS project ID | `20aa94d4-5db2-49b8-b6f4-fa87e226806b` |
 | Production API | `https://haemnet-api.onrender.com` |
 
@@ -96,7 +96,7 @@ No backend secret is ever embedded in the app.
 | Staging APK | Actions > Donor app release > profile `staging` | EAS release keystore | Talks to `haemnet-api-staging`. Use it for [MOBILE_TEST_PLAN.md](../../docs/MOBILE_TEST_PLAN.md) before every release. |
 | Production AAB | `eas build --platform android --profile production` | EAS release keystore (upload key) | Google Play upload only. An AAB cannot be installed directly. |
 
-Build commands (run from `frontend/donor-mobile`, logged in with `eas login` as `umasuthan`):
+Build commands (run from `frontend/donor-mobile`, logged in with `eas login` as a member of the `haemnet` Expo organisation):
 
 ```bash
 npm install -g eas-cli
@@ -115,7 +115,8 @@ eas build --platform android --profile production   # AAB for Google Play
   (unless Play App Signing is enabled). Download a backup only through
   `eas credentials` and keep it in a password manager.
 - A CI build through EAS needs an `EXPO_TOKEN` GitHub secret on the fork. The
-  owner creates the token at expo.dev and adds it under
+  token comes from a robot user in the `haemnet` Expo organisation (Developer
+  role), not from anyone's personal account. Add it under
   Settings > Secrets and variables > Actions. Never put it in workflow YAML.
 
 ## Installing directly on a phone

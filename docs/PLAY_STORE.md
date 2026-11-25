@@ -10,7 +10,7 @@ Play Console account owner can do.
 | --- | --- | --- |
 | **Decide** | Personal or organisation developer account | Organisation if the team can get a D-U-N-S number in time (no 12-tester rule, shows a company name). Otherwise personal, and start the closed test by week 9. |
 | **Decide** | Android package name. It **can never change** after the first upload. Today it is `com.pranko007.donormobile` (a personal handle). | Change to `in.haemnet.donor` in `app.json` before the first upload, then run `eas credentials` to create the upload key for it. |
-| **Decide** | Expo account that owns the build (`owner` in `app.json` is `umasuthan`) | Move the project to an Expo organisation the whole team can access, or add the team to it. |
+| **Done** | Expo account that owns the build | `owner` in `app.json` is the `haemnet` Expo organisation. Transfer the `donor-mobile` project into it on expo.dev **before** this change reaches `main`, or EAS builds fail. |
 | **Decide** | Support email and website on your own domain | `support@haemnet.in`, `https://haemnet.in` |
 
 ## Store listing (Main store listing)

@@ -97,12 +97,12 @@ class DispatchRequest(BaseModel):
     Trigger Payload (Frontend → Backend).
     Sent by the Hospital Web App to initiate an emergency dispatch.
     """
-    hospital_id: str = Field(..., min_length=1, description="Unique hospital identifier")
-    blood_group: str = Field(..., min_length=1, description="Required blood group, e.g. 'O-'")
+    hospital_id: str = Field(..., min_length=1, max_length=64, description="Unique hospital identifier")
+    blood_group: str = Field(..., min_length=1, max_length=16, description="Required blood group, e.g. 'O-'")
     urgency: Urgency = Field(..., description="Urgency level of the request")
     coordinates: Coordinates
-    address: Optional[str] = Field(None, description="Text address of the hospital")
-    patient_name: Optional[str] = Field(None, description="Name of the patient")
+    address: Optional[str] = Field(None, max_length=300, description="Text address of the hospital")
+    patient_name: Optional[str] = Field(None, max_length=120, description="Name of the patient")
     units: int = Field(1, ge=1, le=20, description="Units of blood required")
 
 
@@ -169,9 +169,9 @@ class DonorNode(BaseModel):
 
 class DonationLog(BaseModel):
     """Payload sent when hospital staff logs a successful donation."""
-    donor_id: str = Field(..., description="Donor whose donation is being recorded")
-    hospital_id: str = Field(..., description="Hospital where the donation occurred")
-    notes: Optional[str] = Field(None, description="Optional clinical notes")
+    donor_id: str = Field(..., min_length=1, max_length=64, description="Donor whose donation is being recorded")
+    hospital_id: str = Field(..., min_length=1, max_length=64, description="Hospital where the donation occurred")
+    notes: Optional[str] = Field(None, max_length=1000, description="Optional clinical notes")
     dispatch_id: Optional[str] = Field(
         None, description="Dispatch the donation fulfils; lets the request auto-close"
     )
@@ -179,16 +179,16 @@ class DonationLog(BaseModel):
 
 class DonorResponse(BaseModel):
     """A donor accepting or declining a request from the mobile app."""
-    dispatch_id: str = Field(..., min_length=1)
+    dispatch_id: str = Field(..., min_length=1, max_length=64)
     phone: Optional[str] = Field(None, description="Optional; the signed-in donor's phone is used")
     accept: bool
 
 
 class DonorRegistration(BaseModel):
     """Payload from mobile app to register/update a donor."""
-    name: str = Field(..., description="Donor's full name")
-    phone: str = Field(..., description="Donor's phone number")
-    blood_group: str = Field(..., description="Blood group (e.g. O+)")
-    language: str = Field(default="english", description="Preferred language for AI voice")
-    lat: float = Field(..., description="Latitude")
-    lng: float = Field(..., description="Longitude")
+    name: str = Field(..., min_length=1, max_length=120, description="Donor's full name")
+    phone: str = Field(..., min_length=1, max_length=20, description="Donor's phone number")
+    blood_group: str = Field(..., min_length=1, max_length=16, description="Blood group (e.g. O+)")
+    language: str = Field(default="english", max_length=20, description="Preferred language for AI voice")
+    lat: float = Field(..., ge=-90, le=90, description="Latitude")
+    lng: float = Field(..., ge=-180, le=180, description="Longitude")

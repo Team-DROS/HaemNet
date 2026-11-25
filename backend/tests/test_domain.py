@@ -91,3 +91,20 @@ def test_reregistration_preserves_last_donation_date():
     # Editing a donor profile used to SET last_donated_date = null, lifting
     # the 56-day cooldown. The query must keep the existing value.
     assert "coalesce(datetime($last_donated_date), d.last_donated_date)" in _REGISTER_DONOR_QUERY
+
+
+def test_request_schemas_bound_free_text_and_coordinates():
+    import pytest
+    from pydantic import ValidationError
+
+    from backend.schemas.models import DispatchRequest, DonationLog, DonorRegistration
+
+    base = {"hospital_id": "HOSP-1001", "blood_group": "O-", "urgency": "critical",
+            "coordinates": {"lat": 13.0, "lng": 80.2}}
+    DispatchRequest(**base, address="Trauma Bay 2")
+    with pytest.raises(ValidationError):
+        DispatchRequest(**base, address="x" * 301)
+    with pytest.raises(ValidationError):
+        DonationLog(donor_id="d1", hospital_id="HOSP-1001", notes="x" * 1001)
+    with pytest.raises(ValidationError):
+        DonorRegistration(name="Asha", phone="9876543210", blood_group="O+", lat=120, lng=80)

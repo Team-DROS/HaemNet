@@ -172,7 +172,9 @@ def test_donation_for_donor_outside_the_dispatch_changes_nothing(client, auth_he
     store.add("dp-1", donors=[donor("d1", "+919000000001", status="en_route")])
 
     res = client.post(
-        "/api/donate", headers=auth_headers, json={"donor_id": "stranger", "hospital_id": HOSPITAL, "dispatch_id": "dp-1"}
+        "/api/donate",
+        headers=auth_headers,
+        json={"donor_id": "stranger", "hospital_id": HOSPITAL, "dispatch_id": "dp-1"},
     )
 
     assert res.status_code == 404

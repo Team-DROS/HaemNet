@@ -170,7 +170,9 @@ async def run_dispatch_graph(dispatch_id: str, initial_state: dict) -> None:
             dispatch_id,
             {
                 "type": "error",
-                "message": str(exc),
+                # The cause is in the server log. Raw exception text can name hosts,
+                # connection strings or other internals, so it never goes to a browser.
+                "message": "The dispatch hit an unexpected error. Check the call list and try again.",
             },
         )
 
@@ -311,6 +313,10 @@ async def log_donation(
     """
     dispatch_id = payload.dispatch_id
     dispatch = await _owned_dispatch(dispatch_id, hospital_id) if dispatch_id else None
+    # Check before touching the donor record. A wrong donor ID must not put an
+    # unrelated donor on a 56-day cooldown and then fail on the dispatch roster.
+    if dispatch is not None and payload.donor_id not in (dispatch.get("donors") or {}):
+        raise HTTPException(status_code=404, detail="Donor was not matched to this request")
 
     success = await update_donation_date(
         donor_id=payload.donor_id,

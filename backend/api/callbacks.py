@@ -23,6 +23,7 @@ from backend.config import settings
 from backend.db_services import get_donor_push_token
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusUpdate
+from backend.services.call_retry import schedule_retry
 from backend.services.push_service import send_dispatch_notification
 from backend.services.telephony import get_telephony
 from backend.services.twilio_signature import verify_twilio_request
@@ -197,6 +198,8 @@ async def twilio_status_callback(
 
     # Update the in-memory store.
     updated = await dispatch_store.update_donor_status(dispatch_id, donor_id, mapped_status)
+    if updated and mapped_status == CallStatus.NO_ANSWER:
+        await schedule_retry(dispatch_id, donor_id, CallStatus_param.lower(), manager.broadcast)
 
     if updated:
         # Fetch the donor info to build the WebSocket payload.

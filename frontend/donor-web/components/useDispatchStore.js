@@ -439,7 +439,6 @@ export function useDispatchStore() {
           merged[d.dispatch_id] = live ? { ...fromServerHistory(d), ...mine } : { ...mine, ...fromServerHistory(d), patient: mine.patient };
         });
         const next = Object.values(merged).sort((a, b) => b.createdAt - a.createdAt).slice(0, 500);
-        if (profileRef.current) AsyncStorage.setItem(historyKey(profileRef.current.id), JSON.stringify(next)).catch(() => {});
         return next;
       });
     } catch { /* keep showing the local copy */ }
@@ -478,10 +477,19 @@ export function useDispatchStore() {
       const byId = Object.fromEntries(prev.map((h) => [h.id, h]));
       ems.forEach((em) => { byId[em.id] = { ...(byId[em.id] || {}), ...historyRecord(em) }; });
       const next = Object.values(byId).sort((a, b) => b.createdAt - a.createdAt).slice(0, 500);
-      AsyncStorage.setItem(historyKey(profile.id), JSON.stringify(next)).catch(() => {});
       return next;
     });
   }, [emergencies, profile]);
+
+  // Persist history at most once a second. Saving inside the state updates
+  // rewrote up to 500 records on every live event during a busy dispatch.
+  useEffect(() => {
+    if (!profile || !history.length) return undefined;
+    const timer = setTimeout(() => {
+      AsyncStorage.setItem(historyKey(profile.id), JSON.stringify(history)).catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [history, profile]);
 
   // Keep a sensible selection.
   const ordered = useMemo(

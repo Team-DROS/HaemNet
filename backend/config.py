@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     max_donors_per_dispatch: int = 50
     max_dispatches_per_hospital_day: int = 30
 
+    # ── Donor phone verification (one-time code by SMS) ──────────
+    # When true, creating a donor account needs a verified phone number. Keep false until the
+    # donor app sends the code (POST /api/donor/auth/otp/request and /verify).
+    donor_otp_required: bool = False
+    otp_ttl_seconds: int = 600
+    otp_max_attempts: int = 5
+
     # ── Hospital platform (verification, admin, uploads, email) ──
     # Admin sign-in is disabled until both values are set. Generate the hash with
     # python -c "import bcrypt;print(bcrypt.hashpw(b'PASSWORD', bcrypt.gensalt()).decode())"

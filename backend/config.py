@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     twilio_calls_per_second: float = 10.0
     max_request_body_kb: int = 256
 
+    # ── Retrying calls that were not answered ────────────────────
+    # A busy line or no answer is retried this many times, this long after the first attempt.
+    # 0 turns retries off. Retries are scheduled in the instance that received the status callback
+    # and are lost if it restarts in the meantime.
+    call_max_retries: int = 1
+    call_retry_delay_seconds: int = 180
+
     # ── Call cost guards ─────────────────────────────────────────
     # Most donors called for one request, and most requests per hospital per day.
     max_donors_per_dispatch: int = 50

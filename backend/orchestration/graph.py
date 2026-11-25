@@ -22,13 +22,12 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
-from backend.config import settings
 from backend.db_services import find_eligible_donors, get_donor_push_token
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
 from backend.services.blood_groups import request_groups
 from backend.services.call_guard import cap_donors
-from backend.services.call_pacer import wait_for_slot
+from backend.services.calling import donor_node_for_call, place_call
 from backend.services.error_reporting import report_exception
 from backend.services.geo import haversine_km
 from backend.services.push_service import send_dispatch_notification
@@ -140,23 +139,14 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
         address=state.get("address", ""),
     )
 
-    # Build the callback URL that Twilio will POST status updates to.
-    callback_url = f"{settings.server_base_url}/api/twilio/status-callback"
-
     updates: List[Dict[str, Any]] = []
     call_tasks = []
 
     for donor_id, donor_data in donors.items():
-        # Reconstruct a minimal DonorNode for the Twilio service.
-        donor_node = DonorNode(
-            id=donor_id,
-            name=donor_data["name"],
-            phone=donor_data["phone"],
-            blood_group=state.get("blood_group", ""),
-            language=donor_data.get("language", "english"),
-            location={"lat": state.get("lat", 0), "lng": state.get("lng", 0)},
+        donor_node = donor_node_for_call(
+            donor_id, donor_data, state.get("blood_group", ""), state.get("lat", 0), state.get("lng", 0)
         )
-        call_tasks.append(_initiate_single_call(donor_node, dispatch_id, donor_id, callback_url))
+        call_tasks.append(place_call(donor_node, dispatch_id, donor_id))
 
         # Emit a RINGING update for the dashboard. This is the only update
         # that carries distance and language; later ones only change status.
@@ -175,38 +165,6 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info("Initiated %d calls for dispatch %s", len(donors), dispatch_id)
     return {**state, "updates": updates}
-
-
-async def _initiate_single_call(
-    donor_node: DonorNode,
-    dispatch_id: str,
-    donor_id: str,
-    callback_url: str,
-) -> None:
-    """
-    Place a single call through the telephony provider and register its call ID in the store.
-    Errors are logged but do not crash the dispatch.
-    """
-
-    try:
-        await wait_for_slot()
-        call_id = await get_telephony().start_call(donor_node, dispatch_id, callback_url)
-        if call_id:
-            await dispatch_store.register_call(call_id, dispatch_id, donor_id)
-    except Exception as exc:
-        report_exception(exc)
-        logger.error(
-            "Failed to initiate call for donor %s in dispatch %s: %s",
-            donor_id,
-            dispatch_id,
-            exc,
-        )
-        # The donor was never reached, so this is not a decline: show "no answer".
-        await dispatch_store.update_donor_status(
-            dispatch_id,
-            donor_id,
-            CallStatus.NO_ANSWER,
-        )
 
 
 async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:

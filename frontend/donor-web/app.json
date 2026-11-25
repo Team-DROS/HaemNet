@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "expo-app",
-    "slug": "expo-app",
+    "name": "HaemNet Hospital Dashboard",
+    "slug": "haemnet-dashboard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,9 +18,16 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "HaemNet Hospital Dashboard",
+      "shortName": "HaemNet",
+      "description": "Emergency blood donor dispatch for hospital teams.",
+      "themeColor": "#F5F7FA",
+      "backgroundColor": "#F5F7FA",
+      "output": "single",
+      "bundler": "metro"
     },
-    "scheme": "donor-web",
+    "scheme": "haemnet-dashboard",
     "plugins": [
       "expo-router"
     ]

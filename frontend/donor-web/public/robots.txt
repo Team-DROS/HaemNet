@@ -1,0 +1,7 @@
+# The dashboard is a single sign-in page; hospital data sits behind the
+# API's authentication, not behind URLs, so crawlers may load everything
+# (including /_expo/ scripts, which search engines need to render it).
+User-agent: *
+Allow: /
+
+Sitemap: https://haemnet-dashboard.onrender.com/sitemap.xml

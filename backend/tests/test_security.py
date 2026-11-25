@@ -288,3 +288,32 @@ def test_twiml_escapes_stream_parameters(client):
     assert "<Hangup/>" not in res.text
     assert "<script>" not in res.text
     assert "&lt;script&gt;" in res.text
+
+
+def test_responses_carry_security_headers(client):
+    res = client.get("/")
+    assert res.headers["X-Content-Type-Options"] == "nosniff"
+    assert res.headers["X-Frame-Options"] == "DENY"
+    assert res.headers["Referrer-Policy"] == "no-referrer"
+    assert "Strict-Transport-Security" not in res.headers  # development
+
+
+def test_hsts_is_sent_in_production(client, monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "app_env", "production")
+    res = client.get("/")
+    assert res.headers["Strict-Transport-Security"].startswith("max-age=")
+
+
+def test_cors_preflight_allows_only_used_methods(client):
+    res = client.options("/api/dispatch", headers={
+        "Origin": "http://localhost:8081",
+        "Access-Control-Request-Method": "PUT",
+    })
+    assert res.status_code == 400
+    ok = client.options("/api/dispatch", headers={
+        "Origin": "http://localhost:8081",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type",
+    })
+    assert ok.status_code == 200

@@ -32,7 +32,7 @@ from backend.services.call_pacer import wait_for_slot
 from backend.services.error_reporting import report_exception
 from backend.services.geo import haversine_km
 from backend.services.push_service import send_dispatch_notification
-from backend.services.twilio_service import initiate_call, send_sms
+from backend.services.telephony import get_telephony
 
 logger = logging.getLogger(__name__)
 
@@ -184,16 +184,15 @@ async def _initiate_single_call(
     callback_url: str,
 ) -> None:
     """
-    Initiate a single Twilio call and register the call SID in the store.
+    Place a single call through the telephony provider and register its call ID in the store.
     Errors are logged but do not crash the dispatch.
     """
 
     try:
         await wait_for_slot()
-        result = await initiate_call(donor_node, dispatch_id, callback_url)
-        call_sid = result.get("sid", "")
-        if call_sid:
-            await dispatch_store.register_call(call_sid, dispatch_id, donor_id)
+        call_id = await get_telephony().start_call(donor_node, dispatch_id, callback_url)
+        if call_id:
+            await dispatch_store.register_call(call_id, dispatch_id, donor_id)
     except Exception as exc:
         report_exception(exc)
         logger.error(
@@ -275,7 +274,7 @@ async def _send_sms_fallback(
     """Send an SMS with a tracking link as a fallback routing path."""
 
     tracking_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
-    await send_sms(
+    await get_telephony().send_sms(
         phone=donor_data["phone"],
         message=f"Thank you for accepting! Navigate to the hospital: {tracking_url}",
     )

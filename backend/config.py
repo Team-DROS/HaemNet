@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     db_backend: str = "mongodb"
 
     # ── Twilio Telephony ────────────────────────────────────────
+    # Which telephony provider places calls and sends SMS (see backend/services/telephony.py).
+    telephony_provider: str = "twilio"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""

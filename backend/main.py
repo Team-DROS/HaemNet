@@ -38,7 +38,7 @@ from backend.observability import RequestIdMiddleware, configure_logging
 from backend.services.push_service import close as close_push
 from backend.services.redis_client import close as close_redis
 from backend.services.sarvam_service import close as close_sarvam
-from backend.services.twilio_service import close as close_twilio
+from backend.services.telephony import get_telephony
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ async def _prepare_database() -> None:
 
 async def _close_clients() -> None:
     await close_redis()
-    await close_twilio()
+    await get_telephony().close()
     await close_sarvam()
     await close_push()
     await close_database()
@@ -117,6 +117,7 @@ async def _close_clients() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Set up resources before serving and release them on shutdown."""
+    get_telephony()  # fail at startup, not on the first emergency, if TELEPHONY_PROVIDER is misspelt
     _log_startup_configuration()
     _warn_if_uvloop()
     await _prepare_database()

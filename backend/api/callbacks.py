@@ -24,7 +24,7 @@ from backend.db_services import get_donor_push_token
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusUpdate
 from backend.services.push_service import send_dispatch_notification
-from backend.services.twilio_service import send_sms
+from backend.services.telephony import get_telephony
 from backend.services.twilio_signature import verify_twilio_request
 from backend.services.voice_pipeline import active_sessions, create_voice_session
 
@@ -483,7 +483,7 @@ async def _route_accepted_donor(
             f"https://www.google.com/maps/search/?api=1&query={dispatch.get('lat', 0.0)},{dispatch.get('lng', 0.0)}"
         )
         try:
-            await send_sms(
+            await get_telephony().send_sms(
                 phone=phone,
                 message=f"Thank you for accepting! Navigate to the hospital: {tracking_url}",
             )

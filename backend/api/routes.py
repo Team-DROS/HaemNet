@@ -6,6 +6,7 @@ All endpoints are mounted under ``/api``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -26,7 +27,7 @@ from backend.db_services import (
     update_donation_date,
 )
 from backend.dispatch_store import dispatch_store
-from backend.orchestration.graph import DispatchState, dispatch_graph
+from backend.orchestration.graph import DispatchState, dispatch_graph, donor_call_states
 from backend.schemas.models import (
     CallStatus,
     DispatchRequest,
@@ -137,11 +138,13 @@ async def trigger_dispatch(
         if coords:
             lat, lng = coords
 
-    # Step 1 — find eligible donors
+    # Step 1 — find eligible donors, every compatible group concurrently
     from backend.services.blood_groups import request_groups
-    donors = []
-    for group in request_groups(payload.blood_group):
-        donors.extend(await find_eligible_donors(blood_group=group, lat=lat, lng=lng))
+    per_group = await asyncio.gather(*(
+        find_eligible_donors(blood_group=group, lat=lat, lng=lng)
+        for group in request_groups(payload.blood_group)
+    ))
+    donors = [donor for group in per_group for donor in group]
 
     if not donors:
         return DispatchResponse(
@@ -162,6 +165,9 @@ async def trigger_dispatch(
         lat=lat,
         lng=lng,
     ).model_dump()
+    # Hand the matched donors to the graph so it calls exactly these donors
+    # instead of querying the database a second time.
+    initial_state["donors"] = donor_call_states(donors, lat, lng)
 
     # Step 3 — run orchestration in the background so we return fast.
     # Bind ownership first so live events only reach this hospital.

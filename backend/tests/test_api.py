@@ -1,11 +1,13 @@
 """HTTP and WebSocket behaviour with the database replaced by FakeStore."""
 
+from uuid import uuid4
+
 import bcrypt
 import pytest
 
 from backend.api import auth, routes
 from backend.api.websockets import DashboardConnectionManager
-from backend.schemas.models import CallStatus, DonorStatusUpdate
+from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
 
 
@@ -53,7 +55,8 @@ def test_dispatch_is_recorded_against_the_authenticated_hospital(client, auth_he
     captured = {}
 
     async def fake_find(**kwargs):
-        return [object()]
+        return [DonorNode(id=uuid4(), name="Asha", phone="+919000000001", blood_group="O-",
+                          language="tamil", location={"lat": 13.07, "lng": 80.26})]
 
     async def fake_run(dispatch_id, state):
         captured.update(state)
@@ -70,6 +73,9 @@ def test_dispatch_is_recorded_against_the_authenticated_hospital(client, auth_he
     assert body["donors_matched"] == 1 and body["created_at"]
     assert captured["hospital_id"] == HOSPITAL
     assert captured["units"] == 3
+    # The graph receives the matched donors, so it does not query again.
+    (only_donor,) = captured["donors"].values()
+    assert only_donor["name"] == "Asha" and only_donor["distance_km"] > 0
 
 
 def test_dispatch_requires_auth(client):
@@ -317,3 +323,31 @@ async def test_failed_dispatch_does_not_leak_exception_text(monkeypatch, broadca
     await routes._run_dispatch_graph("dp-9", {})
     message = broadcasts[-1][1]["message"]
     assert "hunter2" not in message and "mongodb" not in message
+
+
+@pytest.mark.asyncio
+async def test_graph_reuses_donors_matched_by_the_api(monkeypatch):
+    from backend.orchestration import graph
+
+    async def must_not_query(**kwargs):
+        raise AssertionError("donors were queried a second time")
+
+    monkeypatch.setattr("backend.db_services.find_eligible_donors", must_not_query)
+    state = {"dispatch_id": "dp-1", "blood_group": "O-", "lat": 13.0, "lng": 80.2,
+             "donors": {"d1": {"donor_id": "d1"}}}
+    assert await graph.query_donors_node(state) is state
+
+
+@pytest.mark.asyncio
+async def test_all_positive_queries_every_group(monkeypatch):
+    from backend.orchestration import graph
+
+    asked = []
+
+    async def fake_find(blood_group, lat, lng):
+        asked.append(blood_group)
+        return []
+
+    monkeypatch.setattr("backend.db_services.find_eligible_donors", fake_find)
+    await graph.find_request_donors("All positive", 13.0, 80.2)
+    assert sorted(asked) == ["A+", "AB+", "B+", "O+"]

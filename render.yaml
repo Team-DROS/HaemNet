@@ -56,6 +56,13 @@ services:
         value: sarvam-105b
       - key: SENTRY_DSN
         sync: false
+      - key: LOG_FORMAT
+        value: json
+      - key: TELEPHONY_PROVIDER
+        value: twilio
+      # Turn on once the donor app supports the SMS code flow.
+      - key: DONOR_OTP_REQUIRED
+        value: "false"
       # Optional, needed for more than one instance: a Render Key Value (Redis) URL.
       # Shares rate limits, call quotas and live dashboard updates across instances.
       - key: REDIS_URL

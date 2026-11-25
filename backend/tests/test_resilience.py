@@ -189,7 +189,12 @@ async def test_a_call_that_cannot_be_started_shows_no_answer_not_declined(monkey
             recorded.append((dispatch_id, donor_id, status))
 
     monkeypatch.setattr(graph, "wait_for_slot", no_wait)
-    monkeypatch.setattr(graph, "initiate_call", boom)
+
+    class Provider:
+        async def start_call(self, *args, **kwargs):
+            await boom()
+
+    monkeypatch.setattr(graph, "get_telephony", Provider)
     monkeypatch.setattr(graph, "dispatch_store", Store())
     await graph._initiate_single_call(SimpleNamespace(), "dp-1", "d1", "cb")
     assert recorded == [("dp-1", "d1", CallStatus.NO_ANSWER)]

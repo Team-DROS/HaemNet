@@ -5,11 +5,13 @@ import {
   Linking, Image, Alert, RefreshControl, AppState, StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { bg, palette, mono, radius, shadow } from './theme';
 import { API_URL, LEGAL_LINKS, REQUEST_TIMEOUT_MS } from './config';
 import { PAUSE_OPTIONS, callsStatus, pauseState } from './availability';
+import { connectionState, minutesSince, profileView, readSavedRequests, serializeRequests } from './network';
 import { clearSession, loadSession, saveSession } from './session';
 import {
   callsConsentField, codeErrorMessage, consentRequired, digitsOnly, isValidCode, registerBody, resendCountdown,
@@ -151,6 +153,10 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [profilePic, setProfilePic] = useState(null);
 
   const [isRegistered, setIsRegistered] = useState(false);
+  // First profile load after sign-in, and whether it failed with nothing saved to show instead.
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileUnreachable, setProfileUnreachable] = useState(false);
+  const [profileFromPhone, setProfileFromPhone] = useState(false); // showing saved details, server not reached
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [regError, setRegError] = useState('');
@@ -175,6 +181,11 @@ function DonorExperience({ theme, onToggleTheme }) {
   // ─── LIVE REQUESTS ───
   const [requests, setRequests] = useState([]);
   const [requestsError, setRequestsError] = useState('');
+  const [requestsSavedAt, setRequestsSavedAt] = useState(null); // set while showing requests saved earlier
+
+  // ─── CONNECTION ───
+  const [connection, setConnection] = useState('unknown'); // 'online' | 'offline' | 'unknown'
+  useEffect(() => NetInfo.addEventListener((state) => setConnection(connectionState(state))), []);
   const [responding, setResponding] = useState(null); // dispatch_id being answered
   const [respondMsg, setRespondMsg] = useState('');
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
@@ -330,6 +341,7 @@ function DonorExperience({ theme, onToggleTheme }) {
   const handleLogout = async (message) => {
     const session = userRef.current;
     if (session && typeof message !== 'string') forgetPushToken(session);
+    if (session) AsyncStorage.removeItem(requestsKey(session.id)).catch(() => {});
     await clearSession();
     setIsLoggedIn(false);
     setCurrentUser(null);
@@ -340,6 +352,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     setRequests([]);
     setActiveTrip(null);
     setHighlightId(null);
+    setRequestsSavedAt(null); setProfileUnreachable(false); setProfileFromPhone(false);
     setAuthNotice(typeof message === 'string' ? message : '');
   };
 
@@ -390,11 +403,17 @@ function DonorExperience({ theme, onToggleTheme }) {
   const getProfileKey = () => `@donor_profile_${currentUser.id}`;
   const getLogKey = () => `@donor_log_${currentUser.id}`;
   const getTripKey = () => `@donor_trip_${currentUser.id}`;
+  const requestsKey = (id) => `@donor_requests_${id}`;
 
   const loadProfile = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
+    setProfileUnreachable(false);
     try {
       const savedProfile = await AsyncStorage.getItem(getProfileKey());
+      // A profile saved on this phone exists only after a successful sign-up, so show it at once
+      // and let the server answer correct it. Without one, show a loading card, never the join form.
+      if (savedProfile) setIsRegistered(true);
+      else if (!isRefresh) setProfileLoading(true);
       if (savedProfile) {
         const profile = JSON.parse(savedProfile);
         setName(profile.name || '');
@@ -489,21 +508,22 @@ function DonorExperience({ theme, onToggleTheme }) {
           }
         }
         if (!backendProfile) setIsRegistered(false);
+        setProfileFromPhone(false);
       } catch (backendErr) {
-        if (backendErr.response?.status === 404) {
-          setIsRegistered(false);
-          if (savedProfile) await AsyncStorage.removeItem(getProfileKey());
-        } else {
-          // A network outage must not silently claim registration succeeded.
-          setIsRegistered(false);
-          setRegError('Could not confirm your profile with HaemNet. Pull down to retry.');
-        }
+        const server = backendErr.response?.status === 404 ? 'missing' : 'unreachable';
+        const view = profileView({ hasSaved: Boolean(savedProfile), server });
+        if (server === 'missing' && savedProfile) await AsyncStorage.removeItem(getProfileKey());
+        // An outage never shows the join form: that would invite a duplicate sign-up.
+        setIsRegistered(view === 'dashboard');
+        setProfileUnreachable(view === 'retry');
+        setProfileFromPhone(server === 'unreachable' && view === 'dashboard');
       }
 
       setDonationLog(currentLog);
     } catch {
       Alert.alert('Error', 'Failed to load profile');
     }
+    setProfileLoading(false);
     if (isRefresh) {
       await fetchRequests();
       setRefreshing(false);
@@ -579,7 +599,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     try {
       await api('delete', `/api/donor/profile/${encodeURIComponent(withCountryCode(currentUser.id))}`);
 
-      await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey(), pushKey(currentUser.id)]);
+      await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey(), pushKey(currentUser.id), requestsKey(currentUser.id)]);
       setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
       setLat(null); setLng(null); setAddress(''); setLocationSource(null);
       setProfilePic(null); setLastDonatedDate(null); setDonationLog([]); setActiveTrip(null); setRequests([]);
@@ -611,14 +631,24 @@ function DonorExperience({ theme, onToggleTheme }) {
   // ─── LIVE REQUESTS ───
   const donorPhone = isRegistered && phone ? withCountryCode(phone) : null;
 
+  const showSavedRequests = async () => {
+    const saved = readSavedRequests(await AsyncStorage.getItem(requestsKey(userRef.current?.id)).catch(() => null));
+    if (saved) { setRequests(saved.requests); setRequestsSavedAt(saved.savedAt); }
+    return Boolean(saved);
+  };
+
   const fetchRequests = useCallback(async () => {
     if (!donorPhone) return;
     try {
       const res = await api('get', `/api/donor/requests/${encodeURIComponent(donorPhone)}`);
-      setRequests(res.data.requests || []);
-      setRequestsError('');
+      const list = res.data.requests || [];
+      setRequests(list);
+      setRequestsError(''); setRequestsSavedAt(null);
+      AsyncStorage.setItem(requestsKey(userRef.current?.id), serializeRequests(list)).catch(() => {});
     } catch (err) {
-      if (err.response?.status !== 401) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
+      if (err.response?.status === 401) return;
+      // Keep what is on screen; if nothing is, fall back to the list saved on this phone.
+      if (!(await showSavedRequests())) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
     }
     // `api` reads the current token from a ref, so its changing identity does not matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -626,16 +656,30 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   // Poll while the app is in the foreground and the donor is registered.
   const appState = useRef(AppState.currentState);
+  const connectionRef = useRef(connection);
+  connectionRef.current = connection;
   useEffect(() => {
     if (!donorPhone || isEditing) return undefined;
     fetchRequests();
-    const timer = setInterval(() => { if (appState.current === 'active') fetchRequests(); }, POLL_MS);
+    const timer = setInterval(() => { if (appState.current === 'active' && connectionRef.current !== 'offline') fetchRequests(); }, POLL_MS);
     const sub = AppState.addEventListener('change', (next) => {
       if (appState.current !== 'active' && next === 'active') fetchRequests();
       appState.current = next;
     });
     return () => { clearInterval(timer); sub.remove(); };
   }, [donorPhone, isEditing, fetchRequests]);
+
+  // Back online: refresh everything that may have changed, without waiting for the next poll.
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (connection === 'offline') { wasOffline.current = true; return; }
+    if (connection !== 'online' || !wasOffline.current || !isLoggedIn) return;
+    wasOffline.current = false;
+    if (profileUnreachable || profileFromPhone) loadProfile();
+    else fetchRef.current?.();
+    // Runs on connection changes only; the loaders read current state through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection]);
 
   // Once the donor has joined, ask for alerts and keep the token fresh each time the app opens.
   useEffect(() => {
@@ -840,6 +884,8 @@ function DonorExperience({ theme, onToggleTheme }) {
           <ThemeSwitch theme={theme} onPress={onToggleTheme} />
         </View>
 
+        {connection === 'offline' ? <Notice tone="amber">{t('offline.banner')}</Notice> : null}
+
         <View style={s.authHero}>
           <Text style={s.authHeroEyebrow}>THE DONOR NETWORK</Text>
           <Text style={s.authHeroTitle}>Be there when someone needs you.</Text>
@@ -1032,7 +1078,21 @@ function DonorExperience({ theme, onToggleTheme }) {
         </View>
       </View>
 
-      {!isRegistered || isEditing ? (
+      {connection === 'offline' ? <View style={{ marginTop: -10, marginBottom: 14 }}><Notice tone="amber">{t('offline.banner')}</Notice></View> : null}
+
+      {profileLoading && !isRegistered ? (
+        <View style={[s.card, { alignItems: 'center', paddingVertical: 36 }]} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={color.text2} />
+          <Text style={[s.cardTitle, { fontSize: 16 }]}>{t('offline.loading')}</Text>
+          <Text style={[s.hint, { textAlign: 'center' }]}>{t('offline.loadingSlow')}</Text>
+        </View>
+      ) : profileUnreachable && !isRegistered ? (
+        <View style={s.card}>
+          <Text style={s.cardTitle}>{t('offline.retryTitle')}</Text>
+          <Text style={s.cardDesc}>{t('offline.retryBody')}</Text>
+          <PrimaryButton onPress={() => loadProfile()}>{t('offline.retry')}</PrimaryButton>
+        </View>
+      ) : !isRegistered || isEditing ? (
         <View style={s.card}>
           <Text style={s.overline}>YOUR DONOR PROFILE</Text>
           <Text style={s.cardTitle}>{isEditing ? 'Edit your donor profile' : 'Join the donor network'}</Text>
@@ -1149,7 +1209,9 @@ function DonorExperience({ theme, onToggleTheme }) {
           ))}
 
           {respondMsg ? <Notice tone="neutral">{respondMsg}</Notice> : null}
+          {requestsSavedAt ? <Notice tone="amber">{t('offline.savedRequests', { minutes: minutesSince(requestsSavedAt) })}</Notice> : null}
           {requestsError ? <Notice tone="amber">{requestsError}</Notice> : null}
+          {profileFromPhone && !requestsSavedAt ? <Notice tone="neutral">{t('offline.savedProfile')}</Notice> : null}
 
           {activeTrip && <TripCard trip={activeTrip} onDirections={() => openDirections(activeTrip)} onDone={endTrip} />}
 

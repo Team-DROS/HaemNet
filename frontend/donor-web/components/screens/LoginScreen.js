@@ -63,7 +63,7 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
   const showVisual = width >= 980;
 
   return (
-    <View style={s.root}>
+    <View style={s.root} role="main">
       <View style={[s.left, !showVisual && { width: '100%', maxWidth: 560, alignSelf: 'center' }]}>
         <View style={[s.row, { gap: 11 }]}>
           <HaemNetMark size={30} color={color.text} accent={color.red} />

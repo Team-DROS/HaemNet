@@ -22,6 +22,13 @@ uses, and sync the fork after changes land in Team-DROS `main`. Project access
 is managed by its owner; a local JavaScript preview does not require creating
 another Expo project.
 
+## Sign-up, phone verification and call consent
+
+- The app asks the backend (`GET /api/donor/auth/config`) whether a texted code is required. When it is, the sign-up form shows a verification code field with a Send code button (30 second resend); the code is checked just before the account is created.
+- Joining the network needs a tick on the automated-calls consent box; the app sends `calls_consent: true`, and editing a profile never rewrites it.
+- The profile card has a Pause / Resume automated calls button (`POST /api/donor/calls/preference`).
+- Pure helpers for this live in `components/donorAuth.js` with tests in `tests/donorAuth.test.js`.
+
 ## Local development
 
 For Fast Refresh, SDK-compatible Expo Go, development APKs, and crash logs, see

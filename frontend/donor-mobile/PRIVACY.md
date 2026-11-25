@@ -1,12 +1,13 @@
 # HaemNet Donor: data and privacy
 
 This describes the current data flow in the donor app and its backend.
-The app uses phone/password accounts; phone ownership is not verified by OTP.
+The app uses phone/password accounts. When the server requires it (`DONOR_OTP_REQUIRED`), sign-up first verifies the number with a one-time code sent by SMS; otherwise phone ownership is not verified.
 
 | Data | Purpose | Storage or processing |
 | --- | --- | --- |
 | Phone number | Sign-in identifier, matching requests, telephone outreach | Backend MongoDB, local session/profile; Twilio when calls or SMS are sent |
 | Password | Account authentication | Sent to the backend for hashing/verification; a bcrypt hash is stored in `donor_logins` |
+| Consent to automated calls | Recorded when you join, with the time, so we only call donors who agreed | Backend MongoDB; you can pause calls in the app at any time (stored as an opt-out and respected by matching) |
 | Name, blood group, preferred language | Profile, recruitment, localized calls | Backend and local profile; matched-request views expose selected donor details to the hospital |
 | Registered location | Search for donors within a default 10 km radius | One MongoDB GeoJSON point; hospital views use distance rather than live donor coordinates |
 | Profile photo | Personal profile display | Local device image; the current app does not upload it |

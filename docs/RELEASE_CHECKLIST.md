@@ -19,6 +19,7 @@ Tick every box in the PR description before tagging a release.
 - [ ] Donation logged; donor cooldown starts
 - [ ] Suspended hospital cannot dispatch; reinstated hospital can
 - [ ] Staff login works; removed staff is signed out
+- [ ] Donor app: sign-up shows the code field when `DONOR_OTP_REQUIRED=true`; the consent box blocks joining until ticked; Pause automated calls stops the next dispatch from matching this donor
 - [ ] Donor phone verification: a code arrives by SMS, a wrong code is refused, the right one works once (and sign-up requires it if `DONOR_OTP_REQUIRED=true`)
 - [ ] Contact form delivers an email; Turnstile blocks a bot
 - [ ] Hospital export and deletion work; deletion page link works

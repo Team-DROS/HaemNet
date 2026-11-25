@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { bg, palette, mono, radius, shadow } from './theme';
-import { API_URL, REQUEST_TIMEOUT_MS } from './config';
+import { API_URL, LEGAL_LINKS, REQUEST_TIMEOUT_MS } from './config';
+import { PAUSE_OPTIONS, callsStatus, pauseState } from './availability';
 import { clearSession, loadSession, saveSession } from './session';
 import {
   callsConsentField, codeErrorMessage, consentRequired, digitsOnly, isValidCode, registerBody, resendCountdown,
@@ -118,6 +119,7 @@ export default function DonorApp() {
 
 function DonorExperience({ theme, onToggleTheme }) {
   const { color, s } = useContext(ThemeContext);
+  const { t } = useContext(I18nContext);
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
@@ -155,6 +157,7 @@ function DonorExperience({ theme, onToggleTheme }) {
   // Consent to automated emergency calls (asked when joining) and the donor's pause switch.
   const [callsConsent, setCallsConsent] = useState(false);
   const [callsOptOut, setCallsOptOut] = useState(false);
+  const [callsPausedUntil, setCallsPausedUntil] = useState(null); // ISO time a short break ends
   const [callsBusy, setCallsBusy] = useState(false);
 
   const [locationLoading, setLocationLoading] = useState(false);
@@ -437,6 +440,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         if (backendProfile) {
           setIsRegistered(true);
           setCallsOptOut(Boolean(backendProfile.calls_opt_out));
+          setCallsPausedUntil(backendProfile.calls_paused_until || null);
           setName(backendProfile.name || '');
           const serverGroup = backendProfile.blood_group || 'O+';
           if (BLOOD_GROUPS.includes(serverGroup) && serverGroup !== 'Others') {
@@ -556,6 +560,17 @@ function DonorExperience({ theme, onToggleTheme }) {
       setCallsOptOut(next);
     } catch (err) {
       setRegError(`Could not change your call setting: ${serverError(err, 'please try again')}`);
+    }
+    setCallsBusy(false);
+  };
+
+  const pauseFor = async (days) => {
+    setCallsBusy(true); setRegError('');
+    try {
+      const res = await api('post', '/api/donor/availability', { pause_days: days });
+      setCallsPausedUntil(res.data?.calls_paused_until || null);
+    } catch (err) {
+      setRegError(t('availability.error', { reason: serverError(err, 'please try again') }));
     }
     setCallsBusy(false);
   };
@@ -1093,6 +1108,12 @@ function DonorExperience({ theme, onToggleTheme }) {
               </Text>
             </TouchableOpacity>
           ) : null}
+          {consentRequired(isRegistered) ? (
+            <TouchableOpacity onPress={() => Linking.openURL(LEGAL_LINKS.privacy).catch(() => {})} accessibilityRole="link"
+              style={{ marginTop: 8, marginLeft: 36 }}>
+              <Text style={s.legalLink}>{t('legal.privacy')}</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {regError ? <Notice tone="red">{regError}</Notice> : null}
 
@@ -1185,7 +1206,7 @@ function DonorExperience({ theme, onToggleTheme }) {
               <MetaRow label="Location" value={address || 'Not set'} />
               <MetaRow label="Call language" value={language} />
               <MetaRow label="Matching radius" value="10 km" />
-              <MetaRow label="Automated calls" value={callsOptOut ? 'Paused' : 'On'} />
+              <MetaRow label="Automated calls" value={{ on: 'On', off: 'Paused', paused: 'On a break' }[callsStatus({ optedOut: callsOptOut, pausedUntil: callsPausedUntil })]} />
               <MetaRow label="Request alerts" value={ALERT_LABELS[alertsState] || 'Off'} last />
             </View>
 
@@ -1195,6 +1216,33 @@ function DonorExperience({ theme, onToggleTheme }) {
               </SecondaryButton>
             ) : null}
 
+            {!callsOptOut ? (() => {
+              const pause = pauseState(callsPausedUntil);
+              return pause.paused ? (
+                <View style={s.availabilityBox}>
+                  <Text style={s.availabilityTitle}>{t('availability.pausedUntil', { date: t.date(pause.until) })}</Text>
+                  <Text style={s.hint}>{t('availability.pausedBody')}</Text>
+                  <SecondaryButton onPress={() => pauseFor(0)} busy={callsBusy} style={{ marginTop: 10 }}>
+                    {t('availability.resume')}
+                  </SecondaryButton>
+                </View>
+              ) : (
+                <View style={s.availabilityBox}>
+                  <Text style={s.availabilityTitle}>{t('availability.title')}</Text>
+                  <Text style={s.hint}>{t('availability.body')}</Text>
+                  <View style={[s.row, { gap: 8, marginTop: 10 }]}>
+                    {PAUSE_OPTIONS.map((days) => (
+                      <TouchableOpacity key={days} onPress={() => pauseFor(days)} disabled={callsBusy}
+                        style={[s.smallBtn, { flex: 1, alignItems: 'center', paddingVertical: 10 }, callsBusy && { opacity: 0.5 }]}
+                        accessibilityRole="button">
+                        <Text style={s.smallBtnText}>{t(`availability.option.${days}`)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              );
+            })() : null}
+
             <SecondaryButton onPress={toggleCalls} busy={callsBusy} style={{ marginTop: 14 }}>
               {callsOptOut ? 'Resume automated calls' : 'Pause automated calls'}
             </SecondaryButton>
@@ -1203,6 +1251,15 @@ function DonorExperience({ theme, onToggleTheme }) {
               <SecondaryButton onPress={() => setIsEditing(true)} style={{ flex: 1 }}>Edit profile</SecondaryButton>
               <TouchableOpacity onPress={confirmClearProfile} style={s.dangerBtn} accessibilityRole="button">
                 <Text style={s.dangerBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[s.row, { justifyContent: 'center', gap: 18, marginTop: 16 }]}>
+              <TouchableOpacity onPress={() => Linking.openURL(LEGAL_LINKS.privacy).catch(() => {})} accessibilityRole="link">
+                <Text style={s.legalLink}>{t('legal.privacy')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => Linking.openURL(LEGAL_LINKS.terms).catch(() => {})} accessibilityRole="link">
+                <Text style={s.legalLink}>{t('legal.terms')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1598,6 +1655,9 @@ const createStyles = (color) => StyleSheet.create({
   declineBtn: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   declineBtnText: { color: color.text2, fontSize: 14, fontWeight: '600' },
 
+  availabilityBox: { marginTop: 14, padding: 12, borderRadius: radius.input, backgroundColor: color.surface2, borderWidth: 1, borderColor: color.border },
+  availabilityTitle: { fontSize: 14, fontWeight: '700', color: color.text },
+  legalLink: { fontSize: 12.5, color: color.blue, fontWeight: '600', textDecorationLine: 'underline' },
   checkTitle: { fontSize: 16, fontWeight: '700', color: color.text },
   checkRow: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: color.divider },
   checkQuestion: { fontSize: 14, color: color.text, lineHeight: 20 },

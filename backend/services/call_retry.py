@@ -17,6 +17,7 @@ from backend.db_services import get_donor_by_id
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.services.calling import donor_node_for_call, place_call
+from backend.services.donor_availability import callable_now
 from backend.services.rate_limit import Limiter
 
 logger = logging.getLogger(__name__)
@@ -54,8 +55,8 @@ async def _retry(dispatch_id: str, donor_id: str, notify: Notify) -> None:
         if not donor or donor.get("status") != CallStatus.NO_ANSWER.value:
             return  # answered, decided or otherwise moved on
         profile = await get_donor_by_id(donor_id)
-        if profile is None or profile.calls_opt_out:
-            return
+        if profile is None or not callable_now(profile):
+            return  # opted out or on a break since the first call
 
         await dispatch_store.update_donor_status(dispatch_id, donor_id, CallStatus.RINGING)
         await notify(

@@ -1,5 +1,6 @@
 """Retrying a call that got no answer or a busy line."""
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -41,9 +42,10 @@ def rig(monkeypatch, store):
         return None
 
     async def real_donor(donor_id):
-        return SimpleNamespace(calls_opt_out=recorder.opted_out)
+        return SimpleNamespace(calls_opt_out=recorder.opted_out, calls_paused_until=recorder.paused_until)
 
     recorder.opted_out = False
+    recorder.paused_until = None
     recorder.delays = delays
     monkeypatch.setattr(call_retry, "_sleep", fake_sleep)
     monkeypatch.setattr(call_retry, "dispatch_store", store)
@@ -123,6 +125,21 @@ async def test_a_donor_who_opted_out_meanwhile_is_not_called(rig):
     rig.opted_out = True
     await call_retry.wait_for_pending()
     assert rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_donor_who_paused_calls_meanwhile_is_not_called(rig):
+    await call_retry.schedule_retry("dp-1", DID, "busy", rig.notify)
+    rig.paused_until = datetime.now(timezone.utc) + timedelta(days=7)
+    await call_retry.wait_for_pending()
+    assert rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_pause_that_already_ended_does_not_block_the_retry(rig):
+    rig.paused_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert await retry(rig) is True
+    assert rig.calls == [(PHONE, "dp-1")]
 
 
 @pytest.mark.asyncio

@@ -315,6 +315,12 @@ def _phone_verified(otp_token: Optional[str], phone: str) -> bool:
     return claims is not None and claims.get("role") == ROLE_PHONE_VERIFIED and claims.get("sub") == phone
 
 
+@donor_router.get("/config")
+async def donor_auth_config():
+    """What the donor app needs to know before it shows the sign-up form."""
+    return {"otp_required": settings.donor_otp_required}
+
+
 @donor_router.post("/otp/request")
 async def request_phone_code(payload: OtpRequest, request: Request):
     """Text a one-time code to the number. The answer is the same whether or not an account exists."""

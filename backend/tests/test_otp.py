@@ -182,3 +182,9 @@ def test_a_verification_token_cannot_be_used_as_any_other_kind_of_token(client, 
     assert client.get("/api/dispatches/active", headers=headers).status_code == 401
     assert client.get(f"/api/donor/profile/{PHONE}", headers=headers).status_code == 401
     assert client.get("/api/admin/hospitals", headers=headers).status_code == 401
+
+
+def test_the_app_can_ask_whether_a_code_is_required(client, monkeypatch):
+    assert client.get("/api/donor/auth/config").json() == {"otp_required": False}
+    monkeypatch.setattr(settings, "donor_otp_required", True)
+    assert client.get("/api/donor/auth/config").json() == {"otp_required": True}

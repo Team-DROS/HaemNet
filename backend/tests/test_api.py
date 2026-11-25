@@ -161,6 +161,40 @@ def test_donation_closes_dispatch_once_units_are_met(client, auth_headers, store
     assert broadcasts[-1][1]["type"] == "dispatch_fulfilled"
 
 
+def test_donation_for_donor_outside_the_dispatch_changes_nothing(client, auth_headers, store, monkeypatch):
+    calls = []
+
+    async def record(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(dispatches, "update_donation_date", record)
+    store.add("dp-1", donors=[donor("d1", "+919000000001", status="en_route")])
+
+    res = client.post(
+        "/api/donate",
+        headers=auth_headers,
+        json={"donor_id": "stranger", "hospital_id": HOSPITAL, "dispatch_id": "dp-1"},
+    )
+
+    assert res.status_code == 404
+    assert calls == []  # the stranger's cooldown was never started
+    assert store.dispatches["dp-1"]["donors"]["d1"]["status"] == "en_route"
+
+
+async def test_dispatch_failure_does_not_leak_exception_text(monkeypatch, broadcasts):
+    class Failing:
+        async def ainvoke(self, state):
+            raise RuntimeError("could not reach mongodb://user:s3cret@db.internal:27017")
+
+    monkeypatch.setattr(dispatches, "dispatch_graph", Failing())
+    await dispatches.run_dispatch_graph("dp-1", {})
+
+    message = broadcasts[-1][1]
+    assert message["type"] == "error"
+    assert "s3cret" not in message["message"] and "mongodb" not in message["message"]
+
+
 def test_donation_without_dispatch_still_works(client, auth_headers, store, fake_donation_date):
     res = client.post("/api/donate", headers=auth_headers, json={"donor_id": "d1", "hospital_id": HOSPITAL})
     assert res.status_code == 200 and res.json()["dispatch_fulfilled"] is False

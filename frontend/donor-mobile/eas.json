@@ -18,7 +18,19 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://haemnet-api-staging.onrender.com",
+        "EXPO_PUBLIC_APP_ENV": "staging"
       }
     },
     "production": {
@@ -28,11 +40,23 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://haemnet-api.onrender.com",
+        "EXPO_PUBLIC_APP_ENV": "production"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    },
+    "closed-test": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
+    }
   }
 }

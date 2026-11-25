@@ -15,8 +15,13 @@ import {
 } from './donorAuth';
 import { listenForAlerts, listenForAlertTaps, setUpAlerts } from './push';
 import { alertTarget, tokenUpdate } from './pushLogic';
+import { HEALTH_QUESTIONS, evaluateAnswers } from './eligibility';
+import { DEFAULT_LANGUAGE, isAppLanguage, makeT } from './i18n';
 
 const ThemeContext = createContext(null);
+// { t, language, setLanguage }: the app's text in the donor's chosen language (see i18n.js).
+const I18nContext = createContext({ t: makeT(DEFAULT_LANGUAGE), language: DEFAULT_LANGUAGE, setLanguage: () => {} });
+const LANGUAGE_KEY = '@haemnet_language';
 
 const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
@@ -84,10 +89,29 @@ export default function DonorApp() {
     const color = palette(theme);
     return { color, s: createStyles(color) };
   }, [theme]);
+
+  const [language, setLanguageState] = useState(DEFAULT_LANGUAGE);
+  useEffect(() => {
+    AsyncStorage.getItem(LANGUAGE_KEY).then((saved) => {
+      if (isAppLanguage(saved)) setLanguageState(saved);
+    }).catch(() => {});
+  }, []);
+  const i18n = useMemo(() => ({
+    t: makeT(language),
+    language,
+    setLanguage: (next) => {
+      if (!isAppLanguage(next)) return;
+      setLanguageState(next);
+      AsyncStorage.setItem(LANGUAGE_KEY, next).catch(() => {});
+    },
+  }), [language]);
+
   return (
     <ThemeContext.Provider value={values}>
-      <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={values.color.surface} />
-      <DonorExperience theme={theme} onToggleTheme={toggleTheme} />
+      <I18nContext.Provider value={i18n}>
+        <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={values.color.surface} />
+        <DonorExperience theme={theme} onToggleTheme={toggleTheme} />
+      </I18nContext.Provider>
     </ThemeContext.Provider>
   );
 }
@@ -152,6 +176,9 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [respondMsg, setRespondMsg] = useState('');
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
   const [highlightId, setHighlightId] = useState(null); // request opened from a push alert
+  // Health check shown on a request card before the donor can say yes.
+  const [checkingId, setCheckingId] = useState(null);
+  const [answers, setAnswers] = useState({});
 
   // ─── PUSH ALERTS ───
   // 'on' | 'off' | 'blocked' | 'pending' | 'unsupported'; see pushLogic.alertState.
@@ -621,8 +648,14 @@ function DonorExperience({ theme, onToggleTheme }) {
     return () => { stopTaps(); stopAlerts(); };
   }, [isLoggedIn]);
 
+  const startCheck = (req) => { setRespondMsg(''); setAnswers({}); setCheckingId(req.dispatch_id); };
+  const stopCheck = () => { setCheckingId(null); setAnswers({}); };
+  const answerQuestion = (id, value) => setAnswers((current) => ({ ...current, [id]: value }));
+
   const respond = async (req, accept) => {
     if (responding) return; // one answer at a time; ignores double taps
+    // The health check is part of saying yes: an accept that skipped it is a bug, never sent.
+    if (accept && (daysRemaining > 0 || !evaluateAnswers(answers).eligible)) return;
     setResponding(req.dispatch_id);
     setRespondMsg('');
     try {
@@ -645,6 +678,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       }
     }
     setResponding(null);
+    stopCheck();
   };
 
   const endTrip = async () => {
@@ -1088,6 +1122,8 @@ function DonorExperience({ theme, onToggleTheme }) {
           {requests.map((req) => (
             <RequestCard key={req.dispatch_id} req={req} busy={responding === req.dispatch_id}
               highlighted={highlightId === req.dispatch_id}
+              checking={checkingId === req.dispatch_id} answers={answers} onAnswer={answerQuestion}
+              recoveringDays={daysRemaining} onStartCheck={() => startCheck(req)} onStopCheck={stopCheck}
               onAccept={() => respond(req, true)} onDecline={() => respond(req, false)} />
           ))}
 
@@ -1200,7 +1236,9 @@ function DonorExperience({ theme, onToggleTheme }) {
 
 // ─── PIECES ───
 
-function RequestCard({ req, busy, highlighted, onAccept, onDecline }) {
+function RequestCard({
+  req, busy, highlighted, checking, answers, onAnswer, recoveringDays, onStartCheck, onStopCheck, onAccept, onDecline,
+}) {
   const { color, s } = useContext(ThemeContext);
   const critical = req.urgency === 'critical';
   const ago = minutesAgo(req.created_at);
@@ -1233,13 +1271,91 @@ function RequestCard({ req, busy, highlighted, onAccept, onDecline }) {
           </View>
         </View>
 
-        <TouchableOpacity onPress={onAccept} disabled={busy} style={[s.acceptBtn, busy && { opacity: 0.7 }]} accessibilityRole="button">
-          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>I can donate</Text>}
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onDecline} disabled={busy} style={s.declineBtn} accessibilityRole="button">
-          <Text style={s.declineBtnText}>{"I can't make it"}</Text>
-        </TouchableOpacity>
+        {checking ? (
+          <HealthCheck answers={answers} onAnswer={onAnswer} recoveringDays={recoveringDays} busy={busy}
+            onConfirm={onAccept} onDecline={onDecline} onBack={onStopCheck} />
+        ) : (
+          <>
+            <TouchableOpacity onPress={onStartCheck} disabled={busy} style={[s.acceptBtn, busy && { opacity: 0.7 }]} accessibilityRole="button">
+              {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>I can donate</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDecline} disabled={busy} style={s.declineBtn} accessibilityRole="button">
+              <Text style={s.declineBtnText}>{"I can't make it"}</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
+    </View>
+  );
+}
+
+// Questions the donor answers before saying yes. Any unsafe answer turns "yes" into
+// "let the hospital know", so the hospital can call someone else straight away.
+function HealthCheck({ answers, onAnswer, recoveringDays, busy, onConfirm, onDecline, onBack }) {
+  const { color, s } = useContext(ThemeContext);
+  const { t } = useContext(I18nContext);
+  const back = (
+    <TouchableOpacity onPress={onBack} disabled={busy} style={s.declineBtn} accessibilityRole="button">
+      <Text style={s.declineBtnText}>{t('eligibility.back')}</Text>
+    </TouchableOpacity>
+  );
+  const tellHospital = (
+    <TouchableOpacity onPress={onDecline} disabled={busy} style={[s.btnSecondary, { marginTop: 12 }]} accessibilityRole="button">
+      {busy ? <ActivityIndicator color={color.text2} /> : <Text style={s.btnSecondaryText}>{t('eligibility.tellHospital')}</Text>}
+    </TouchableOpacity>
+  );
+
+  if (recoveringDays > 0) {
+    return (
+      <View>
+        <Notice tone="amber">{recoveringDays === 1 ? t('eligibility.recoveringOne') : t('eligibility.recovering', { days: recoveringDays })}</Notice>
+        {tellHospital}
+        {back}
+      </View>
+    );
+  }
+
+  const result = evaluateAnswers(answers);
+  const failed = result.failed.length > 0;
+  return (
+    <View>
+      <Text style={s.checkTitle}>{t('eligibility.title')}</Text>
+      <Text style={[s.hint, { marginTop: 4 }]}>{t('eligibility.intro')}</Text>
+      {HEALTH_QUESTIONS.map((q, i) => (
+        <View key={q.id} style={[s.checkRow, i === 0 && { borderTopWidth: 0 }]}>
+          <Text style={s.checkQuestion}>{t(`eligibility.${q.id}.question`)}</Text>
+          <View style={[s.segmented, { marginTop: 8 }]} accessibilityRole="radiogroup">
+            {['yes', 'no'].map((value) => {
+              const active = answers[q.id] === value;
+              return (
+                <TouchableOpacity key={value} onPress={() => onAnswer(q.id, value)} disabled={busy}
+                  accessibilityRole="radio" accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${t(`eligibility.${q.id}.question`)} ${t(`eligibility.${value}`)}`}
+                  style={[s.segment, active && s.segmentActive]}>
+                  <Text style={[s.segmentText, active && s.segmentTextActive]}>{t(`eligibility.${value}`)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
+      {failed ? (
+        <Notice tone="red">
+          {`${t('eligibility.notToday')}\n${result.failed.map((id) => `• ${t(`eligibility.${id}.reason`)}`).join('\n')}\n${t('eligibility.notTodayBody')}`}
+        </Notice>
+      ) : null}
+
+      {failed ? tellHospital : (
+        <TouchableOpacity onPress={onConfirm} disabled={busy || !result.complete}
+          style={[s.acceptBtn, { marginTop: 14 }, (busy || !result.complete) && { opacity: 0.5 }]}
+          accessibilityRole="button" accessibilityState={{ disabled: busy || !result.complete }}>
+          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>{t('eligibility.confirm')}</Text>}
+        </TouchableOpacity>
+      )}
+      {!failed && !result.complete ? <Text style={[s.hint, { textAlign: 'center' }]}>{t('eligibility.answerAll')}</Text> : null}
+      <Text style={[s.hint, { textAlign: 'center', marginTop: 10 }]}>{t('eligibility.disclaimer')}</Text>
+      {back}
     </View>
   );
 }
@@ -1481,6 +1597,10 @@ const createStyles = (color) => StyleSheet.create({
   acceptBtnText: { color: '#FFFFFF', fontSize: 15.5, fontWeight: '700' },
   declineBtn: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   declineBtnText: { color: color.text2, fontSize: 14, fontWeight: '600' },
+
+  checkTitle: { fontSize: 16, fontWeight: '700', color: color.text },
+  checkRow: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: color.divider },
+  checkQuestion: { fontSize: 14, color: color.text, lineHeight: 20 },
 
   tripCard: { backgroundColor: color.surface, borderWidth: 1, borderColor: color.greenBorder, borderRadius: radius.card, padding: 18, marginBottom: 4 },
   tripHospital: { fontSize: 18, fontWeight: '700', color: color.text, marginTop: 12 },

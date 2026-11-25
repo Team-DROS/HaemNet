@@ -1,25 +1,25 @@
 """Fail if any internal link or asset in the static site points nowhere.
 
 Run from the repo root:  python frontend/website/check_links.py
-Checks every href/src that starts with "/" against vercel.json rewrites and
-the files under src/, and that sitemap.xml lists only real pages.
+Checks every href/src that starts with "/" against the files under src/ (a clean URL
+such as /about is valid when src/pages/about.html exists, as on Cloudflare Pages), and
+that sitemap.xml lists only real pages.
 """
 
-import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent
 SRC = ROOT / "src"
-rewrites = {r["source"]: r["destination"] for r in json.loads((ROOT / "vercel.json").read_text())["rewrites"]}
 
 
 def exists(url: str) -> bool:
     path = url.split("#")[0].split("?")[0]
-    if path in rewrites:
-        return (SRC / rewrites[path].lstrip("/")).is_file()
-    return (SRC / path.lstrip("/")).is_file()
+    if path == "/":
+        return (SRC / "pages" / "index.html").is_file()
+    relative = path.lstrip("/")
+    return (SRC / relative).is_file() or (SRC / "pages" / f"{relative}.html").is_file()
 
 
 problems = []

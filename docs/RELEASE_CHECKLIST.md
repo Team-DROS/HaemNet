@@ -47,7 +47,7 @@ how to roll back: [RELEASING.md](RELEASING.md). Donor app phone checks:
 - [ ] Mobile: Production rollout starts at 20%; watch Sentry crash-free sessions and Play vitals for 48 hours before 100%
 
 ## Rollback
-1. Actions > Release > Run workflow with the previous tag (or Render's Rollback button). Vercel keeps deploy history for the website.
+1. Actions > Release > Run workflow with the previous tag (or Render's Rollback button). Cloudflare Pages keeps deploy history for the website (Deployments tab, "Rollback to this deployment").
 2. If a new env var caused it, unset it and redeploy.
 3. Database changes are additive (new optional fields), so an older backend still works. Do not delete fields during a release.
 4. Mobile: halt the staged rollout in Play Console; push the previous build as a new version code.

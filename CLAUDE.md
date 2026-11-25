@@ -11,7 +11,7 @@ appear live on the hospital dashboard.
 | `backend/` | API, voice pipeline, hospital verification, admin API | FastAPI, MongoDB (Atlas), Twilio, Sarvam AI |
 | `frontend/donor-web/` | Hospital dashboard, `/admin` panel, `/verify-email` | Expo web, React Native Web, expo-router |
 | `frontend/donor-mobile/` | Donor Android app | Expo SDK 54, React Native |
-| `frontend/website/` | Public marketing and legal site | Static HTML, deployed on Vercel |
+| `frontend/website/` | Public marketing and legal site | Static HTML, deployed on Cloudflare Pages |
 | `docs/` | Runbook, releasing, release checklist, monitoring, voice and mobile test plans, Play Store kit | Markdown |
 | `.github/workflows/` | CI (backend tests, frontend builds, link check), tagged releases, donor app builds | GitHub Actions |
 

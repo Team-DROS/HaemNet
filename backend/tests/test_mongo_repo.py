@@ -352,3 +352,22 @@ async def test_push_token_follows_the_device_and_can_be_forgotten(db):
     assert await mongo_repo.db_set_donor_push_token("+919000000002", None) is True
     assert await mongo_repo.get_donor_push_token(str(second.id)) is None
     assert await mongo_repo.db_set_donor_push_token("+919999999999", token) is False
+
+
+async def test_paused_donors_are_skipped_until_the_break_ends(db):
+    await seed_donor(phone="+919000000001", km=1.0)
+    await seed_donor(phone="+919000000002", km=2.0, name="Asha")
+    in_a_week = datetime.now(timezone.utc) + timedelta(days=7)
+    assert await mongo_repo.db_set_calls_paused_until("+919000000001", in_a_week) is True
+    matched = await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)
+    assert [d.phone for d in matched] == ["+919000000002"]
+    assert (await mongo_repo.db_eligible_counts_by_group(HOSP_LAT, HOSP_LNG))["O-"] == 1
+    paused = await mongo_repo.get_donor_by_phone("+919000000001")
+    assert paused.calls_paused_until is not None and abs(paused.calls_paused_until - in_a_week) < timedelta(seconds=1)
+
+    # A break that has ended no longer hides the donor, and ending one early clears it.
+    await mongo_repo.db_set_calls_paused_until("+919000000001", datetime.now(timezone.utc) - timedelta(minutes=1))
+    assert len(await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)) == 2
+    await mongo_repo.db_set_calls_paused_until("+919000000001", None)
+    assert (await mongo_repo.get_donor_by_phone("+919000000001")).calls_paused_until is None
+    assert await mongo_repo.db_set_calls_paused_until("+919999999999", None) is False

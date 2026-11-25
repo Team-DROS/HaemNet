@@ -106,6 +106,7 @@ def _doc_to_donor_node(doc: Dict[str, Any]) -> DonorNode:
         has_app=doc.get("has_app", False),
         last_donated_date=_as_utc(doc.get("last_donated_date")),
         calls_opt_out=bool(doc.get("calls_opt_out", False)),
+        calls_paused_until=_as_utc(doc.get("calls_paused_until")),
     )
 
 
@@ -178,6 +179,7 @@ async def find_eligible_donors(
                 "query": {
                     "blood_group": blood_group,
                     "calls_opt_out": {"$ne": True},  # donors who opted out of automated calls are never called
+                    "calls_paused_until": {"$not": {"$gt": _now()}},  # nor donors on a short break
                     "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
                 },
             }
@@ -212,6 +214,7 @@ async def db_eligible_counts_by_group(
                 "spherical": True,
                 "query": {
                     "calls_opt_out": {"$ne": True},
+                    "calls_paused_until": {"$not": {"$gt": _now()}},
                     "$or": [{"last_donated_date": None}, {"last_donated_date": {"$lt": cutoff}}],
                 },
             }
@@ -348,6 +351,17 @@ async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
     if not opt_out:
         fields["calls_consent_at"] = _now()
     result = await get_database()[DONORS].update_one({"phone": phone}, {"$set": fields})
+    return result.matched_count > 0
+
+
+async def db_set_calls_paused_until(phone: str, until: Optional[datetime]) -> bool:
+    """Pause automated calls to this donor until `until`, or with None, end the pause early."""
+    fields: Dict[str, Any] = {"calls_preference_at": _now()}
+    if until is None:
+        update: Dict[str, Any] = {"$set": fields, "$unset": {"calls_paused_until": ""}}
+    else:
+        update = {"$set": {**fields, "calls_paused_until": _as_utc(until)}}
+    result = await get_database()[DONORS].update_one({"phone": phone}, update)
     return result.matched_count > 0
 
 

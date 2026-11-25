@@ -885,5 +885,9 @@ async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
     raise NotImplementedError("Call opt-out needs the MongoDB data layer")
 
 
+async def db_set_calls_paused_until(phone: str, until: Optional[datetime]) -> bool:
+    raise NotImplementedError("Pausing calls needs the MongoDB data layer")
+
+
 async def db_set_donor_push_token(phone: str, token: Optional[str]) -> bool:
     raise NotImplementedError("Push token updates need the MongoDB data layer")

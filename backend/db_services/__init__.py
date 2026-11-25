@@ -47,6 +47,7 @@ if settings.db_backend == "neo4j":
         db_remove_dispatch,
         db_requests_for_donor,
         db_set_calls_opt_out,
+        db_set_calls_paused_until,
         db_set_donor_push_token,
         db_summary,
         db_update_donor_status,
@@ -80,6 +81,7 @@ else:
         db_remove_dispatch,
         db_requests_for_donor,
         db_set_calls_opt_out,
+        db_set_calls_paused_until,
         db_set_donor_push_token,
         db_summary,
         db_update_donor_status,
@@ -125,5 +127,6 @@ __all__ = [
     "db_create_donor_password",
     "db_clear_donor_password",
     "db_set_calls_opt_out",
+    "db_set_calls_paused_until",
     "db_set_donor_push_token",
 ]

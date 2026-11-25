@@ -161,6 +161,8 @@ class DonorNode(BaseModel):
     has_app: bool = False
     last_donated_date: Optional[datetime] = None
     calls_opt_out: bool = False
+    # The donor asked for no calls until this time ("not available this week"). None means available.
+    calls_paused_until: Optional[datetime] = None
 
     @field_validator("language", mode="before")
     @classmethod

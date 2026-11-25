@@ -34,14 +34,15 @@ def donor_node_for_call(
     )
 
 
-async def place_call(donor_node: DonorNode, dispatch_id: str, donor_id: str) -> bool:
+async def place_call(donor_node: DonorNode, dispatch_id: str, donor_id: str, *, slot_reserved: bool = False) -> bool:
     """Start the call and remember its ID so webhooks can find the donor. Returns whether it started.
 
     Failures are logged and reported but never raised, so one bad number cannot stop a dispatch.
     A donor who could not be reached is shown as "no answer", not as having declined.
     """
     try:
-        await wait_for_slot()
+        if not slot_reserved:
+            await wait_for_slot()
         call_id = await get_telephony().start_call(donor_node, dispatch_id, status_callback_url())
         if call_id:
             await dispatch_store.register_call(call_id, dispatch_id, donor_id)

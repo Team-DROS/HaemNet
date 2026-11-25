@@ -1,9 +1,8 @@
 """Sliding-window rate limiting, shared through Redis when it is configured.
 
 `Limiter` is the one to use. Counters live in Redis (a sorted set per key) so
-limits hold across several backend instances. With no REDIS_URL, or if Redis
-errors, it falls back to in-process counters (per instance) and logs a warning,
-so a Redis outage weakens limits instead of breaking sign-in.
+limits hold across several backend instances. Without REDIS_URL, counters are local. A configured Redis outage blocks
+protected operations until shared counters are available again.
 
 `SlidingWindowLimiter` is the in-process implementation.
 """
@@ -16,8 +15,10 @@ import uuid
 from collections import defaultdict, deque
 from typing import Deque, Dict, Optional
 
+from redis.exceptions import RedisError
+
 from backend.services import redis_client
-from backend.services.errors import RateLimitedError
+from backend.services.errors import RateLimitedError, ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +97,9 @@ class Limiter:
             return local_op(self._sync_local())
         try:
             return await redis_op(client)
-        except Exception as exc:
-            logger.warning("Redis rate limit unavailable (%s); using local counters", type(exc).__name__)
-            return local_op(self._sync_local())
+        except RedisError as exc:
+            logger.warning("Redis rate limit unavailable (%s)", type(exc).__name__)
+            raise ServiceUnavailableError("Shared rate limits temporarily unavailable") from exc
 
     async def allowed(self, key: str, now: Optional[float] = None) -> bool:
         async def op(r):

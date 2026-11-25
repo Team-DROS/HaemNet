@@ -16,6 +16,7 @@ QUERY = "?dispatch_id=dp-1&donor_id=d1"
 @pytest.fixture(autouse=True)
 def _callback_deps(monkeypatch, store, broadcasts):
     """The callback routes hold their own reference to the dispatch store."""
+    monkeypatch.setattr(settings, "call_max_retries", 0)  # isolate webhook signature checks
     monkeypatch.setattr(callbacks, "dispatch_store", store)
     monkeypatch.setattr(callbacks.manager, "broadcast", lambda *a, **k: _noop())
 
@@ -91,3 +92,57 @@ def test_failed_and_canceled_calls_are_not_recorded_as_declines(client, signed):
         res = client.post(PATH + QUERY, data=params, headers={"X-Twilio-Signature": sign(params)})
         assert res.status_code == 200
         assert signed.dispatches["dp-1"]["donors"]["d1"]["status"] == "no_answer"
+
+
+@pytest.mark.parametrize("result", ["machine_start", "fax", "unknown", ""])
+def test_detection_ends_nonhuman_calls_before_greeting(client, signed, monkeypatch, result):
+    monkeypatch.setattr(settings, "twilio_machine_detection", True)
+    path = "/api/twilio/twiml"
+    params = {"CallSid": "CA1", "AnsweredBy": result}
+    signed.dispatches["dp-1"]["donors"]["d1"]["call_sid"] = "CA1"
+    response = client.post(path + QUERY, data=params, headers={"X-Twilio-Signature": sign(params, path)})
+    assert response.status_code == 200
+    assert "<Hangup" in response.text and "<Stream" not in response.text
+    assert signed.dispatches["dp-1"]["donors"]["d1"]["status"] == "no_answer"
+
+
+def test_human_detection_starts_voice_stream(client, signed, monkeypatch):
+    monkeypatch.setattr(settings, "twilio_machine_detection", True)
+    path = "/api/twilio/twiml"
+    params = {"CallSid": "CA1", "AnsweredBy": "human"}
+    response = client.post(path + QUERY, data=params, headers={"X-Twilio-Signature": sign(params, path)})
+    assert response.status_code == 200 and "<Stream" in response.text
+
+
+def test_audio_stream_requires_valid_signature_before_accepting(client, signed):
+    from starlette.websockets import WebSocketDisconnect
+
+    path = "/ws/twilio/audio-stream"
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(path):
+            pass
+    with client.websocket_connect(path, headers={"X-Twilio-Signature": sign({}, path, "")}) as ws:
+        ws.send_json({"event": "stop"})
+
+
+def test_twiml_offers_one_signed_resume_for_unfinished_checkpoint(client, signed, monkeypatch):
+    from unittest.mock import AsyncMock
+    from urllib.parse import urlsplit
+    from xml.etree import ElementTree
+
+    monkeypatch.setattr(settings, "redis_url", "redis://configured")
+    monkeypatch.setattr(settings, "twilio_machine_detection", True)
+    path = "/api/twilio/twiml"
+    data = {"AnsweredBy": "human", "CallSid": "CA1"}
+    first = client.post(path + QUERY, data=data, headers={"X-Twilio-Signature": sign(data, path)})
+    redirect = ElementTree.fromstring(first.content).findtext("Redirect")  # noqa: S314 - XML from local test app
+    target = urlsplit(redirect)
+    url = target.path + "?" + target.query
+    resume_data = {"CallSid": "CA1"}
+    header = {"X-Twilio-Signature": RequestValidator(TOKEN).compute_signature(redirect, resume_data)}
+    monkeypatch.setattr(callbacks.VoiceCheckpoint, "can_resume", AsyncMock(return_value=True))
+    second = client.post(url, data=resume_data, headers=header)
+    assert "<Connect>" in second.text and "<Redirect" not in second.text
+    signed.dispatches["dp-1"]["donors"]["d1"]["status"] = "accepted"
+    assert "<Hangup" in client.post(url, data=resume_data, headers=header).text
+    assert client.post(url, data=resume_data).status_code == 403

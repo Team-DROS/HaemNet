@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from backend.api.auth import get_current_donor
@@ -13,6 +13,7 @@ from backend.api.websockets import manager
 from backend.db_services import (
     db_set_calls_opt_out,
     delete_donor,
+    export_donor,
     get_donor_by_phone,
     register_donor,
 )
@@ -162,6 +163,13 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
 
 
 # ── DELETE /api/donor/profile/{phone} ───────────────────────────────
+
+
+@router.get("/donor/export")
+async def export_my_account(response: Response, donor_phone: str = Depends(get_current_donor)):
+    """Export the signed-in donor's profile and call history."""
+    response.headers["Cache-Control"] = "no-store"
+    return await export_donor(donor_phone)
 
 
 @router.delete("/donor/profile/{phone}")

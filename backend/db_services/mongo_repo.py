@@ -26,6 +26,7 @@ what the Neo4j layer returned and what the apps parse.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -128,6 +129,7 @@ async def ensure_indexes() -> None:
     await db[CALLS].create_index([("dispatch_id", ASCENDING)])
     await db[CALLS].create_index([("donor_id", ASCENDING)])
     await db[CALLS].create_index([("call_sid", ASCENDING)], sparse=True)
+    await db[CALLS].create_index([("retry_due", ASCENDING)], sparse=True)
     # Hospital platform: review queue by status, token lookups and audit trails.
     await db[HOSPITALS].create_index([("status", ASCENDING), ("registered_at", ASCENDING)])
     await db[HOSPITALS].create_index([("email_verification_hash", ASCENDING)], sparse=True)
@@ -304,7 +306,7 @@ async def register_donor(
     )
     if doc is None:  # an upsert always returns the document
         raise RuntimeError("Donor upsert returned no document")
-    logger.info("Donor registered/updated: phone=%s", phone)
+    logger.info("Donor registered or updated")
     return _doc_to_donor_node(doc)
 
 
@@ -365,14 +367,62 @@ async def db_set_calls_paused_until(phone: str, until: Optional[datetime]) -> bo
     return result.matched_count > 0
 
 
+async def export_donor(phone: str) -> dict:
+    db = get_database()
+    fields = (
+        "name",
+        "phone",
+        "blood_group",
+        "language",
+        "location",
+        "has_app",
+        "last_donated_date",
+        "calls_opt_out",
+        "calls_consent_at",
+        "calls_preference_at",
+        "calls_paused_until",
+        "created_at",
+        "updated_at",
+    )
+    profile = await db[DONORS].find_one({"phone": phone}, dict.fromkeys(fields, 1))
+    history = []
+    if profile:
+        donor_id = profile.pop("_id")
+        call_fields = (
+            "dispatch_id",
+            "status",
+            "distance_km",
+            "eta_minutes",
+            "created_at",
+            "updated_at",
+            "status_history.status",
+            "status_history.at",
+        )
+        history = [
+            row
+            async for row in db[CALLS]
+            .find({"donor_id": donor_id}, {"_id": 0, **dict.fromkeys(call_fields, 1)})
+            .sort("created_at", 1)
+        ]
+    account = await db[DONOR_LOGINS].find_one({"_id": phone}, {"_id": 0, "created_at": 1, "updated_at": 1})
+    return {"phone": phone, "account": account, "profile": profile, "calls": history}
+
+
 async def delete_donor(phone: str) -> bool:
-    # Forget the password too, so the number can join again from scratch.
-    await get_database()[DONOR_LOGINS].delete_one({"_id": phone})
-    result = await get_database()[DONORS].delete_one({"phone": phone})
-    if result.deleted_count:
-        logger.info("Donor deleted: phone=%s", phone)
-        return True
-    return False
+    db = get_database()
+    profile = await db[DONORS].find_one({"phone": phone}, {"_id": 1})
+    if profile:
+        await db[CALLS].delete_many({"donor_id": profile["_id"]})
+        # Retain the hospital audit event, timestamp and dispatch while removing the donor identifier.
+        marker = f"donor={profile['_id']} "
+        await db["hospital_audit"].update_many(
+            {"action": "donation_logged", "reason": {"$regex": "^" + re.escape(marker)}},
+            [{"$set": {"reason": {"$replaceOne": {"input": "$reason", "find": marker, "replacement": ""}}}}],
+        )
+        await db[DONORS].delete_one({"_id": profile["_id"]})
+    # Leave the login until last so a temporary cleanup failure can be retried.
+    login = await db[DONOR_LOGINS].delete_one({"_id": phone})
+    return bool(profile or login.deleted_count)
 
 
 # ── dispatches and call sessions ──────────────────────────────────
@@ -419,6 +469,7 @@ async def db_create_dispatch(
                     "dispatch_id": dispatch_id,
                     "donor_id": donor_id,
                     "status": "ringing",
+                    "status_history": [{"status": "ringing", "at": _now()}],
                     "eta_minutes": None,
                     "call_sid": None,
                     "created_at": _now(),
@@ -487,13 +538,25 @@ async def db_update_donor_status(
     donor_id: str,
     status: str,
     eta_minutes: Optional[int] = None,
+    *,
+    only_from: tuple[str, ...] | None = None,
+    call_sid: str = "",
 ) -> bool:
     """Move one donor's call along. Records the dispatch's first acceptance."""
     db = get_database()
     changes: Dict[str, Any] = {"status": status, "updated_at": _now()}
     if eta_minutes is not None:
         changes["eta_minutes"] = eta_minutes
-    result = await db[CALLS].update_one({"_id": _call_id(dispatch_id, donor_id)}, {"$set": changes})
+    query: Dict[str, Any] = {"_id": _call_id(dispatch_id, donor_id)}
+    if only_from is not None:
+        query["status"] = {"$in": only_from}
+    if call_sid:
+        query["call_sid"] = {"$in": [None, call_sid]}
+        # A redelivery from the original call must not overwrite the reserved retry.
+        query["retry_source"] = {"$ne": call_sid}
+    result = await db[CALLS].update_one(
+        query, {"$set": changes, "$push": {"status_history": {"status": status, "at": changes["updated_at"]}}}
+    )
     if not result.matched_count:
         return False
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List
+from urllib.parse import urlencode
 
 import httpx
 
@@ -44,8 +45,9 @@ async def initiate_call(
     """
     client = await _get_client()
 
-    twiml_url = f"{settings.server_base_url}/api/twilio/twiml?dispatch_id={dispatch_id}&donor_id={donor.id}"
-    status_cb = f"{settings.server_base_url}/api/twilio/status-callback?dispatch_id={dispatch_id}&donor_id={donor.id}"
+    query = urlencode({"dispatch_id": dispatch_id, "donor_id": donor.id})
+    twiml_url = f"{settings.server_base_url}/api/twilio/twiml?{query}"
+    status_cb = f"{callback_url}?{query}"
 
     payload = {
         "To": donor.phone,
@@ -57,6 +59,9 @@ async def initiate_call(
         # form fields, which is what Twilio expects.
         "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
     }
+
+    if settings.twilio_machine_detection:
+        payload["MachineDetection"] = "Enable"
 
     try:
         # 429 means Twilio did not start the call, so retrying cannot double-ring a donor.

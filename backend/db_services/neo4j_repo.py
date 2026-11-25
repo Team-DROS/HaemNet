@@ -417,17 +417,46 @@ async def register_donor(
 
     if record is None:
         raise RuntimeError("Donor upsert returned no record")
-    logger.info("Donor registered/updated: phone=%s", phone)
+    logger.info("Donor registered or updated")
     return _record_to_donor_node(record.data())
 
 
 # -----------------------------------------------------------------------------
 # 5.5 DELETE DONOR
 # -----------------------------------------------------------------------------
+async def export_donor(phone: str) -> dict:
+    profile = await get_donor_by_phone(phone)
+    history = []
+    async with _get_driver().session() as session:
+        login = await session.run(
+            "MATCH (l:DonorLogin {phone: $phone}) RETURN toString(l.created_at) AS created_at", phone=phone
+        )
+        account = await login.single()
+        if profile:
+            rows = await session.run(
+                "MATCH (c:CallSession {donor_id: $donor_id}) "
+                "RETURN c.dispatch_id AS dispatch_id, c.status AS status, "
+                "c.distance_km AS distance_km, c.eta_minutes AS eta_minutes",
+                donor_id=str(profile.id),
+            )
+            history = [record.data() async for record in rows]
+    return {
+        "phone": phone,
+        "account": account.data() if account else None,
+        "profile": profile.model_dump(mode="json") if profile else None,
+        "calls": history,
+    }
+
+
 _DELETE_DONOR_QUERY = """
-MATCH (d:Donor {phone: $phone})
-DETACH DELETE d
-RETURN count(d) AS deleted_count
+OPTIONAL MATCH (d:Donor {phone: $phone})
+OPTIONAL MATCH (c:CallSession {donor_id: d.id})
+WITH d, collect(c) AS calls
+OPTIONAL MATCH (l:DonorLogin {phone: $phone})
+WITH d, l, calls, (d IS NOT NULL OR l IS NOT NULL) AS existed
+FOREACH (session IN calls | DETACH DELETE session)
+FOREACH (node IN [n IN [d, l] WHERE n IS NOT NULL] | DETACH DELETE node)
+RETURN existed AS deleted_count
 """
 
 _GET_PASSWORD_QUERY = "MATCH (l:DonorLogin {phone: $phone}) RETURN l.password_hash AS password_hash"
@@ -482,13 +511,12 @@ async def delete_donor(phone: str) -> bool:
     """
     driver = _get_driver()
     async with driver.session() as session:
-        await session.run(_DELETE_LOGIN_QUERY, phone=phone)
         result = await session.run(_DELETE_DONOR_QUERY, phone=phone)
         record = await result.single()
 
     deleted_count = record["deleted_count"] if record else 0
     if deleted_count > 0:
-        logger.info("Donor deleted: phone=%s", phone)
+        logger.info("Donor account deleted")
         return True
     return False
 
@@ -628,6 +656,11 @@ async def db_get_by_call_sid(call_sid: str) -> Optional[tuple[str, str]]:
 
 _UPDATE_DONOR_STATUS_QUERY = """
 MATCH (c:CallSession {dispatch_id: $dispatch_id, donor_id: $donor_id})
+SET c._transition_lock = true
+REMOVE c._transition_lock
+WITH c
+WHERE ($only_from IS NULL OR c.status IN $only_from)
+  AND ($call_sid = '' OR c.sid IS NULL OR c.sid = $call_sid)
 SET c.status = $status,
     c.eta_minutes = COALESCE($eta_minutes, c.eta_minutes),
     c.updated_at = $now
@@ -644,7 +677,13 @@ _ACCEPT_STATUSES = ["accepted", "en_route", "completed", "donated"]
 
 
 async def db_update_donor_status(
-    dispatch_id: str, donor_id: str, status: str, eta_minutes: Optional[int] = None
+    dispatch_id: str,
+    donor_id: str,
+    status: str,
+    eta_minutes: Optional[int] = None,
+    *,
+    only_from: tuple[str, ...] | None = None,
+    call_sid: str = "",
 ) -> bool:
     driver = _get_driver()
     async with driver.session() as session:
@@ -653,6 +692,8 @@ async def db_update_donor_status(
             dispatch_id=dispatch_id,
             donor_id=donor_id,
             status=status,
+            only_from=list(only_from) if only_from is not None else None,
+            call_sid=call_sid,
             eta_minutes=eta_minutes,
             now=datetime.now(timezone.utc).isoformat(),
             accept_statuses=_ACCEPT_STATUSES,

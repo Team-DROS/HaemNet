@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, WebSocket
 from twilio.request_validator import RequestValidator
 
 from backend.config import settings
@@ -38,3 +38,20 @@ async def verify_twilio_request(request: Request) -> None:
     if not signature or not RequestValidator(settings.twilio_auth_token).validate(url, params, signature):
         logger.warning("Twilio webhook rejected: bad signature for %s", request.url.path)
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
+
+def verify_twilio_stream(websocket: WebSocket) -> bool:
+    """Twilio signs the public upgrade URL. The proxy's internal host is irrelevant."""
+    if not settings.twilio_auth_token:
+        return settings.app_env.lower() not in {"production", "staging"}
+    signature = websocket.headers.get("x-twilio-signature", "")
+    if not signature:
+        return False
+    url = settings.server_base_url.rstrip("/") + websocket.url.path
+    validator = RequestValidator(settings.twilio_auth_token)
+    # Twilio's Voice WebSocket signing can include a trailing slash.
+    return any(
+        validator.validate(candidate, {}, signature)
+        for base in (url, url.replace("http", "ws", 1))
+        for candidate in (base, base.rstrip("/") + "/")
+    )

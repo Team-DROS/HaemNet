@@ -32,6 +32,7 @@ class Recorder:
 
 @pytest.fixture
 def rig(monkeypatch, store):
+    monkeypatch.setattr(settings, "db_backend", "neo4j")
     recorder = Recorder()
     delays = []
 
@@ -51,7 +52,7 @@ def rig(monkeypatch, store):
     monkeypatch.setattr(call_retry, "dispatch_store", store)
     monkeypatch.setattr(call_retry, "get_donor_by_id", real_donor)
     monkeypatch.setattr(calling, "dispatch_store", store)
-    monkeypatch.setattr(calling, "wait_for_slot", no_wait)
+    monkeypatch.setattr(call_retry, "wait_for_slot", no_wait)
     monkeypatch.setattr(calling, "get_telephony", lambda: recorder)
     store.add("dp-1", donors=[donor(DID, PHONE, status="no_answer")])
     return recorder
@@ -173,7 +174,7 @@ def signed_callbacks(monkeypatch, store, broadcasts):
     store.add("dp-1", donors=[donor("d1", PHONE, status="ringing")])  # matches QUERY in the signature helper
     scheduled = []
 
-    async def fake_schedule(dispatch_id, donor_id, provider_status, notify):
+    async def fake_schedule(dispatch_id, donor_id, provider_status, notify, *, call_sid):
         scheduled.append((dispatch_id, donor_id, provider_status))
         return True
 

@@ -8,6 +8,7 @@ claim:
 A donor token can never be used on hospital endpoints, and the reverse.
 """
 
+import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -181,8 +182,13 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)) -> str:
 
 
 async def get_current_donor(creds: Optional[HTTPAuthorizationCredentials] = Depends(donor_bearer)) -> str:
-    phone = donor_from_token(creds.credentials) if creds else None
-    if phone is None:
+    claims = (_decode(creds.credentials) or {}) if creds else {}
+    phone = claims.get("sub") if claims.get("role") == ROLE_DONOR else None
+    binding = claims.get("account")
+    if not phone or not isinstance(binding, str):
+        raise _unauthorized("Sign in again to continue")
+    stored = await db_get_donor_password_hash(phone)
+    if not stored or not secrets.compare_digest(binding, _account_binding(stored)):
         raise _unauthorized("Sign in again to continue")
     return phone
 
@@ -299,9 +305,15 @@ def _check_new_password(password: str) -> None:
         raise HTTPException(status_code=422, detail="That password is too long (72 characters at most)")
 
 
-async def _donor_session(phone: str) -> dict:
+def _account_binding(password_hash: str) -> str:
+    """Bind a token to this account incarnation, including across deletion and re-registration."""
+    return hmac.digest(SECRET_KEY.encode(), b"donor-account:" + password_hash.encode(), "sha256").hex()
+
+
+async def _donor_session(phone: str, password_hash: str) -> dict:
     token = create_access_token(
-        {"sub": phone, "role": ROLE_DONOR}, expires_delta=timedelta(days=DONOR_TOKEN_EXPIRE_DAYS)
+        {"sub": phone, "role": ROLE_DONOR, "account": _account_binding(password_hash)},
+        expires_delta=timedelta(days=DONOR_TOKEN_EXPIRE_DAYS),
     )
     try:
         registered = bool(await get_donor_by_phone(phone))
@@ -354,11 +366,12 @@ async def register_donor_account(payload: DonorCredentials):
         raise HTTPException(status_code=403, detail="Verify your phone number with the code we text you first.")
     await enforce(_donor_signups, phone, "Too many attempts. Try again later.")
 
-    created = await db_create_donor_password(phone, get_password_hash(payload.password))
+    password_hash = get_password_hash(payload.password)
+    created = await db_create_donor_password(phone, password_hash)
     if not created:
         raise HTTPException(status_code=409, detail="This number already has an account. Sign in instead.")
     logger.info("Donor account created for …%s", phone[-4:])
-    return await _donor_session(phone)
+    return await _donor_session(phone, password_hash)
 
 
 @donor_router.post("/login")
@@ -371,4 +384,4 @@ async def login_donor(payload: DonorCredentials):
     if not stored or not verify_password(payload.password, stored):
         raise HTTPException(status_code=401, detail="Wrong mobile number or password")
     await _donor_failures.reset(phone)
-    return await _donor_session(phone)
+    return await _donor_session(phone, stored)

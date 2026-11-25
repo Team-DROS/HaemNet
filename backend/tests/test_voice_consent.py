@@ -107,7 +107,8 @@ async def test_continuous_speech_is_not_classified_when_cut_off(session):
 
 
 @pytest.mark.parametrize("final_intent", ["accepted", "declined"])
-def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, final_intent):
+@pytest.mark.parametrize("reconnect", [False, True])
+def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, final_intent, reconnect):
     import base64
 
     from backend.api import callbacks
@@ -147,7 +148,16 @@ def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, 
         mark = ws.receive_json()
         ws.send_json({"event": "mark", "mark": mark["mark"]})
 
-    with client.websocket_connect("/ws/twilio/audio-stream") as ws:
+    import fakeredis.aioredis
+
+    from backend.services import voice_checkpoint
+
+    server = fakeredis.FakeServer()
+    monkeypatch.setattr(
+        voice_checkpoint, "get_redis", lambda: fakeredis.aioredis.FakeRedis(server=server, decode_responses=True)
+    )
+
+    def start_stream(ws):
         ws.send_json(
             {
                 "event": "start",
@@ -158,6 +168,9 @@ def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, 
                 },
             }
         )
+
+    with client.websocket_connect("/ws/twilio/audio-stream") as ws:
+        start_stream(ws)
         acknowledge(ws)
         speak(ws)
         # The first yes produces a question, never acceptance or directions.
@@ -165,9 +178,20 @@ def test_twilio_persists_only_the_confirmed_outcome(client, store, monkeypatch, 
         confirmation_mark = ws.receive_json()
         assert store.dispatches["voice-test"]["donors"]["donor-test"]["status"] == "ringing"
         route.assert_not_awaited()
-        ws.send_json({"event": "mark", "mark": confirmation_mark["mark"]})
-        speak(ws)
-        acknowledge(ws)
+        if reconnect:
+            ws.send_json({"event": "stop"})
+        else:
+            ws.send_json({"event": "mark", "mark": confirmation_mark["mark"]})
+            speak(ws)
+            acknowledge(ws)
+    if reconnect:
+        # A fresh stream with a separate Redis client must replay the confirmation.
+        monkeypatch.setattr(settings, "voice_intent_mode", "legacy")
+        with client.websocket_connect("/ws/twilio/audio-stream") as ws:
+            start_stream(ws)
+            acknowledge(ws)
+            speak(ws)
+            acknowledge(ws)
     assert store.dispatches["voice-test"]["donors"]["donor-test"]["status"] == final_intent
     assert route.await_count == (1 if final_intent == "accepted" else 0)
 
@@ -249,3 +273,23 @@ async def test_legacy_pipeline_does_not_log_transcript(monkeypatch, caplog):
         await s.handle_audio_chunk(b"\x00" * (voice_pipeline._AUDIO_BUFFER_THRESHOLD + 1))
     assert caplog.records
     assert SECRET not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_rejects_displaced_stream(monkeypatch):
+    import fakeredis.aioredis
+
+    from backend.services import voice_checkpoint
+
+    server = fakeredis.FakeServer()
+    monkeypatch.setattr(
+        voice_checkpoint, "get_redis", lambda: fakeredis.aioredis.FakeRedis(server=server, decode_responses=True)
+    )
+    a = voice_checkpoint.VoiceCheckpoint("ca", "dispatch", "donor")
+    b = voice_checkpoint.VoiceCheckpoint("ca", "dispatch", "donor")
+    await a.attach("ai")
+    assert await a.save(True, 1)
+    assert (await b.attach("legacy"))["mode"] == "ai"
+    assert not await a.save(False, 0)
+    assert await b.save(True, 2, ended=True)
+    assert 0 < await b.client.ttl(b.key) <= b.ttl_seconds

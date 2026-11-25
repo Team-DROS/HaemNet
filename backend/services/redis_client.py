@@ -2,8 +2,8 @@
 
 With REDIS_URL empty everything stays in process memory (one instance).
 With it set, rate limits, call quotas and live dashboard events are shared
-across instances. Redis trouble never takes the API down: callers fall back to
-local behaviour and log a warning.
+across instances. During outages, protected requests fail closed and dashboard
+events can still be delivered locally.
 """
 
 from __future__ import annotations

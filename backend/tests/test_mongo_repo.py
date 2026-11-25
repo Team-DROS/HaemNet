@@ -186,7 +186,15 @@ async def test_dispatch_lifecycle_end_to_end(db):
     assert await mongo_repo.db_get_by_call_sid("CA-unknown") is None
 
     # Accepting records the first acceptance and closes the request for that donor.
-    assert await mongo_repo.db_update_donor_status("dp-1", str(donor_a.id), "accepted", 12) is True
+    allowed = ("ringing", "answered")
+    assert not await mongo_repo.db_update_donor_status(
+        "dp-1", str(donor_a.id), "accepted", only_from=allowed, call_sid="stale"
+    )
+    assert await mongo_repo.db_update_donor_status(
+        "dp-1", str(donor_a.id), "accepted", 12, only_from=allowed, call_sid="CA123"
+    )
+    assert not await mongo_repo.db_update_donor_status("dp-1", str(donor_a.id), "accepted", only_from=allowed)
+    assert not await mongo_repo.db_update_donor_status("dp-1", str(donor_a.id), "no_answer", only_from=allowed)
     assert await mongo_repo.db_update_donor_status("dp-1", "someone-else", "accepted") is False
     assert await mongo_repo.db_requests_for_donor("+919000000001") == []
     row = await db[mongo_repo.DISPATCHES].find_one({"_id": "dp-1"})
@@ -371,3 +379,69 @@ async def test_paused_donors_are_skipped_until_the_break_ends(db):
     await mongo_repo.db_set_calls_paused_until("+919000000001", None)
     assert (await mongo_repo.get_donor_by_phone("+919000000001")).calls_paused_until is None
     assert await mongo_repo.db_set_calls_paused_until("+919999999999", None) is False
+
+
+async def test_export_and_deletion_are_scoped_to_owner(db):
+    first = await seed_donor(phone="+919123456701")
+    second = await seed_donor(phone="+919123456702")
+    await mongo_repo.db_set_donor_push_token(first.phone, "ExponentPushToken[private]")
+    await mongo_repo.db_create_dispatch("dp-private", "HOSP", "O-", HOSP_LAT, HOSP_LNG, [str(first.id), str(second.id)])
+    await mongo_repo.db_register_call_sid("CA-private", "dp-private", str(first.id))
+    await mongo_repo.db_create_donor_password(first.phone, "private-hash")
+    await db[mongo_repo.CALLS].update_one(
+        {"donor_id": str(first.id)}, {"$set": {"status_history.0.internal_note": "private"}}
+    )
+    exported = await mongo_repo.export_donor(first.phone)
+    assert set(exported["account"]) == {"created_at", "updated_at"}
+    assert set(exported["calls"][0]["status_history"][0]) == {"status", "at"}
+    assert exported["phone"] == first.phone and exported["profile"]["name"] == first.name
+    assert [row["dispatch_id"] for row in exported["calls"]] == ["dp-private"]
+    assert "push_token" not in exported["profile"] and "call_sid" not in exported["calls"][0]
+    await db["hospital_audit"].insert_one(
+        {"action": "donation_logged", "reason": f"donor={first.id} dispatch=dp-private"}
+    )
+    assert await mongo_repo.delete_donor(first.phone)
+    assert await db["hospital_audit"].find_one({"action": "donation_logged", "reason": "dispatch=dp-private"})
+    assert not await db["hospital_audit"].find_one({"reason": f"donor={first.id} dispatch=dp-private"})
+    assert await db[mongo_repo.CALLS].count_documents({"donor_id": str(first.id)}) == 0
+    assert await db[mongo_repo.CALLS].count_documents({"donor_id": str(second.id)}) == 1
+
+
+async def test_delete_account_before_profile_registration(db):
+    phone = "+919123456709"
+    assert await mongo_repo.db_create_donor_password(phone, "dummy")
+    assert await mongo_repo.delete_donor(phone)
+    assert await mongo_repo.db_get_donor_password_hash(phone) is None
+
+
+async def test_durable_retry_is_deduplicated_reclaimed_and_reserved_once(db):
+    import asyncio
+
+    from backend.db_services import retry_jobs
+
+    calls = db[mongo_repo.CALLS]
+    await calls.insert_one(
+        {"_id": "dp:d", "dispatch_id": "dp", "donor_id": "d", "status": "ringing", "call_sid": "CA0"}
+    )
+    queued = await asyncio.gather(*(retry_jobs.enqueue("dp", "d", "CA0", 0, 2) for _ in range(6)))
+    assert queued.count(True) == 1
+    job = await retry_jobs.claim_due()
+    assert job and job["status"] == "no_answer"
+    assert await retry_jobs.claim_due() is None
+    # A worker dies after reserving the job but before contacting the provider.
+    await calls.update_one({"_id": "dp:d"}, {"$set": {"retry_due": datetime.now(timezone.utc) - timedelta(seconds=1)}})
+    recovered = await retry_jobs.claim_due()
+    assert recovered and not await retry_jobs.finish(job, dial=True)
+    assert await retry_jobs.finish(recovered, dial=True)
+    assert not await retry_jobs.finish(recovered, dial=True)
+    record = await calls.find_one({"_id": "dp:d"})
+    assert [event["status"] for event in record["status_history"]] == ["no_answer", "ringing"]
+    assert not await retry_jobs.enqueue("dp", "d", "CA0", 0, 2)
+    assert not await mongo_repo.db_update_donor_status("dp", "d", "no_answer", call_sid="CA0")
+    await mongo_repo.db_register_call_sid("CA1", "dp", "d")
+    assert await retry_jobs.enqueue("dp", "d", "CA1", 0, 2)
+    second = await retry_jobs.claim_due()
+    await mongo_repo.db_update_donor_status("dp", "d", "accepted")
+    assert not await retry_jobs.finish(second, dial=True)
+    assert await retry_jobs.finish(second, dial=False)
+    assert await retry_jobs.claim_due() is None

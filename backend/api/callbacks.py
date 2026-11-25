@@ -14,8 +14,9 @@ import html
 import json
 import logging
 from typing import Optional
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Form, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 
 from backend.api.websockets import manager
@@ -26,8 +27,9 @@ from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusU
 from backend.services.call_retry import schedule_retry
 from backend.services.push_service import send_dispatch_notification
 from backend.services.telephony import get_telephony
-from backend.services.twilio_signature import verify_twilio_request
-from backend.services.voice_pipeline import active_sessions, create_voice_session
+from backend.services.twilio_signature import verify_twilio_request, verify_twilio_stream
+from backend.services.voice_checkpoint import VoiceCheckpoint
+from backend.services.voice_pipeline import create_voice_session
 
 logger = logging.getLogger(__name__)
 
@@ -79,23 +81,67 @@ def map_twilio_status(twilio_status: str, current: Optional[str]) -> Optional[Ca
 
 @router.post("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
 @router.get("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
-async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(default="")):
+async def get_twiml(
+    request: Request,
+    dispatch_id: str = Query(default=""),
+    donor_id: str = Query(default=""),
+    resume: bool = Query(default=False),
+):
     """
     Returns the TwiML XML that instructs Twilio to connect the call
     to our Audio Stream WebSocket for real-time Sarvam AI conversational processing.
     """
+    params = await request.form() if request.method == "POST" else request.query_params
+    answered_by = str(params.get("AnsweredBy", "")).lower()
+    sid = str(params.get("CallSid", ""))
+    if resume:
+        # A signed continuation after <Connect> only resumes its own unfinished call.
+        checkpoint = VoiceCheckpoint(sid, dispatch_id, donor_id)
+        if not sid or not await checkpoint.can_resume():
+            return Response(content="<Response><Hangup/></Response>", media_type="application/xml")
+        donor = await dispatch_store.get_donor(dispatch_id, donor_id)
+        if (
+            not donor
+            or donor.get("status") not in {"ringing", "answered"}
+            or donor.get("call_sid") not in (None, "", sid)
+        ):
+            return Response(content="<Response><Hangup/></Response>", media_type="application/xml")
+    if (
+        answered_by == "fax"
+        or answered_by.startswith("machine_")
+        or (settings.twilio_machine_detection and answered_by != "human" and not resume)
+    ):
+        if sid and dispatch_id and donor_id:
+            updated = await dispatch_store.update_donor_status(
+                dispatch_id, donor_id, CallStatus.NO_ANSWER, only_from=("ringing", "answered"), call_sid=sid
+            )
+            if updated:
+                donor = await dispatch_store.get_donor(dispatch_id, donor_id)
+                if donor:
+                    await manager.broadcast(
+                        dispatch_id,
+                        DonorStatusUpdate(donor_id=donor_id, name=donor["name"], status=CallStatus.NO_ANSWER),
+                    )
+        return Response(content="<Response><Hangup/></Response>", media_type="application/xml")
+
     ws_url = settings.server_base_url.replace("http", "ws") + settings.twilio_audio_ws_path
 
     xml_safe_url = html.escape(ws_url)
+    continuation = ""
+    if settings.redis_url and not resume:
+        query = urlencode({"dispatch_id": dispatch_id, "donor_id": donor_id, "resume": "true"})
+        redirect = f"{settings.server_base_url.rstrip('/')}/api/twilio/twiml?{query}"
+        continuation = f'<Redirect method="POST">{html.escape(redirect)}</Redirect>'
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream url="{xml_safe_url}">
-            <Parameter name="dispatch_id" value="{dispatch_id}" />
-            <Parameter name="donor_id" value="{donor_id}" />
+            <Parameter name="dispatch_id" value="{html.escape(dispatch_id, quote=True)}" />
+            <Parameter name="donor_id" value="{html.escape(donor_id, quote=True)}" />
         </Stream>
     </Connect>
+    {continuation}
 </Response>"""
     return Response(content=xml, media_type="application/xml")
 
@@ -108,6 +154,7 @@ async def twilio_gather(
     dispatch_id: str = Query(default=""),
     donor_id: str = Query(default=""),
     Digits: str = Form(default=""),
+    CallSid: str = Form(default=""),
 ):
     """
     Handles the donor's keypress response from <Gather>.
@@ -131,15 +178,19 @@ async def twilio_gather(
         intent = "declined"
         say_text = "Thank you for your time. We understand. Goodbye."
 
-    # Update dispatch store
-    if dispatch_id and donor_id:
-        await dispatch_store.update_donor_status(
+    updated = False
+    if dispatch_id and donor_id and Digits in {"1", "2"}:
+        updated = await dispatch_store.update_donor_status(
             dispatch_id,
             donor_id,
             new_status,
             eta_minutes=15 if intent == "accepted" else None,
+            only_from=("ringing", "answered", "no_answer"),
+            call_sid=CallSid,
         )
-
+    if not updated:
+        say_text = "Thank you. Goodbye."
+    if updated:
         # Broadcast to dashboard via WebSocket
         donor = await dispatch_store.get_donor(dispatch_id, donor_id)
         donor_name = donor.get("name", "Unknown") if donor else "Unknown"
@@ -196,10 +247,21 @@ async def twilio_status_callback(
         )
         return {"status": "ack", "call_sid": CallSid}
 
-    # Update the in-memory store.
-    updated = await dispatch_store.update_donor_status(dispatch_id, donor_id, mapped_status)
-    if updated and mapped_status == CallStatus.NO_ANSWER:
-        await schedule_retry(dispatch_id, donor_id, CallStatus_param.lower(), manager.broadcast)
+    # On MongoDB the no-answer transition and its delayed retry are one durable write.
+    durable_retry = settings.db_backend == "mongodb" and mapped_status == CallStatus.NO_ANSWER
+    updated = durable_retry and await schedule_retry(
+        dispatch_id, donor_id, CallStatus_param.lower(), manager.broadcast, call_sid=CallSid
+    )
+    if not updated:
+        updated = await dispatch_store.update_donor_status(
+            dispatch_id,
+            donor_id,
+            mapped_status,
+            only_from=("ringing", "answered"),
+            call_sid=CallSid,
+        )
+        if updated and mapped_status == CallStatus.NO_ANSWER and not durable_retry:
+            await schedule_retry(dispatch_id, donor_id, CallStatus_param.lower(), manager.broadcast, call_sid=CallSid)
 
     if updated:
         # Fetch the donor info to build the WebSocket payload.
@@ -232,10 +294,14 @@ async def twilio_audio_stream(websocket: WebSocket):
     Twilio sends JSON messages with Base64 audio chunks.
     """
 
+    if not verify_twilio_stream(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     logger.info("Audio stream WebSocket connected")
 
     session = None
+    checkpoint = None
     stream_sid = ""
     dispatch_id = ""
     donor_id = ""
@@ -290,6 +356,8 @@ async def twilio_audio_stream(websocket: WebSocket):
                     data_str = await asyncio.wait_for(websocket.receive_text(), timeout=35)
                 except TimeoutError:
                     logger.warning("AI voice stream idle; ending without another decision")
+                    if checkpoint is not None:
+                        await checkpoint.save(*session.checkpoint_state(), ended=True)
                     break
             else:
                 data_str = await websocket.receive_text()
@@ -304,21 +372,34 @@ async def twilio_audio_stream(websocket: WebSocket):
                 dispatch_id = custom_params.get("dispatch_id", "")
                 donor_id = custom_params.get("donor_id", "")
 
-                if not dispatch_id or not donor_id:
+                if session is not None or not call_sid or not dispatch_id or not donor_id:
                     logger.warning("Audio stream missing customParameters — closing")
                     await websocket.close(code=1008, reason="Missing params")
                     return
 
                 # Fetch donor info for language selection.
                 donor = await dispatch_store.get_donor(dispatch_id, donor_id)
-                language = donor.get("language", "english") if donor else "english"
+                if (
+                    not donor
+                    or donor.get("status") in TERMINAL_OR_DECIDED
+                    or donor.get("call_sid") not in (None, "", call_sid)
+                ):
+                    await websocket.close(code=1008, reason="Inactive call")
+                    return
+                language = donor.get("language", "english")
 
                 # Get dispatch info for the hospital context.
                 dispatch = await dispatch_store.get_dispatch(dispatch_id)
                 hospital_id = dispatch.get("hospital_id", "") if dispatch else ""
                 blood_group = dispatch.get("blood_group", "") if dispatch else ""
 
+                checkpoint = VoiceCheckpoint(call_sid, dispatch_id, donor_id)
+                saved = await checkpoint.attach(settings.voice_intent_mode)
+                if saved.get("ended") == "1":
+                    await websocket.close()
+                    return
                 session = create_voice_session(
+                    mode=saved["mode"],
                     call_sid=call_sid,
                     dispatch_id=dispatch_id,
                     donor_id=donor_id,
@@ -327,16 +408,16 @@ async def twilio_audio_stream(websocket: WebSocket):
                     hospital_id=hospital_id,
                     blood_group=blood_group,
                 )
-                active_sessions[call_sid] = session
                 logger.info(
                     "Twilio stream started. StreamSid: %s, CallSid: %s, donor: %s", stream_sid, call_sid, donor_id
                 )
 
                 # Send the greeting immediately when stream starts
-                greeting_audio, _ = await session.handle_audio_chunk(b"")
+                greeting_audio = await session.opening_audio(saved)
                 if greeting_audio:
                     await send_audio(greeting_audio)
                 elif hasattr(session, "playback_started"):
+                    await checkpoint.save(*session.checkpoint_state(), ended=True)
                     break
 
             elif msg["event"] == "mark":
@@ -350,6 +431,14 @@ async def twilio_audio_stream(websocket: WebSocket):
 
                 # Process through the voice pipeline.
                 response_audio, intent = await session.handle_audio_chunk(audio_bytes)
+
+                # Check ownership only at turn boundaries, never per audio frame.
+                if (
+                    (response_audio or intent)
+                    and checkpoint is not None
+                    and not await checkpoint.save(*session.checkpoint_state(), ended=intent == "unconfirmed")
+                ):
+                    break
 
                 # If the pipeline produced a TTS response, send it back.
                 if response_audio:
@@ -367,12 +456,16 @@ async def twilio_audio_stream(websocket: WebSocket):
                 # If an intent was resolved, update the dispatch state.
                 if intent in ("accepted", "declined"):
                     new_status = CallStatus.ACCEPTED if intent == "accepted" else CallStatus.DECLINED
-                    await dispatch_store.update_donor_status(
+                    updated = await dispatch_store.update_donor_status(
                         dispatch_id,
                         donor_id,
                         new_status,
                         eta_minutes=session.eta_minutes,
+                        only_from=("ringing", "answered", "no_answer"),
+                        call_sid=call_sid,
                     )
+                    if not updated:
+                        break
                     # Broadcast to dashboard.
                     ws_update = DonorStatusUpdate(
                         donor_id=donor_id,
@@ -397,12 +490,16 @@ async def twilio_audio_stream(websocket: WebSocket):
                             dispatch=dispatch,
                         )
                         if routed:
-                            await dispatch_store.update_donor_status(
+                            updated = await dispatch_store.update_donor_status(
                                 dispatch_id,
                                 donor_id,
                                 CallStatus.EN_ROUTE,
                                 eta_minutes=session.eta_minutes,
+                                only_from=("accepted",),
+                                call_sid=call_sid,
                             )
+                            if not updated:
+                                break
                             await manager.broadcast(
                                 dispatch_id,
                                 DonorStatusUpdate(
@@ -432,11 +529,6 @@ async def twilio_audio_stream(websocket: WebSocket):
         logger.info("Audio stream disconnected")
     except Exception as exc:
         logger.error("Audio stream error: %s", exc)
-    finally:
-        # Cleanup the session. It is None if the stream closed before "start".
-        if session is not None and session.call_sid:
-            active_sessions.pop(session.call_sid, None)
-            logger.debug("Voice session cleaned up for call_sid=%s", session.call_sid)
 
 
 # ── Post-acceptance routing (called from audio stream) ────────────

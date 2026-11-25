@@ -19,7 +19,7 @@ Fill in the contact table before launch. Severity: **S1** donors cannot be reach
 
 **Calls are not going out.** Check Twilio credentials and balance, then `TWILIO_*` env values. A hospital stuck at `403 hospital_pending` is not approved, not a telephony fault. If `429 Daily request limit` appears, raise `MAX_DISPATCHES_PER_HOSPITAL_DAY` for a real emergency.
 
-**Donors say they were called twice, or retries are not happening.** Retries come from `CALL_MAX_RETRIES` and `CALL_RETRY_DELAY_SECONDS`. They are held in memory, so a restart inside the delay drops them. Set `CALL_MAX_RETRIES=0` to stop retrying while you investigate.
+**Donors say they were called twice, or retries are not happening.** Retries come from `CALL_MAX_RETRIES` and `CALL_RETRY_DELAY_SECONDS`. In MongoDB, inspect the call record’s `retry_due`, `retry_source` and `retry_count`. A worker checks for due retries every two seconds and can reclaim a lease after 30 seconds. If a worker stopped during the provider request, check the provider call log before contacting the donor again. Legacy Neo4j timers expire on restart. Set `CALL_MAX_RETRIES=0` to stop retrying while you investigate.
 
 **Donors answer but the answer is wrong or missing.** Switch `VOICE_INTENT_MODE=legacy` (keyword mode) and redeploy. Never mark a donor accepted by hand without a call recording from the donor.
 
@@ -29,7 +29,7 @@ Fill in the contact table before launch. Severity: **S1** donors cannot be reach
 
 **Webhooks rejected (403 Invalid Twilio signature).** `SERVER_BASE_URL` must exactly match the public URL Twilio calls, including `https`. Wrong `TWILIO_AUTH_TOKEN` gives the same error.
 
-**Dashboards miss live updates only sometimes, or limits behave oddly with several instances.** Check `redis` in `/api/health/deep`. If Redis is down the backend falls back to per-instance behaviour (events reach only dashboards on the same instance) and logs `Redis ... unavailable`. Restore Redis; the subscriber reconnects by itself within 30 seconds.
+**Dashboards miss live updates only sometimes, or limits behave oddly with several instances.** Check `redis` in `/api/health/deep`. When configured Redis is down, requests that need shared rate limits or dispatch quotas return HTTP 503. Dashboard events reach clients on the publishing instance. Restore Redis; the subscriber reconnects by itself within 30 seconds.
 
 **Admins cannot open documents, or uploads fail with 503.** Check `storage` in `/api/health/deep`. Usual causes: expired or wrong `S3_*` keys, a deleted bucket, or R2 `S3_ENDPOINT_URL` typos. Hospitals can retry once it is fixed; no data is lost because failed uploads are not recorded. If `storage_persistent` is false in production, set `S3_BUCKET` before the next deploy.
 

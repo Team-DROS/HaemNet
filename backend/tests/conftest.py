@@ -14,7 +14,7 @@ os.environ.setdefault("APP_ENV", "development")
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api import dispatches, donors
+from backend.api import auth, dispatches, donors
 from backend.api.auth import create_access_token
 from backend.main import app
 
@@ -53,8 +53,14 @@ class FakeStore:
         d = self.dispatches.get(dispatch_id)
         return copy.deepcopy(d["donors"].get(donor_id)) if d else None
 
-    async def update_donor_status(self, dispatch_id, donor_id, status, eta_minutes=None):
+    async def update_donor_status(
+        self, dispatch_id, donor_id, status, eta_minutes=None, *, only_from=None, call_sid=""
+    ):
         donor = self.dispatches[dispatch_id]["donors"][donor_id]
+        if only_from is not None and donor["status"] not in only_from:
+            return False
+        if call_sid and donor.get("call_sid") not in (None, call_sid):
+            return False
         donor["status"] = getattr(status, "value", status)
         if eta_minutes is not None:
             donor["eta_minutes"] = eta_minutes
@@ -153,8 +159,18 @@ def auth_headers():
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture(autouse=True)
+def _donor_login_record(monkeypatch):
+    async def get_hash(phone):
+        return "synthetic-account-hash"
+
+    monkeypatch.setattr(auth, "db_get_donor_password_hash", get_hash)
+
+
 def donor_headers(phone="+919000000001"):
-    token = create_access_token({"sub": phone, "role": "donor"})
+    token = create_access_token(
+        {"sub": phone, "role": "donor", "account": auth._account_binding("synthetic-account-hash")}
+    )
     return {"Authorization": f"Bearer {token}"}
 
 

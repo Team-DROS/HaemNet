@@ -12,6 +12,7 @@ from backend.api.websockets import DashboardConnectionManager
 from backend.config import settings
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.services import rate_limit, redis_client
+from backend.services.errors import ServiceUnavailableError
 
 
 @pytest.fixture
@@ -67,9 +68,9 @@ async def test_window_expires(redis_server):
 
 
 @pytest.mark.asyncio
-async def test_falls_back_to_local_counters_when_redis_errors(monkeypatch):
+async def test_configured_redis_outage_blocks_protected_actions(monkeypatch):
     class Broken:
-        def pipeline(self):
+        def pipeline(self, **kwargs):
             raise RedisConnectionError("down")
 
         async def zcard(self, *a):
@@ -80,11 +81,9 @@ async def test_falls_back_to_local_counters_when_redis_errors(monkeypatch):
 
     monkeypatch.setattr(redis_client, "get_redis", lambda: Broken())
     lim = rate_limit.Limiter("f", max_events=2, window_seconds=60)
-    await lim.hit("k")
-    await lim.hit("k")
-    assert await lim.allowed("k") is False  # still limited, per instance
-    await lim.reset("k")
-    assert await lim.allowed("k") is True
+    for action in (lim.try_acquire, lim.hit, lim.allowed, lim.reset):
+        with pytest.raises(ServiceUnavailableError):
+            await action("k")
 
 
 @pytest.mark.asyncio

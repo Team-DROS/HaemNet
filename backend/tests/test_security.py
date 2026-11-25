@@ -281,3 +281,33 @@ async def test_events_with_unknown_owner_are_dropped():
     await mgr.register(sock, "HOSP-1001")
     await mgr.broadcast_raw("dp-x", {"type": "dispatch_closed"})
     assert sock.sent == []
+
+
+def test_donor_export_uses_token_identity_and_disables_caching(client, monkeypatch):
+    from backend.api import donors
+
+    async def export(phone):
+        return {"phone": phone, "profile": None, "calls": []}
+
+    monkeypatch.setattr(donors, "export_donor", export)
+    assert client.get("/api/donor/export").status_code == 401
+    result = client.get("/api/donor/export?phone=9000000002", headers=donor_headers(PHONE))
+    assert result.status_code == 200
+    assert result.json()["phone"] == PHONE
+    assert result.headers["Cache-Control"] == "no-store"
+
+
+def test_deleted_account_token_stays_revoked_after_phone_rejoins(client, logins, monkeypatch):
+    from backend.api import donors
+
+    async def delete(phone):
+        return bool(logins.pop(phone, None))
+
+    monkeypatch.setattr(donors, "delete_donor", delete)
+    original = _register(client).json()["access_token"]
+    headers = {"Authorization": f"Bearer {original}"}
+    path = f"/api/donor/profile/{PHONE}"
+    assert client.delete(path, headers=headers).status_code == 200
+    assert client.delete(path, headers=headers).status_code == 401
+    assert _register(client).status_code == 200
+    assert client.delete(path, headers=headers).status_code == 401

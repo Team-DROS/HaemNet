@@ -130,7 +130,8 @@ create the login again; their profile and donation history are retained.
 | `GET /api/network/availability` | Eligible donor counts near the hospital |
 | `POST /api/donate` | Record actual donation and update fulfillment |
 | `POST /api/donor/register` | Create/update the signed-in donor's profile |
-| `GET / DELETE /api/donor/profile/{phone}` | Read/delete the donor's own profile |
+| `GET /api/donor/export` | Export the signed-in donor's profile and call history as JSON |
+| `GET / DELETE /api/donor/profile/{phone}` | Read the donor profile or erase the account, linked calls and login. Deletion revokes donor sessions, including when the number registers again. Donors sign in once after upgrading from unbound tokens. |
 | `GET /api/donor/requests/{phone}` | Requests for the signed-in donor |
 | `POST /api/donor/respond` | Donor app acceptance/decline |
 | `GET /api/health` | Database connectivity and active data layer |
@@ -218,7 +219,9 @@ Set `REDIS_URL` to share, across all backend instances:
 - rate limits (sign-in lockouts, sign-up and upload limits, contact form) and the per-hospital daily call quota, kept as sorted sets under `rl:*`
 - live dashboard events: every event is published on the `haemnet:dashboard-events` channel and each instance delivers it to its own sockets, so a Twilio callback on instance B reaches a dashboard connected to instance A
 
-With `REDIS_URL` empty everything stays in process memory, which is fine for one instance. If Redis fails, limits fall back to per-instance counters and events are delivered locally, with a warning in the logs, so an outage weakens limits but never blocks sign-in. `GET /api/health/deep` reports `redis`. Voice sessions stay in process on purpose: one call is one audio WebSocket on one instance. Dispatch state already lives in MongoDB.
+With `REDIS_URL` empty, limits use one process's counters. When configured Redis is unavailable, protected operations return HTTP 503 until Redis recovers. Dashboard events can still reach clients on the same instance. Check `redis` in `GET /api/health/deep` before restoring traffic.
+
+Set `TWILIO_MACHINE_DETECTION=true` in staging to request synchronous answering-machine detection on outbound calls. Only a human result starts the conversation. A machine, fax or inconclusive result ends the call before the greeting and is treated as no answer. The setting defaults to false. Measure pickup delay and misclassifications on test calls before enabling it for donors.
 
 Locally: `docker compose up redis`, then `REDIS_URL=redis://localhost:6379`.
 
@@ -255,4 +258,4 @@ bucket cannot be reached the account is kept and the caller gets a 503 so it can
 - `GET /api/donor/auth/config` tells the donor app whether a code is required. `POST /api/donor/auth/otp/request` texts a 6-digit code (3 per number and 10 per client per hour). `POST /api/donor/auth/otp/verify` exchanges it for a 30-minute `otp_token` that is neither a donor nor a hospital token. Codes are stored as keyed hashes, expire after `OTP_TTL_SECONDS`, work once, and allow `OTP_MAX_ATTEMPTS` wrong guesses. With `DONOR_OTP_REQUIRED=true`, `POST /api/donor/auth/register` needs the `otp_token`. The donor app must be updated before turning this on. Use `REDIS_URL` when running more than one instance.
 - Calls and SMS go through `TelephonyProvider` (`services/telephony.py`). To add a provider, implement `start_call`, `send_sms` and `close`, register it in `_PROVIDERS`, set `TELEPHONY_PROVIDER`, and add that provider's webhook verification (`services/twilio_signature.py` covers Twilio only). A misspelt provider name stops the backend at startup.
 - A call that fails to start, or that the provider reports as failed or cancelled, is recorded as "no answer", never as a decline.
-- **Retries:** a busy line or no answer is retried `CALL_MAX_RETRIES` times (default 1) after `CALL_RETRY_DELAY_SECONDS` (default 180). Before calling again the request must still be open, the donor still unanswered, and the donor not opted out. Failed or cancelled calls are not retried. Retries live in the memory of the instance that got the status callback, so a restart in that window drops them. Set `CALL_MAX_RETRIES=0` to turn them off.
+- **Retries:** a busy line or no answer is retried `CALL_MAX_RETRIES` times (default 1) after `CALL_RETRY_DELAY_SECONDS` (default 180). Before calling again the request must still be open, the donor still unanswered, and the donor not opted out. Failed or cancelled calls are not retried. MongoDB stores the pending retry on its call record. Any running backend replica can pick it up after the delay. A worker that stops before reserving the dial releases its lease after 30 seconds. Once the dial is reserved, a crash can miss that attempt: replaying it could dial the donor twice. Legacy Neo4j retains the in-process timer. Set `CALL_MAX_RETRIES=0` to turn them off.

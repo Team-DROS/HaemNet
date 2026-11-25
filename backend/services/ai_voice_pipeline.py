@@ -28,6 +28,17 @@ class AIVoiceSession(VoiceSession):
         self._attempts = 0
         self._pre_roll = bytearray()
 
+    def checkpoint_state(self) -> tuple[bool, int]:
+        return self.confirming, self._attempts
+
+    async def opening_audio(self, saved: dict):
+        self._attempts = int(saved.get("attempts", 0))
+        if saved.get("confirming") == "1":
+            self.confirming = True
+            self._greeting_sent = True
+            return await self.confirmation_prompt()
+        return await super().opening_audio(saved)
+
     def playback_started(self) -> str:
         self._mark_number += 1
         self._pending_mark = f"voice-{self._mark_number}"
@@ -103,12 +114,15 @@ class AIVoiceSession(VoiceSession):
                 return None, "accepted"
             if not self.confirming:
                 self.confirming = True
-                audio = await self._speak(
-                    "Just to confirm: do you agree to come to the hospital now to donate blood? "
-                    "Please answer yes to confirm, or no to decline."
-                )
+                audio = await self.confirmation_prompt()
                 return (audio, None) if audio else (None, "unconfirmed")
         return await self._retry()
+
+    async def confirmation_prompt(self):
+        return await self._speak(
+            "Just to confirm: do you agree to come to the hospital now to donate blood? "
+            "Please answer yes to confirm, or no to decline."
+        )
 
     async def _retry(self):
         self._attempts += 1

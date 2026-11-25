@@ -35,6 +35,7 @@ from backend.db_services import ensure_indexes
 from backend.db_services.mongodb import close as close_mongodb
 from backend.hardening import SecurityMiddleware
 from backend.observability import RequestIdMiddleware, configure_logging
+from backend.services.call_retry import run_worker as run_retry_worker
 from backend.services.push_service import close as close_push
 from backend.services.redis_client import close as close_redis
 from backend.services.sarvam_service import close as close_sarvam
@@ -122,9 +123,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _warn_if_uvloop()
     await _prepare_database()
     await ws_manager.start_pubsub()
-    yield
-    await ws_manager.stop_pubsub()
-    await _close_clients()
+    stopped = asyncio.Event()
+    worker = (
+        asyncio.create_task(run_retry_worker(ws_manager.broadcast, stopped))
+        if settings.db_backend == "mongodb" and settings.call_max_retries > 0
+        else None
+    )
+    try:
+        yield
+    finally:
+        stopped.set()
+        if worker:
+            await worker
+        await ws_manager.stop_pubsub()
+        await _close_clients()
     logger.info("Shut down cleanly.")
 
 

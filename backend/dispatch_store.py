@@ -108,12 +108,20 @@ class DispatchStore:
         donor_id: str,
         status: CallStatus,
         eta_minutes: Optional[int] = None,
+        *,
+        only_from: tuple[str, ...] | None = None,
+        call_sid: str = "",
     ) -> bool:
         """
         Update a donor's call status within a dispatch.
         Returns True if the update was applied.
         """
-        success = await db_update_donor_status(dispatch_id, donor_id, status.value, eta_minutes)
+        if only_from is None and not call_sid:
+            success = await db_update_donor_status(dispatch_id, donor_id, status.value, eta_minutes)
+        else:
+            success = await db_update_donor_status(
+                dispatch_id, donor_id, status.value, eta_minutes, only_from=only_from, call_sid=call_sid
+            )
         if success:
             logger.info(
                 "Donor %s in dispatch %s → %s",

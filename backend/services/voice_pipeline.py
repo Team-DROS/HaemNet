@@ -27,16 +27,12 @@ from backend.services.sarvam_service import (
 
 logger = logging.getLogger(__name__)
 
-# ── Active session registry ───────────────────────────────────────
 
-active_sessions: Dict[str, VoiceSession] = {}
-
-
-def create_voice_session(**kwargs):
+def create_voice_session(mode=None, **kwargs):
     """Select once per call so a rollout never changes an active call's engine."""
     from backend.config import settings
 
-    if settings.voice_intent_mode == "ai":
+    if (mode or settings.voice_intent_mode) == "ai":
         from backend.services.ai_voice_pipeline import AIVoiceSession
 
         logger.info("Starting AI voice session")
@@ -177,6 +173,13 @@ class VoiceSession:
         self._greeting_sent = False
         self._intent_resolved = False
         self.eta_minutes: Optional[int] = None
+
+    def checkpoint_state(self) -> tuple[bool, int]:
+        return False, 0
+
+    async def opening_audio(self, saved: dict) -> Optional[bytes]:
+        audio, _ = await self.handle_audio_chunk(b"")
+        return audio
 
     # ── Main entry point ──────────────────────────────────────────
 

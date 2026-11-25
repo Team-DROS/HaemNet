@@ -198,7 +198,9 @@ def test_router_exposes_the_endpoint():
 # ── dispatch graph ─────────────────────────────────────────────────
 
 
-async def test_initiating_calls_also_alerts_app_donors(monkeypatch, store):
+async def test_initiating_calls_also_alerts_app_donors(monkeypatch):
+    from unittest.mock import AsyncMock
+
     from backend.orchestration import graph
 
     placed: list[str] = []
@@ -211,6 +213,7 @@ async def test_initiating_calls_also_alerts_app_donors(monkeypatch, store):
         alerted.append({"dispatch_id": dispatch_id, "donors": sorted(donors), **kw})
         return 1
 
+    monkeypatch.setattr(graph.dispatch_store, "register_dispatch", AsyncMock())
     monkeypatch.setattr(graph, "place_call", fake_place_call)
     monkeypatch.setattr(graph, "alert_donors_of_request", fake_alert)
     state = {

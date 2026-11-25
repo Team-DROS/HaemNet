@@ -502,13 +502,31 @@ async def db_requests_for_donor(phone: str) -> List[dict]:
     if not donor:
         return []
 
+    # Three batched queries instead of two per open call: the donor app
+    # polls this endpoint, so per-call lookups added up quickly.
+    calls = [c async for c in db[CALLS].find(
+        {"donor_id": donor["_id"], "status": {"$in": OPEN_CALL_STATUSES}}
+    )]
+    if not calls:
+        return []
+    dispatches = {
+        d["_id"]: d async for d in db[DISPATCHES].find(
+            {"_id": {"$in": [c["dispatch_id"] for c in calls]}, "is_complete": False}
+        )
+    }
+    hospital_ids = list({d.get("hospital_id") for d in dispatches.values()})
+    hospitals = {
+        h["_id"]: h async for h in db[HOSPITALS].find(
+            {"_id": {"$in": hospital_ids}}, {"name": 1, "location": 1}
+        )
+    }
+
     rows = []
-    calls = db[CALLS].find({"donor_id": donor["_id"], "status": {"$in": OPEN_CALL_STATUSES}})
-    async for call in calls:
-        dispatch = await db[DISPATCHES].find_one({"_id": call["dispatch_id"], "is_complete": False})
+    for call in calls:
+        dispatch = dispatches.get(call["dispatch_id"])
         if not dispatch:
             continue
-        hospital = await db[HOSPITALS].find_one({"_id": dispatch.get("hospital_id")}, {"name": 1, "location": 1})
+        hospital = hospitals.get(dispatch.get("hospital_id"))
         rows.append({
             "dispatch_id": dispatch["_id"],
             "donor_id": donor["_id"],

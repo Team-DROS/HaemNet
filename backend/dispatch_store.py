@@ -11,6 +11,8 @@ without losing active dispatch or call states.
 
 from __future__ import annotations
 
+import asyncio
+
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -152,12 +154,10 @@ class DispatchStore:
 
     async def active_for_hospital(self, hospital_id: str) -> List[Dict[str, Any]]:
         """Full state of every open dispatch belonging to a hospital, newest first."""
-        dispatches = []
-        for dispatch_id in await db_active_dispatch_ids(hospital_id):
-            dispatch = await self.get_dispatch(dispatch_id)
-            if dispatch:
-                dispatches.append(dispatch)
-        return dispatches
+        ids = await db_active_dispatch_ids(hospital_id)
+        # Load them concurrently: the dashboard calls this on every page load.
+        loaded = await asyncio.gather(*(self.get_dispatch(dispatch_id) for dispatch_id in ids))
+        return [dispatch for dispatch in loaded if dispatch]
 
     async def history_for_hospital(self, hospital_id: str, since_iso: str) -> List[Dict[str, Any]]:
         """Closed and open dispatches since a point in time, newest first."""

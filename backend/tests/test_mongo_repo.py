@@ -337,3 +337,18 @@ async def test_platform_indexes_exist(db):
     audit_indexes = {i["name"] async for i in await db["hospital_audit"].list_indexes()}
     assert "status_1_registered_at_1" in hospital_indexes and "email_verification_hash_1" in hospital_indexes
     assert "hospital_id_1_at_1" in audit_indexes
+
+
+async def test_push_token_follows_the_device_and_can_be_forgotten(db):
+    first = await seed_donor(phone="+919000000001")
+    second = await seed_donor(phone="+919000000002", name="Asha")
+    token = "ExponentPushToken[device-one-token]"
+    assert await mongo_repo.db_set_donor_push_token("+919000000001", token) is True
+    assert await mongo_repo.get_donor_push_token(str(first.id)) == token
+    # The same phone signs in as another donor: only the newest account keeps the token.
+    assert await mongo_repo.db_set_donor_push_token("+919000000002", token) is True
+    assert await mongo_repo.get_donor_push_token(str(first.id)) is None
+    assert await mongo_repo.get_donor_push_token(str(second.id)) == token
+    assert await mongo_repo.db_set_donor_push_token("+919000000002", None) is True
+    assert await mongo_repo.get_donor_push_token(str(second.id)) is None
+    assert await mongo_repo.db_set_donor_push_token("+919999999999", token) is False

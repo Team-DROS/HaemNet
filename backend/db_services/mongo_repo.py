@@ -237,6 +237,22 @@ async def get_donor_push_token(donor_id: str) -> Optional[str]:
     return (doc or {}).get("push_token")
 
 
+async def db_set_donor_push_token(phone: str, token: Optional[str]) -> bool:
+    """
+    Store (or with None, forget) the Expo push token of the donor with this phone.
+
+    A token belongs to one phone, so if another account last signed in on the same device
+    it stops receiving that device's alerts. False if there is no such donor.
+    """
+    donors = get_database()[DONORS]
+    if token is None:
+        result = await donors.update_one({"phone": phone}, {"$unset": {"push_token": ""}})
+        return result.matched_count > 0
+    await donors.update_many({"push_token": token, "phone": {"$ne": phone}}, {"$unset": {"push_token": ""}})
+    result = await donors.update_one({"phone": phone}, {"$set": {"push_token": token, "has_app": True}})
+    return result.matched_count > 0
+
+
 async def register_donor(
     name: str,
     phone: str,

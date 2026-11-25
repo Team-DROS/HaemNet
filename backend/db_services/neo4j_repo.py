@@ -883,3 +883,7 @@ async def db_get_hospital_by_id(id: str) -> Optional[dict]:
 
 async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
     raise NotImplementedError("Call opt-out needs the MongoDB data layer")
+
+
+async def db_set_donor_push_token(phone: str, token: Optional[str]) -> bool:
+    raise NotImplementedError("Push token updates need the MongoDB data layer")

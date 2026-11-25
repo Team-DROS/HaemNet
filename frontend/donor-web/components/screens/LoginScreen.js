@@ -9,9 +9,9 @@ import { Button } from '../ui';
 import ThemeToggle from '../ThemeToggle';
 import Turnstile, { TURNSTILE_SITE_KEY } from '../Turnstile';
 
-export default function LoginScreen({ store, theme, onToggleTheme }) {
+export default function LoginScreen({ store, theme, onToggleTheme, initialMode = 'login' }) {
   const { width } = useWindowDimensions();
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '', email: '', staffEmail: '', contact: '', hfr: '', regNo: '', licence: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);

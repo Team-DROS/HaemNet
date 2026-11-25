@@ -351,3 +351,35 @@ async def test_all_positive_queries_every_group(monkeypatch):
     monkeypatch.setattr("backend.db_services.find_eligible_donors", fake_find)
     await graph.find_request_donors("All positive", 13.0, 80.2)
     assert sorted(asked) == ["A+", "AB+", "B+", "O+"]
+
+
+@pytest.mark.asyncio
+async def test_slow_dashboard_socket_does_not_block_others(monkeypatch):
+    import asyncio
+
+    from backend.api import websockets
+
+    monkeypatch.setattr(websockets, "SEND_TIMEOUT_SECONDS", 0.05)
+
+    class Socket:
+        def __init__(self, delay):
+            self.delay, self.sent = delay, []
+
+        async def send_text(self, text):
+            await asyncio.sleep(self.delay)
+            self.sent.append(text)
+
+    async def owner(_dispatch_id):
+        return HOSPITAL
+
+    mgr = DashboardConnectionManager(owner_resolver=owner)
+    slow, fast = Socket(10), Socket(0)
+    await mgr.register(slow, HOSPITAL)
+    await mgr.register(fast, HOSPITAL)
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    await mgr.broadcast_raw("dp-1", {"type": "ping"})
+    assert loop.time() - started < 1
+    assert len(fast.sent) == 1
+    assert mgr.connection_count(HOSPITAL) == 1  # the stalled socket was dropped

@@ -40,4 +40,14 @@ export default {
   'availability.error': 'Could not change your availability: {reason}',
   'legal.privacy': 'Privacy policy',
   'legal.terms': 'Terms of use',
+
+  // Offline and slow network
+  'offline.banner': 'You are offline. HaemNet will update when you reconnect.',
+  'offline.savedRequests': 'Showing requests saved {minutes} min ago. You need a connection to answer.',
+  'offline.savedProfile': 'Could not reach HaemNet. Showing the details saved on this phone.',
+  'offline.loading': 'Loading your profile…',
+  'offline.loadingSlow': 'HaemNet can take up to a minute to wake up.',
+  'offline.retryTitle': 'Cannot reach HaemNet',
+  'offline.retryBody': 'Check your connection and try again. Your account is safe.',
+  'offline.retry': 'Try again',
 };

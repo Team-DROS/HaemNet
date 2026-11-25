@@ -37,4 +37,13 @@ export default {
   'availability.error': 'आपकी उपलब्धता नहीं बदली जा सकी: {reason}',
   'legal.privacy': 'गोपनीयता नीति',
   'legal.terms': 'उपयोग की शर्तें',
+
+  'offline.banner': 'आप ऑफ़लाइन हैं। कनेक्शन लौटते ही HaemNet अपडेट हो जाएगा।',
+  'offline.savedRequests': '{minutes} मिनट पहले सहेजे गए अनुरोध दिखाए जा रहे हैं। जवाब देने के लिए इंटरनेट चाहिए।',
+  'offline.savedProfile': 'HaemNet से संपर्क नहीं हो सका। इस फ़ोन पर सहेजी गई जानकारी दिखाई जा रही है।',
+  'offline.loading': 'आपकी प्रोफ़ाइल लोड हो रही है…',
+  'offline.loadingSlow': 'HaemNet को शुरू होने में एक मिनट तक लग सकता है।',
+  'offline.retryTitle': 'HaemNet से संपर्क नहीं हो पा रहा',
+  'offline.retryBody': 'अपना इंटरनेट कनेक्शन जाँचें और फिर से कोशिश करें। आपका खाता सुरक्षित है।',
+  'offline.retry': 'फिर से कोशिश करें',
 };

@@ -32,3 +32,8 @@ h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px}h2{font-size:
 .cta .btn{flex:1 1 100%;text-align:center}}
 .sticky-cta{display:none}
 @media (max-width:720px){.sticky-cta{display:block;position:fixed;left:0;right:0;bottom:0;padding:10px 16px;background:var(--bg);border-top:1px solid var(--line);z-index:6}.sticky-cta .btn{display:block;text-align:center}body{padding-bottom:70px}}
+/* The sticky bar repeats the hero button, so where the browser supports scroll-driven
+   animation it fades in only after the first screen has scrolled away. Other browsers
+   keep showing it, as before. */
+@keyframes sticky-in{from{opacity:0;transform:translateY(100%);pointer-events:none}to{opacity:1;transform:none;pointer-events:auto}}
+@supports (animation-timeline:scroll()){@media (max-width:720px){.sticky-cta{animation:sticky-in linear both;animation-timeline:scroll(root block);animation-range:300px 500px}}}

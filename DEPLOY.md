@@ -150,8 +150,10 @@ voice acceptance. Health checks and mocked tests do not prove audio accuracy.
 
 ## Deploy the public website
 
-`frontend/website/` is static HTML with no build step. On Vercel set the project
-root to `frontend/website`; `vercel.json` serves `src/` with clean URLs.
+`frontend/website/` is static HTML. It deploys on Cloudflare Pages. Create a Pages project
+from this repository with root directory `frontend/website`, build command
+`python3 build_cloudflare.py` and build output directory `dist`. The script flattens
+`src/pages/` so clean URLs work, and writes the security headers (`dist/_headers`).
 
 1. Edit `src/assets/site-config.js`: set `apiUrl` to the backend and, if used,
    `turnstileSiteKey`. Add the website's origin to the backend `CORS_ORIGINS`.

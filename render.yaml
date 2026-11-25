@@ -128,6 +128,23 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    # Security headers (these used to sit in an unused vercel.json and never applied).
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
 
   # ── Staging: every push to main lands here first ─────────────────────────
   # Same code and settings as production, with its own database and accounts, so a bad
@@ -235,3 +252,20 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    # Security headers (these used to sit in an unused vercel.json and never applied).
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()

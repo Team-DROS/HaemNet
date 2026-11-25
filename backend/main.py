@@ -23,6 +23,8 @@ from backend.api.security_headers import SecurityHeadersMiddleware
 from backend.api.websockets import router as ws_router
 from backend.config import settings
 
+API_VERSION = "0.1.0"
+
 # ── Logging ───────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -37,8 +39,12 @@ logger = logging.getLogger(__name__)
 if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
+        environment=settings.app_env,
+        release=f"haemnet-api@{API_VERSION}",
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        # Donor phone numbers and names must not leave the server.
+        send_default_pii=False,
     )
     logger.info("Sentry initialized")
 else:
@@ -114,7 +120,7 @@ app = FastAPI(
         "concurrent multilingual AI voice calls, and streams live status "
         "updates to hospital dashboards via WebSocket."
     ),
-    version="0.1.0",
+    version=API_VERSION,
     lifespan=lifespan,
 )
 
@@ -143,7 +149,7 @@ async def root():
     """API root — service identification."""
     return {
         "service": "AI Blood Dispatch Network",
-        "version": "0.1.0",
+        "version": API_VERSION,
         "docs": "/docs",
         "health": "/api/health",
         "voice_intent_mode": settings.voice_intent_mode,

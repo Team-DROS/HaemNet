@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     twilio_validate_signatures: Optional[bool] = None
 
     sentry_dsn: str = ""
+    # Share of requests traced and profiled. 1.0 records every request,
+    # which is costly and quickly exhausts the free Sentry quota.
+    sentry_traces_sample_rate: float = 0.1
+    sentry_profiles_sample_rate: float = 0.0
 
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
     sarvam_api_key: str = ""

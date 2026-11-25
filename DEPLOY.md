@@ -39,6 +39,8 @@ files or put server secrets in `EXPO_PUBLIC_*` variables.
 | `SERVER_BASE_URL` | This backend's public HTTPS origin |
 | `CORS_ORIGINS` | JSON array of allowed dashboard origins |
 | `SENTRY_DSN` | Optional error monitoring |
+| `SENTRY_TRACES_SAMPLE_RATE` | Share of requests traced (default `0.1`) |
+| `TWILIO_VALIDATE_SIGNATURES` | Optional override; webhook signatures are required in production and staging when unset |
 
 The blueprint selects AI mode. The Python settings default remains `legacy`
 when the mode is omitted. Existing services outside blueprint management
@@ -83,6 +85,11 @@ fresh export/deployment.
 ## Voice callbacks and verification
 
 Twilio receives per-call URLs generated from `SERVER_BASE_URL`.
+Every HTTP webhook (`/api/twilio/twiml`, `/gather`, `/status-callback`)
+must carry a valid `X-Twilio-Signature`. The backend rebuilds the signed URL
+from `SERVER_BASE_URL`, so it must be the exact public HTTPS origin Twilio
+calls (no trailing path). If calls connect but immediately fail, check the
+API log for "Rejected unsigned or forged Twilio webhook".
 The audio endpoint is:
 
 ```text
@@ -96,7 +103,10 @@ Verify the deployment rather than assuming a successful Git push means it is liv
   `voice_intent_model: sarvam-105b`.
 - `GET /api/health` reports `status: healthy`, `database: mongodb`,
   and `mongodb: connected`.
-- `GET /api/twilio/twiml` references the deployed WSS audio endpoint.
+- An unsigned `GET /api/twilio/twiml` returns `403` (signature checks are on).
+  The Twilio call log for a test call shows the TwiML referencing the
+  deployed WSS audio endpoint.
+- Responses carry `Strict-Transport-Security` and `X-Content-Type-Options`.
 - Dashboard sign-in and its authenticated WebSocket work from the allowed origin.
 
 `python -m backend.tools.check_config` checks configured services, including
@@ -139,3 +149,18 @@ Rebuild native binaries for SDK, native dependency, or permission changes.
 - Demo seeding writes to the configured database. Use an isolated development
   database; do not trigger calls to generated donor numbers.
 - Keep test calls explicit and use the telephony account's permitted numbers.
+
+## Production readiness checklist
+
+Run through this before announcing a release.
+
+- [ ] CI is green: backend lint and tests, donor app lint and tests, dashboard web build.
+- [ ] No secrets in git: `git grep -nE "(AC[0-9a-f]{32}|mongodb\+srv://[^ ]+:[^ ]+@)"` returns nothing.
+- [ ] `APP_ENV=production`, a generated `JWT_SECRET`, and an Atlas `MONGODB_URI`.
+- [ ] `SERVER_BASE_URL` is the public HTTPS origin and unsigned Twilio webhooks get `403`.
+- [ ] `CORS_ORIGINS` lists only the real dashboard origin.
+- [ ] `SENTRY_DSN` is set and a test error appears in Sentry with the right environment.
+- [ ] An external uptime monitor polls `/api/health` (free tiers sleep without traffic).
+- [ ] The dashboard shows the HaemNet title and preview card when its link is shared,
+      and an unknown path shows the "Page not found" screen.
+- [ ] A controlled test call passes the voice checks above.

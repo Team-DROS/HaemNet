@@ -133,6 +133,16 @@ function fromServerDispatch(d) {
   return pushEvent(em, { at: Date.now(), tone: 'muted', kind: 'system', title: 'Restored live state from server', sub: `${em.matched} donors in this request` });
 }
 
+// Bring a local emergency up to date with the server's view of it. Used after
+// the live socket reconnects: donor changes missed while it was down are
+// replayed through applyDonorUpdate, so they land in the timeline as usual.
+export function mergeServerDispatch(em, d, at = new Date().toISOString()) {
+  return (d.donors || []).reduce((acc, x) => applyDonorUpdate(acc, {
+    donor_id: x.donor_id, name: x.name, status: x.status, eta_minutes: x.eta_minutes,
+    distance_km: x.distance_km, language: x.language, timestamp: at,
+  }), em);
+}
+
 function fromServerHistory(d) {
   return {
     id: d.dispatch_id, bloodGroup: d.blood_group, units: d.units, urgency: d.urgency,
@@ -334,13 +344,25 @@ export function useDispatchStore() {
       setEmergencies((all) => {
         const next = { ...all };
         data.dispatches.forEach((d) => {
-          // Keep a local copy if we have one: it holds the richer timeline.
-          if (!next[d.dispatch_id]) next[d.dispatch_id] = fromServerDispatch(d);
+          // Keep a local copy if we have one (it holds the richer timeline),
+          // but apply any donor changes it missed.
+          const local = next[d.dispatch_id];
+          next[d.dispatch_id] = local ? mergeServerDispatch(local, d) : fromServerDispatch(d);
         });
         return next;
       });
     } catch (e) { /* dashboard still works from the live feed */ }
   }, [request]);
+
+  // After the live feed reconnects, fetch the server's state: events sent
+  // while the socket was down (server asleep, network drop) are not replayed.
+  const wasLive = useRef(false);
+  useEffect(() => {
+    if (!profile) { wasLive.current = false; return; }
+    if (wsState !== 'live') return;
+    if (wasLive.current) refreshActive();
+    wasLive.current = true;
+  }, [wsState, profile, refreshActive]);
 
   const refreshAvailability = useCallback(async () => {
     setAvailability((a) => ({ ...a, status: 'loading' }));

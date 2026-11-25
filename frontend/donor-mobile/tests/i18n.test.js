@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  APP_LANGUAGES, DEFAULT_LANGUAGE, TABLES, appLanguageForCall, isAppLanguage, makeT, placeholders, translate,
+  APP_LANGUAGES, DEFAULT_LANGUAGE, LOCALES, TABLES, appLanguageForCall, formatDate, isAppLanguage, makeT, placeholders, translate,
 } from '../components/i18n.js';
 
 const english = TABLES.en;
@@ -60,4 +60,12 @@ test('language codes', () => {
   assert.equal(appLanguageForCall('Tamil'), 'ta');
   assert.equal(appLanguageForCall('Hindi'), 'hi');
   assert.equal(appLanguageForCall('Bengali'), 'en');
+});
+
+test('dates use the locale of the chosen language and tolerate bad input', () => {
+  assert.deepEqual(Object.keys(LOCALES), Object.keys(TABLES));
+  const day = new Date(2026, 11, 2);
+  assert.match(formatDate('en', day), /2/);
+  assert.equal(typeof makeT('ta').date(day), 'string');
+  assert.equal(formatDate('en', 'nonsense'), '');
 });

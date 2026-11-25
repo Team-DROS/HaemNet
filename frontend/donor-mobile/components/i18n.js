@@ -19,6 +19,19 @@ export const APP_LANGUAGES = [
   { code: 'ta', label: 'தமிழ்', short: 'த' },
 ];
 
+// Locale for dates and numbers in each language.
+export const LOCALES = { en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN' };
+
+export function formatDate(language, date, options = { weekday: 'short', day: 'numeric', month: 'short' }) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return '';
+  try {
+    return value.toLocaleDateString(LOCALES[language] || LOCALES.en, options);
+  } catch {
+    return value.toDateString();
+  }
+}
+
 // The AI call language stored on the donor profile, matched to an app language.
 const CALL_LANGUAGE_TO_APP = { English: 'en', Hindi: 'hi', Tamil: 'ta' };
 
@@ -46,5 +59,6 @@ export function makeT(language) {
   const lang = isAppLanguage(language) ? language : DEFAULT_LANGUAGE;
   const t = (key, params) => translate(lang, key, params);
   t.language = lang;
+  t.date = (date, options) => formatDate(lang, date, options);
   return t;
 }

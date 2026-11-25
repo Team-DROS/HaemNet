@@ -25,4 +25,16 @@ export default {
   'eligibility.recovering': 'आप अभी पिछले रक्तदान के बाद ठीक हो रहे हैं। आप {days} दिन बाद फिर से रक्तदान कर सकते हैं।',
   'eligibility.recoveringOne': 'आप अभी पिछले रक्तदान के बाद ठीक हो रहे हैं। आप 1 दिन बाद फिर से रक्तदान कर सकते हैं।',
   'eligibility.disclaimer': 'यह एक छोटी स्व-जाँच है, कोई मेडिकल टेस्ट नहीं।',
+
+  'availability.title': 'कुछ दिनों के लिए बाहर हैं?',
+  'availability.body': 'कॉल और अनुरोध रोक दें। ये अपने आप फिर से शुरू हो जाएँगे।',
+  'availability.option.3': '3 दिन',
+  'availability.option.7': '1 हफ़्ता',
+  'availability.option.14': '2 हफ़्ते',
+  'availability.pausedUntil': '{date} तक कॉल रुकी हुई हैं',
+  'availability.pausedBody': 'तब तक अस्पताल न आपको कॉल करेंगे, न अनुरोध भेजेंगे।',
+  'availability.resume': 'मैं फिर से उपलब्ध हूँ',
+  'availability.error': 'आपकी उपलब्धता नहीं बदली जा सकी: {reason}',
+  'legal.privacy': 'गोपनीयता नीति',
+  'legal.terms': 'उपयोग की शर्तें',
 };

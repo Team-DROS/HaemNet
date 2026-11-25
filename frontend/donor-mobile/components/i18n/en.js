@@ -27,4 +27,17 @@ export default {
   'eligibility.recovering': 'You are still recovering from your last donation. You can donate again in {days} days.',
   'eligibility.recoveringOne': 'You are still recovering from your last donation. You can donate again in 1 day.',
   'eligibility.disclaimer': 'This is a quick self-check, not a medical test.',
+
+  // Short breaks from calls, and legal links
+  'availability.title': 'Away for a few days?',
+  'availability.body': 'Pause calls and requests. They start again by themselves.',
+  'availability.option.3': '3 days',
+  'availability.option.7': '1 week',
+  'availability.option.14': '2 weeks',
+  'availability.pausedUntil': 'Calls paused until {date}',
+  'availability.pausedBody': 'Hospitals will not call you or send you requests until then.',
+  'availability.resume': 'I am available again',
+  'availability.error': 'Could not change your availability: {reason}',
+  'legal.privacy': 'Privacy policy',
+  'legal.terms': 'Terms of use',
 };

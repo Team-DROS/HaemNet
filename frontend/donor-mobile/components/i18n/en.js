@@ -1,0 +1,30 @@
+// English: the source text and the fallback for every other language.
+// Keys are grouped by screen. Keep sentences short and plain; many donors read in a second language.
+export default {
+  // Health check before saying yes to a request
+  'eligibility.title': 'Before you say yes',
+  'eligibility.intro': 'Answer honestly. The blood bank checks again before you donate.',
+  'eligibility.well.question': 'Are you feeling well today, with no fever, cold or infection?',
+  'eligibility.well.reason': 'Wait until you have fully recovered.',
+  'eligibility.age_weight.question': 'Are you between 18 and 65 years old, and do you weigh at least 45 kg?',
+  'eligibility.age_weight.reason': 'Donors must be 18 to 65 years old and weigh at least 45 kg.',
+  'eligibility.medication.question': 'Have you taken antibiotics in the last 7 days?',
+  'eligibility.medication.reason': 'Wait 7 days after your last antibiotic dose.',
+  'eligibility.alcohol.question': 'Have you had alcohol in the last 24 hours?',
+  'eligibility.alcohol.reason': 'Wait 24 hours after drinking alcohol.',
+  'eligibility.procedure.question': 'Have you had a tattoo, piercing or surgery in the last 12 months?',
+  'eligibility.procedure.reason': 'Wait 12 months after a tattoo, piercing or surgery.',
+  'eligibility.pregnancy.question': 'Are you pregnant or breastfeeding, or have you given birth in the last 12 months? Choose No if this does not apply to you.',
+  'eligibility.pregnancy.reason': 'Please do not donate while pregnant or breastfeeding, or within 12 months of giving birth.',
+  'eligibility.yes': 'Yes',
+  'eligibility.no': 'No',
+  'eligibility.notToday': 'Please do not donate today',
+  'eligibility.notTodayBody': 'Thank you for checking. Let the hospital know so they can call someone else.',
+  'eligibility.tellHospital': 'Let the hospital know',
+  'eligibility.confirm': 'Yes, I am ready to donate',
+  'eligibility.answerAll': 'Answer every question to continue.',
+  'eligibility.back': 'Back',
+  'eligibility.recovering': 'You are still recovering from your last donation. You can donate again in {days} days.',
+  'eligibility.recoveringOne': 'You are still recovering from your last donation. You can donate again in 1 day.',
+  'eligibility.disclaimer': 'This is a quick self-check, not a medical test.',
+};

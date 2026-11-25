@@ -30,7 +30,8 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "eslint": "^9.39.5",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "typescript": "~5.9.2"
   },
   "license": "MIT",
   "private": true

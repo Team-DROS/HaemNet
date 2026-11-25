@@ -198,10 +198,11 @@ async def _run_dispatch_graph(dispatch_id: str, initial_state: dict) -> None:
 
     except Exception as exc:
         logger.exception("Dispatch %s graph failed: %s", dispatch_id, exc)
-        # Notify connected dashboards of the failure.
+        # Notify connected dashboards without leaking internals (database
+        # hosts, stack details) into the browser; the log has the cause.
         await manager.broadcast_raw(dispatch_id, {
             "type": "error",
-            "message": str(exc),
+            "message": "Calling donors failed for this request. Please retry or contact support.",
         })
 
 

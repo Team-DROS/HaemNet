@@ -306,3 +306,14 @@ def test_donation_for_donor_outside_dispatch_is_rejected(client, auth_headers, s
                       json={"donor_id": "stranger", "hospital_id": HOSPITAL, "dispatch_id": "dp-1"})
     assert res.status_code == 404
     assert touched == []  # no cooldown applied to the wrong donor
+
+
+@pytest.mark.asyncio
+async def test_failed_dispatch_does_not_leak_exception_text(monkeypatch, broadcasts):
+    async def explode(_state):
+        raise RuntimeError("mongodb://admin:hunter2@db.internal refused connection")
+
+    monkeypatch.setattr(routes.dispatch_graph, "ainvoke", explode)
+    await routes._run_dispatch_graph("dp-9", {})
+    message = broadcasts[-1][1]["message"]
+    assert "hunter2" not in message and "mongodb" not in message

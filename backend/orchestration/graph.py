@@ -19,17 +19,30 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
+from backend.db_services import find_eligible_donors, get_donor_push_token
+from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
+from backend.services.blood_groups import request_groups
+from backend.services.call_guard import cap_donors
+from backend.services.calling import donor_node_for_call, place_call
+from backend.services.donor_push import alert_donors_of_request
+from backend.services.error_reporting import report_exception
+from backend.services.geo import haversine_km
+from backend.services.push_service import send_dispatch_notification
+from backend.services.telephony import get_telephony
 
 logger = logging.getLogger(__name__)
 
 
 # ── Dispatch State (shared across all nodes) ─────────────────────
 
+
 class DonorCallState(BaseModel):
     """Tracks an individual donor's call within the dispatch."""
+
     donor_id: str
     name: str
     phone: str
@@ -46,6 +59,7 @@ class DispatchState(BaseModel):
     The root state object for a single emergency dispatch.
     LangGraph passes this through every node in the graph.
     """
+
     dispatch_id: str = Field(default_factory=lambda: str(uuid4()))
     hospital_id: str = ""
     blood_group: str = ""
@@ -62,19 +76,23 @@ class DispatchState(BaseModel):
 
 # ── Graph Nodes ───────────────────────────────────────────────────
 
+
 async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Query the database for eligible donors and populate the state.
     """
-    from backend.db_services import find_eligible_donors
-    from backend.services.geo import haversine_km
 
-    from backend.services.blood_groups import request_groups
     donors: List[DonorNode] = []
     for group in request_groups(state["blood_group"]):
-        donors.extend(await find_eligible_donors(
-            blood_group=group, lat=state["lat"], lng=state["lng"],
-        ))
+        donors.extend(
+            await find_eligible_donors(
+                blood_group=group,
+                lat=state["lat"],
+                lng=state["lng"],
+            )
+        )
+
+    donors = cap_donors(donors, state["lat"], state["lng"])
 
     donor_states = {}
     for d in donors:
@@ -102,10 +120,6 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     3. Maps each Twilio call SID back to (dispatch_id, donor_id).
     4. Emits RINGING updates for the WebSocket dashboard.
     """
-    from backend.config import settings
-    from backend.dispatch_store import dispatch_store
-    from backend.schemas.models import DonorNode
-    from backend.services.twilio_service import initiate_call
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -126,25 +140,14 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
         address=state.get("address", ""),
     )
 
-    # Build the callback URL that Twilio will POST status updates to.
-    callback_url = f"{settings.server_base_url}/api/twilio/status-callback"
-
     updates: List[Dict[str, Any]] = []
     call_tasks = []
 
     for donor_id, donor_data in donors.items():
-        # Reconstruct a minimal DonorNode for the Twilio service.
-        donor_node = DonorNode(
-            id=donor_id,
-            name=donor_data["name"],
-            phone=donor_data["phone"],
-            blood_group=state.get("blood_group", ""),
-            language=donor_data.get("language", "english"),
-            location={"lat": state.get("lat", 0), "lng": state.get("lng", 0)},
+        donor_node = donor_node_for_call(
+            donor_id, donor_data, state.get("blood_group", ""), state.get("lat", 0), state.get("lng", 0)
         )
-        call_tasks.append(
-            _initiate_single_call(donor_node, dispatch_id, donor_id, callback_url)
-        )
+        call_tasks.append(place_call(donor_node, dispatch_id, donor_id))
 
         # Emit a RINGING update for the dashboard. This is the only update
         # that carries distance and language; later ones only change status.
@@ -158,42 +161,19 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
         ).model_dump()
         updates.append(update)
 
-    # Execute all calls concurrently.
-    await asyncio.gather(*call_tasks, return_exceptions=True)
+    # Execute all calls concurrently, and alert donors who have the app at the same time so the
+    # request is on their screen when the phone rings. Alerts are best-effort and never raise.
+    alerts = alert_donors_of_request(
+        dispatch_id,
+        donors,
+        blood_group=state.get("blood_group", ""),
+        units=int(state.get("units", 1) or 1),
+        urgency=state.get("urgency", "urgent"),
+    )
+    await asyncio.gather(*call_tasks, alerts, return_exceptions=True)
 
     logger.info("Initiated %d calls for dispatch %s", len(donors), dispatch_id)
     return {**state, "updates": updates}
-
-
-async def _initiate_single_call(
-    donor_node: "DonorNode",
-    dispatch_id: str,
-    donor_id: str,
-    callback_url: str,
-) -> None:
-    """
-    Initiate a single Twilio call and register the call SID in the store.
-    Errors are logged but do not crash the dispatch.
-    """
-    from backend.dispatch_store import dispatch_store
-    from backend.services.twilio_service import initiate_call
-
-    try:
-        result = await initiate_call(donor_node, dispatch_id, callback_url)
-        call_sid = result.get("sid", "")
-        if call_sid:
-            await dispatch_store.register_call(call_sid, dispatch_id, donor_id)
-    except Exception as exc:
-        import sentry_sdk
-        sentry_sdk.capture_exception(exc)
-        logger.error(
-            "Failed to initiate call for donor %s in dispatch %s: %s",
-            donor_id, dispatch_id, exc,
-        )
-        # Mark as declined so the dashboard shows failure.
-        await dispatch_store.update_donor_status(
-            dispatch_id, donor_id, CallStatus.DECLINED,
-        )
 
 
 async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -201,9 +181,6 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Post-acceptance routing: send push notification (native path)
     or SMS with web-tracking link (fallback path).
     """
-    from backend.db_services import get_donor_push_token
-    from backend.services.twilio_service import send_sms
-    from backend.services.push_service import send_dispatch_notification
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -233,13 +210,16 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                         donor_id,
                     )
                     # Fall through to SMS.
-                    await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
+                    await _send_sms_fallback(
+                        donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0)
+                    )
             except Exception as exc:
-                import sentry_sdk
-                sentry_sdk.capture_exception(exc)
+                report_exception(exc)
                 logger.error("Push notification failed for donor %s: %s", donor_id, exc)
                 # Fall through to SMS on push failure.
-                await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
+                await _send_sms_fallback(
+                    donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0)
+                )
         else:
             # Fallback — SMS with tracking link.
             await _send_sms_fallback(donor_data, dispatch_id, donor_id, state.get("lat", 0.0), state.get("lng", 0.0))
@@ -259,10 +239,9 @@ async def _send_sms_fallback(
     donor_data: Dict[str, Any], dispatch_id: str, donor_id: str, lat: float, lng: float
 ) -> None:
     """Send an SMS with a tracking link as a fallback routing path."""
-    from backend.services.twilio_service import send_sms
 
     tracking_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
-    await send_sms(
+    await get_telephony().send_sms(
         phone=donor_data["phone"],
         message=f"Thank you for accepting! Navigate to the hospital: {tracking_url}",
     )
@@ -272,16 +251,14 @@ async def _send_sms_fallback(
 def should_route(state: Dict[str, Any]) -> str:
     """Conditional edge: only route if at least one donor accepted."""
     donors = state.get("donors", {})
-    has_accepted = any(
-        d.get("status") == CallStatus.ACCEPTED
-        for d in donors.values()
-    )
+    has_accepted = any(d.get("status") == CallStatus.ACCEPTED for d in donors.values())
     return "route" if has_accepted else "end"
 
 
 # ── Build the Graph ──────────────────────────────────────────────
 
-def build_dispatch_graph() -> StateGraph:
+
+def build_dispatch_graph() -> CompiledStateGraph:
     """
     Construct and compile the LangGraph StateGraph for emergency
     dispatch orchestration.
@@ -308,6 +285,7 @@ def build_dispatch_graph() -> StateGraph:
     graph.add_edge("route_donor", END)
 
     return graph.compile()
+
 
 # Pre-compiled graph — import this from routes.
 dispatch_graph = build_dispatch_graph()

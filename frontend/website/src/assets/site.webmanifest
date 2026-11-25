@@ -1,0 +1,11 @@
+{
+  "name": "HaemNet",
+  "short_name": "HaemNet",
+  "icons": [
+    { "src": "/assets/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/favicon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#b3202a",
+  "background_color": "#ffffff",
+  "display": "browser"
+}

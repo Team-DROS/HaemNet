@@ -1,64 +1,50 @@
----
-title: How HaemNet works
-description: See how a HaemNet emergency request moves from hospital to donor: donor matching, concurrent AI voice calls, explicit confirmation and live tracking.
----
-<section class="page-head">
-  <div class="container narrow">
-    <span class="eyebrow">How it works</span>
-    <h1>One request, many donors, one live view.</h1>
-    <p class="lead">This is what happens from the moment a hospital submits an emergency request.</p>
-  </div>
-</section>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How HaemNet works | HaemNet</title>
+<meta name="description" content="See how a HaemNet blood request moves from a hospital dashboard to a donor's phone call and back.">
+<link rel="canonical" href="https://haemnet.in/how-it-works">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/assets/site.webmanifest">
+<meta name="theme-color" content="#b3202a">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HaemNet">
+<meta property="og:title" content="How HaemNet works | HaemNet">
+<meta property="og:description" content="See how a HaemNet blood request moves from a hospital dashboard to a donor's phone call and back.">
+<meta property="og:url" content="https://haemnet.in/how-it-works">
+<meta property="og:image" content="https://haemnet.in/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://haemnet.in/assets/og-image.png">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="wrap bar">
+<a class="brand" href="/"><img src="/assets/favicon.svg" alt="" width="28" height="28"><span>HaemNet</span></a>
+<input type="checkbox" id="menu-toggle" class="menu-toggle" aria-label="Toggle menu">
+<label for="menu-toggle" class="menu-btn" aria-hidden="true">Menu</label>
+<nav class="nav" aria-label="Main"><a href="/">Home</a><a href="/how-it-works" aria-current="page">How it works</a><a href="/for-hospitals">For hospitals</a><a href="/for-donors">For donors</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
+</div></header>
+<main id="main">
 
-<section class="section" style="padding-top:32px">
-  <div class="container narrow">
-    <ol class="steps vertical">
-      <li><h3>The hospital submits a request</h3><p>A signed-in hospital chooses the blood group, number of units, urgency and location. Blood group can be a single group, <strong>All positive</strong> or <strong>All negative</strong>.</p></li>
-      <li><h3>HaemNet searches for donors</h3><p>It finds registered donors of the requested group within 10 km of the hospital who are outside the 56-day donation cooldown.</p></li>
-      <li><h3>AI voice calls go out at the same time</h3><p>Every matched donor receives a call in their preferred language: English, Hindi or Tamil. The agent explains who is calling, why, and asks if the donor can help.</p></li>
-      <li><h3>The donor confirms, separately</h3><p>If the donor sounds willing, the agent asks one more question to confirm. Only a clear yes at that second step is recorded as acceptance. A refusal is recorded as a decline.</p></li>
-      <li><h3>Directions arrive by SMS</h3><p>Once a donor accepts, HaemNet sends directions so they can reach the hospital.</p></li>
-      <li><h3>The hospital tracks and records</h3><p>The dashboard updates live as donors answer. When someone actually donates, hospital staff record it, which updates the donor's cooldown and the request's fulfilment.</p></li>
-    </ol>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <div class="section-head"><span class="eyebrow">Behind the call</span><h2>What the AI does and does not do.</h2></div>
-    <div class="grid grid-2">
-      <div class="card">
-        <h3>What it does</h3>
-        <ul class="ticks">
-          <li>Understands the donor's spoken reply using Sarvam AI speech and language models.</li>
-          <li>Asks a separate confirmation question before recording a yes.</li>
-          <li>Speaks back in the donor's chosen language.</li>
-          <li>Reports every outcome to the hospital dashboard.</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>What it does not do</h3>
-        <ul class="ticks cross">
-          <li>It does not give medical advice or judge medical eligibility.</li>
-          <li>It does not replace the hospital's screening and cross-matching.</li>
-          <li>It does not treat silence, a maybe or an error as a yes.</li>
-          <li>It does not track donors' live location.</li>
-        </ul>
-      </div>
-    </div>
-    <p class="small muted" style="margin-top:20px">HaemNet uses pretrained models. It does not train its own models on donor conversations. The 56-day cooldown is an application rule and not a complete medical eligibility check.</p>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <div class="cta-band">
-      <h2>See it with your team.</h2>
-      <p>Register your hospital, or ask us for a walk-through.</p>
-      <div class="btn-row">
-        <a class="btn btn-primary" href="{{site.dashboardUrl}}">Register your hospital</a>
-        <a class="btn btn-secondary" href="/contact">Ask for a walk-through</a>
-      </div>
-    </div>
-  </div>
-</section>
+<section class="wrap prose"><h1>How it works</h1>
+<ol class="steps">
+<li><h2>Verified hospitals only</h2><p>A hospital registers with its official email and registration details. Our team reviews the documents before the account can send requests.</p></li>
+<li><h2>Raise a request</h2><p>Choose blood group, units needed, urgency and location. You confirm before any call is placed.</p></li>
+<li><h2>Donors nearby are matched</h2><p>HaemNet looks for registered donors within range with a compatible blood group who are outside their cooldown period.</p></li>
+<li><h2>Automated, multilingual calls</h2><p>Donors get a call in English, Hindi or Tamil. The assistant asks if they can donate and then asks for a separate confirmation. Silence or unclear answers are never treated as a yes.</p></li>
+<li><h2>Live dashboard</h2><p>Responses show on the hospital dashboard in real time, along with donor distance and request status.</p></li>
+<li><h2>Donation recorded</h2><p>Once a donor donates, the hospital logs it and the donor's cooldown starts automatically.</p></li>
+</ol>
+<div class="cta"><a class="btn primary" href="https://app.haemnet.in/register">Register your hospital</a><a class="btn" href="/for-donors">Download donor app</a></div></section>
+</main>
+<footer class="site-footer"><div class="wrap foot">
+<div><strong>HaemNet</strong><p>Finding blood donors for hospitals, faster.</p><p><a href="mailto:contact@haemnet.in">contact@haemnet.in</a></p></div>
+<nav aria-label="Footer"><a href="/for-hospitals">For hospitals</a><a href="/for-donors">For donors</a><a href="/privacy">Privacy policy</a><a href="/terms">Terms</a><a href="/delete-account">Delete your account</a><a href="/contact">Contact</a></nav>
+</div></footer>
+</body>
+</html>

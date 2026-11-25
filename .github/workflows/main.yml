@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # The release workflow runs the same checks on the tagged commit before deploying it.
+  workflow_call:
+
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -35,6 +41,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
 
+    - name: Lint, format check and type check
+      run: |
+        pip install ruff==0.16.9 mypy==1.14.1
+        ruff check backend
+        ruff format --check backend
+        mypy backend
+
     - name: Run backend tests
       env:
         JWT_SECRET: ci-only-secret-value-at-least-32-chars
@@ -42,3 +55,16 @@ jobs:
         DB_BACKEND: mongodb
         MONGODB_TEST_URI: mongodb://127.0.0.1:27017
       run: python -m pytest backend/tests -q
+
+  dependency-scan:
+    # Informational for now: langgraph and langchain-core need a major upgrade
+    # that must be tested on its own. Remove continue-on-error once they are updated.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - run: pip install pip-audit
+    - run: pip-audit -r backend/requirements.txt --no-deps --disable-pip

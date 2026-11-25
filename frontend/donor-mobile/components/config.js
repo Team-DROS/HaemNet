@@ -57,3 +57,24 @@ if (resolved.warning && isDevRuntime) {
 
 export const API_URL = resolved.url;
 export const API_URL_SOURCE = resolved.source;
+
+// Public website with the privacy policy, terms and account deletion page (frontend/website).
+// Google Play requires the privacy policy to be reachable from inside the app.
+export const DEFAULT_WEBSITE_URL = 'https://haemnet.in';
+
+export function resolveWebsiteUrl(configured) {
+  const raw = typeof configured === 'string' ? configured.trim().replace(/\/+$/, '') : '';
+  if (!raw) return DEFAULT_WEBSITE_URL;
+  try {
+    return new URL(raw).protocol === 'https:' ? raw : DEFAULT_WEBSITE_URL;
+  } catch {
+    return DEFAULT_WEBSITE_URL;
+  }
+}
+
+export const WEBSITE_URL = resolveWebsiteUrl(process.env.EXPO_PUBLIC_WEBSITE_URL);
+export const LEGAL_LINKS = {
+  privacy: `${WEBSITE_URL}/privacy`,
+  terms: `${WEBSITE_URL}/terms`,
+  deleteAccount: `${WEBSITE_URL}/delete-account`,
+};

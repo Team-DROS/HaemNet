@@ -20,3 +20,10 @@ def normalise_phone(raw: str) -> Optional[str]:
     if len(digits) == 12 and digits.startswith("91"):
         return f"+{digits}"
     return None
+
+
+def phone_variants(phone: str) -> list[str]:
+    """Spellings a number may be stored under: as given, 10 digits, +91 and 91 prefixed."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    local = digits[-10:]
+    return list({phone, local, f"+91{local}", f"91{local}"})

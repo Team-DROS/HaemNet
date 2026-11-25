@@ -1,131 +1,56 @@
----
-title: HaemNet: find blood donors fast in an emergency
-description: HaemNet helps hospitals reach nearby blood donors in an emergency with AI voice calls in English, Hindi and Tamil, and a live dashboard of every reply.
----
-<section class="hero">
-  <div class="container hero-grid">
-    <div>
-      <span class="eyebrow">Emergency blood coordination</span>
-      <h1>Find blood donors fast, when every minute counts.</h1>
-      <p class="lead">HaemNet helps hospitals reach nearby, eligible donors in an emergency. An AI voice agent calls them all at once in English, Hindi or Tamil, and your team watches every reply on one live dashboard.</p>
-      <div class="btn-row">
-        <a class="btn btn-primary" href="{{site.dashboardUrl}}">Register your hospital</a>
-        <a class="btn btn-secondary" href="/for-donors">I want to donate</a>
-      </div>
-      <div class="tags" aria-label="Highlights">
-        <span class="tag">Calls in 3 languages</span>
-        <span class="tag">Donors within 10 km</span>
-        <span class="tag">56-day cooldown respected</span>
-        <span class="tag">Android donor app</span>
-      </div>
-    </div>
-    <figure class="dispatch" style="margin:0" aria-label="Example emergency request">
-      <div class="dispatch-top">
-        <strong>O&minus; &middot; 3 units</strong>
-        <span class="chip red">Critical request</span>
-      </div>
-      <div class="dispatch-meta">Matching donors within 10 km, outside the 56-day cooldown</div>
-      <ul>
-        <li><span>Donor A<small>1.2 km &middot; English</small></span><span class="chip green">Accepted</span></li>
-        <li><span>Donor B<small>3.4 km &middot; Tamil</small></span><span class="chip violet">On a call</span></li>
-        <li><span>Donor C<small>4.1 km &middot; Hindi</small></span><span class="chip blue">Ringing</span></li>
-        <li><span>Donor D<small>6.8 km &middot; English</small></span><span class="chip grey">Declined</span></li>
-      </ul>
-      <figcaption class="dispatch-foot">Illustration with sample data. Accepted donors receive directions by SMS.</figcaption>
-    </figure>
-  </div>
-</section>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HaemNet | Find blood donors fast for your hospital</title>
+<meta name="description" content="HaemNet helps verified hospitals reach nearby blood donors in minutes with automated calls in English, Hindi and Tamil.">
+<link rel="canonical" href="https://haemnet.in">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/assets/site.webmanifest">
+<meta name="theme-color" content="#b3202a">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HaemNet">
+<meta property="og:title" content="HaemNet | Find blood donors fast for your hospital">
+<meta property="og:description" content="HaemNet helps verified hospitals reach nearby blood donors in minutes with automated calls in English, Hindi and Tamil.">
+<meta property="og:url" content="https://haemnet.in">
+<meta property="og:image" content="https://haemnet.in/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://haemnet.in/assets/og-image.png">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="wrap bar">
+<a class="brand" href="/"><img src="/assets/favicon.svg" alt="" width="28" height="28"><span>HaemNet</span></a>
+<input type="checkbox" id="menu-toggle" class="menu-toggle" aria-label="Toggle menu">
+<label for="menu-toggle" class="menu-btn" aria-hidden="true">Menu</label>
+<nav class="nav" aria-label="Main"><a href="/" aria-current="page">Home</a><a href="/how-it-works">How it works</a><a href="/for-hospitals">For hospitals</a><a href="/for-donors">For donors</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
+</div></header>
+<main id="main">
 
-<section class="section section-alt" id="problem">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">The problem</span>
-      <h2>Emergency blood search is still done by phone, one call at a time.</h2>
-    </div>
-    <div class="grid grid-3">
-      <div class="card"><div class="icon red">{{> icon-clock}}</div><h3>Slow</h3><p>Staff ring through contact lists and message groups one person at a time while the patient waits.</p></div>
-      <div class="card"><div class="icon red">{{> icon-pin}}</div><h3>Scattered</h3><p>Donor details sit in notebooks, spreadsheets and chat apps, with no clear view of who is nearby or eligible.</p></div>
-      <div class="card"><div class="icon red">{{> icon-dash}}</div><h3>Unclear</h3><p>Nobody has one place to see who agreed, who declined and who is on the way.</p></div>
-    </div>
-  </div>
+<section class="hero"><div class="wrap">
+<h1>Find blood donors in minutes, not hours</h1>
+<p class="lead">HaemNet lets a verified hospital request a blood group and instantly reaches matching donors nearby with an automated call in their own language.</p>
+<div class="cta"><a class="btn primary" href="https://app.haemnet.in/register">Register your hospital</a><a class="btn" href="/for-donors">Download donor app</a></div>
+</div></section>
+<section class="wrap grid3">
+<article class="card"><h2>1. Hospital raises a request</h2><p>Staff choose the blood group, units and urgency, then confirm before anything is sent.</p></article>
+<article class="card"><h2>2. Nearby donors are called</h2><p>Donors within range who are likely to be eligible get a call in English, Hindi or Tamil.</p></article>
+<article class="card"><h2>3. Responses arrive live</h2><p>Accepted and declined replies appear on the hospital dashboard as they happen.</p></article>
 </section>
+<section class="wrap band"><h2>Built for the people on both sides</h2>
+<div class="grid2"><div><h3>Hospitals</h3><p>One place to raise requests, watch donor responses and keep a history of every request.</p><p><a href="/for-hospitals">See how hospitals use HaemNet</a></p></div>
+<div><h3>Donors</h3><p>Opt in once, set your location and availability, and respond only when a hospital near you needs your blood group.</p><p><a href="/for-donors">See how donors use HaemNet</a></p></div></div>
+<p class="note">HaemNet helps find donors. It does not replace medical cross-matching, screening or a hospital's own eligibility checks.</p></section>
 
-<section class="section" id="how">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">How it works</span>
-      <h2>From request to confirmed donor in four steps.</h2>
-    </div>
-    <ol class="steps">
-      <li><h3>Hospital sends a request</h3><p>Choose blood group, units, urgency and location in the dashboard.</p></li>
-      <li><h3>HaemNet finds donors</h3><p>It looks for matching donors within 10 km who are outside the 56-day donation cooldown.</p></li>
-      <li><h3>AI calls everyone at once</h3><p>Donors are called in English, Hindi or Tamil and asked to confirm before a yes is recorded.</p></li>
-      <li><h3>You see every answer</h3><p>Responses appear live. Accepted donors get directions by SMS.</p></li>
-    </ol>
-    <p style="margin-top:28px"><a href="/how-it-works">See the full flow</a></p>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">Built for emergency teams</span>
-      <h2>Everything a blood bank needs in one console.</h2>
-    </div>
-    <div class="grid grid-3">
-      <div class="card"><div class="icon">{{> icon-dash}}</div><h3>Live dashboard</h3><p>Create requests, follow donor responses, record donations and see whether a request's units are fulfilled.</p></div>
-      <div class="card"><div class="icon violet">{{> icon-phone}}</div><h3>Concurrent AI calls</h3><p>Every selected donor is called at the same time, so you do not wait for one call to end before the next begins.</p></div>
-      <div class="card"><div class="icon green">{{> icon-globe}}</div><h3>English, Hindi and Tamil</h3><p>Donors are spoken to in their preferred language, using Sarvam AI speech models built for Indian languages.</p></div>
-      <div class="card"><div class="icon green">{{> icon-shield}}</div><h3>Explicit confirmation</h3><p>A first &ldquo;yes&rdquo; triggers a separate confirmation question. Silence or a maybe is never recorded as acceptance.</p></div>
-      <div class="card"><div class="icon">{{> icon-pin}}</div><h3>Nearby and eligible</h3><p>Geospatial search finds donors close to you, and the 56-day cooldown keeps recent donors out of the call list.</p></div>
-      <div class="card"><div class="icon red">{{> icon-bolt}}</div><h3>All positive, all negative</h3><p>In a true emergency, widen recruitment to every positive or every negative blood group with one choice.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container split">
-    <div>
-      <span class="eyebrow">For donors</span>
-      <h2>Be reachable when someone near you needs your blood group.</h2>
-      <p class="lead">Create a profile with your blood group and area. When a nearby hospital needs your group, you get a short call in your language and choose yes or no.</p>
-      <div class="btn-row"><a class="btn btn-primary" href="/for-donors">How donating works</a></div>
-    </div>
-    <div class="card">
-      <h3>You stay in control</h3>
-      <ul class="ticks">
-        <li>Nothing is recorded as a yes until you confirm it.</li>
-        <li>Your exact location is not shared live with hospitals.</li>
-        <li>The 56-day cooldown protects you from repeat requests too soon after a donation.</li>
-      </ul>
-      <p class="small muted" style="margin:0">The cooldown is an app rule and not a medical assessment. The hospital decides final eligibility.</p>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt" id="faq">
-  <div class="container">
-    <div class="section-head center"><span class="eyebrow">Questions</span><h2>Common questions</h2></div>
-    <div class="faq">
-      <details><summary>Does HaemNet replace the hospital blood bank?</summary><div><p>No. HaemNet helps a hospital reach willing donors faster. Screening, cross-matching and every medical decision stay with the hospital.</p></div></details>
-      <details><summary>How does HaemNet choose which donors to call?</summary><div><p>It searches for donors with the requested blood group within 10 km of the hospital who are outside the 56-day cooldown. For emergencies you can choose all positive or all negative groups.</p></div></details>
-      <details><summary>What if a donor says maybe, or does not answer?</summary><div><p>Only a clear yes followed by a separate confirmation is recorded as acceptance. A maybe, silence or a failed call never counts as a yes.</p></div></details>
-      <details><summary>Which languages are supported?</summary><div><p>Voice calls work in English, Hindi and Tamil today.</p></div></details>
-      <details><summary>What can hospitals see about donors?</summary><div><p>Hospitals see selected details of donors matched to their request, such as blood group, distance and response. They do not see a donor's live location. Read the <a href="/privacy">privacy policy</a> for details.</p></div></details>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <div class="cta-band">
-      <h2>Bring HaemNet to your blood bank.</h2>
-      <p>Register your hospital, or talk to the team about a pilot.</p>
-      <div class="btn-row">
-        <a class="btn btn-primary" href="{{site.dashboardUrl}}">Register your hospital</a>
-        <a class="btn btn-secondary" href="/contact">Talk to the team</a>
-      </div>
-    </div>
-  </div>
-</section>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"HaemNet","url":"{{site.siteUrl}}","logo":"{{site.siteUrl}}/icon-512.png","description":"Emergency blood donor coordination with AI voice calls in English, Hindi and Tamil.","email":"{{site.email}}"}</script>
+</main>
+<div class="sticky-cta"><a class="btn primary" href="https://app.haemnet.in/register">Register your hospital</a></div>
+<footer class="site-footer"><div class="wrap foot">
+<div><strong>HaemNet</strong><p>Finding blood donors for hospitals, faster.</p><p><a href="mailto:contact@haemnet.in">contact@haemnet.in</a></p></div>
+<nav aria-label="Footer"><a href="/for-hospitals">For hospitals</a><a href="/for-donors">For donors</a><a href="/privacy">Privacy policy</a><a href="/terms">Terms</a><a href="/delete-account">Delete your account</a><a href="/contact">Contact</a></nav>
+</div></footer>
+</body>
+</html>

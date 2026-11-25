@@ -44,22 +44,31 @@ async def interpret_response(transcript: str, history: list[dict], confirming: b
         return unknown
     try:
         client = await _get_client()
-        response = await client.post("/v1/chat/completions", timeout=10.0, json={
-            "model": settings.voice_intent_model,
-            "temperature": 0,
-            "reasoning_effort": None,
-            "max_tokens": 160,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps({
-                    "confirming": confirming,
-                    "history": [{"role": row["role"], "text": row["text"][:1000]}
-                                for row in history[-8:]],
-                    "latest_response": transcript[:2000],
-                }, ensure_ascii=False)},
-            ],
-        })
+        response = await client.post(
+            "/v1/chat/completions",
+            timeout=10.0,
+            json={
+                "model": settings.voice_intent_model,
+                "temperature": 0,
+                "reasoning_effort": None,
+                "max_tokens": 160,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {
+                                "confirming": confirming,
+                                "history": [{"role": row["role"], "text": row["text"][:1000]} for row in history[-8:]],
+                                "latest_response": transcript[:2000],
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                ],
+            },
+        )
         response.raise_for_status()
         choice = response.json()["choices"][0]
         if choice.get("finish_reason") != "stop":

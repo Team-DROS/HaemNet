@@ -14,9 +14,8 @@
     "android": {
       "versionCode": 2,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFF5F4",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.pranko007.donormobile",
@@ -57,7 +56,15 @@
           "microphonePermission": false
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#D92D20",
+          "defaultChannel": "emergency-requests",
+          "icon": "./assets/notification-icon.png"
+        }
+      ]
     ],
     "extra": {
       "router": {},

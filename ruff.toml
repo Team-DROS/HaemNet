@@ -1,0 +1,18 @@
+line-length = 120
+target-version = "py311"
+extend-exclude = ["frontend", "database", "design", "assets"]
+
+[lint]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RET", "PIE", "PT", "ASYNC", "S"]
+ignore = [
+    "B008",   # FastAPI's Depends() in argument defaults is the framework's pattern
+    "E501",   # line length is a formatter concern
+    "UP006", "UP035", "UP045",  # typing.List/Optional are used throughout; modernise opportunistically
+    "UP017", "UP042",           # datetime.UTC and StrEnum: churn without benefit
+    "PT018",                    # `assert a and b` is fine in tests
+]
+
+[lint.per-file-ignores]
+"backend/tests/*" = ["S101", "S105", "S106", "S107", "S311", "PT006", "PT007", "SIM117", "S108", "ASYNC"]
+"backend/tools/*" = ["S101", "S311", "S110"]   # one-off scripts: demo data uses random, probes may swallow errors
+"backend/db_services/neo4j_repo.py" = ["S105"]  # Cypher query names containing "PASSWORD" / "TOKEN"

@@ -58,9 +58,14 @@ async def check_twilio() -> List[Result]:
                 return [(FAIL, "Twilio credentials", "rejected (check the SID and auth token)")]
             resp.raise_for_status()
             account = resp.json()
-            results.append((OK, "Twilio credentials",
-                            f"{account.get('friendly_name', 'account')} [{account.get('type', '?')}], "
-                            f"status {account.get('status')}, SID {_tail(settings.twilio_account_sid)}"))
+            results.append(
+                (
+                    OK,
+                    "Twilio credentials",
+                    f"{account.get('friendly_name', 'account')} [{account.get('type', '?')}], "
+                    f"status {account.get('status')}, SID {_tail(settings.twilio_account_sid)}",
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             return [(FAIL, "Twilio credentials", str(exc))]
 
@@ -75,8 +80,7 @@ async def check_twilio() -> List[Result]:
             resp.raise_for_status()
             numbers = resp.json().get("incoming_phone_numbers", [])
             if not numbers:
-                results.append((FAIL, "Twilio number",
-                                f"{settings.twilio_phone_number} is not on this account"))
+                results.append((FAIL, "Twilio number", f"{settings.twilio_phone_number} is not on this account"))
             else:
                 caps = numbers[0].get("capabilities", {})
                 missing = [c for c in ("voice", "sms") if not caps.get(c)]
@@ -123,14 +127,20 @@ def check_app_settings() -> List[Result]:
     production = settings.app_env.lower() in {"production", "staging"}
 
     if len(settings.jwt_secret) < 32:
-        results.append(((FAIL if production else WARN), "JWT secret",
-                        f"only {len(settings.jwt_secret)} characters; use 32 or more"))
+        results.append(
+            (
+                (FAIL if production else WARN),
+                "JWT secret",
+                f"only {len(settings.jwt_secret)} characters; use 32 or more",
+            )
+        )
     else:
         results.append((OK, "JWT secret", f"{len(settings.jwt_secret)} characters"))
 
     if production and settings.server_base_url.startswith("http://"):
-        results.append((FAIL, "SERVER_BASE_URL",
-                        "must be https in production: Twilio callbacks and audio streaming need it"))
+        results.append(
+            (FAIL, "SERVER_BASE_URL", "must be https in production: Twilio callbacks and audio streaming need it")
+        )
     else:
         results.append((OK, "SERVER_BASE_URL", settings.server_base_url))
 

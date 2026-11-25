@@ -1,12 +1,10 @@
 """
-Neo4j-backed dispatch state store.
+Dispatch state store.
 
-Provides a registry that tracks every active dispatch and maps Twilio 
-call SIDs back to (dispatch_id, donor_id) pairs by interacting with the 
-underlying Neo4j graph database.
-
-This enables multi-instance deployments (e.g. Cloud Run) to scale 
-without losing active dispatch or call states.
+Tracks every dispatch and maps Twilio call SIDs back to (dispatch_id, donor_id)
+pairs. All state lives in the configured database (MongoDB by default), never in
+process memory, so any backend instance can answer a webhook for a dispatch that
+another instance started.
 """
 
 from __future__ import annotations
@@ -14,21 +12,21 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.schemas.models import CallStatus
 from backend.db_services import (
-    db_create_dispatch,
-    db_register_call_sid,
-    db_get_dispatch,
-    db_get_by_call_sid,
-    db_update_donor_status,
-    db_mark_complete,
-    db_remove_dispatch,
     db_active_count,
-    db_summary,
     db_active_dispatch_ids,
-    db_requests_for_donor,
+    db_create_dispatch,
     db_dispatch_history,
+    db_get_by_call_sid,
+    db_get_dispatch,
+    db_mark_complete,
+    db_register_call_sid,
+    db_remove_dispatch,
+    db_requests_for_donor,
+    db_summary,
+    db_update_donor_status,
 )
+from backend.schemas.models import CallStatus
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +34,12 @@ logger = logging.getLogger(__name__)
 class DispatchStore:
     """
     Stateless store for active dispatch sessions.
-    Proxies all operations to Neo4j.
+    Proxies all operations to the configured database.
     """
 
-    _instance: Optional["DispatchStore"] = None
+    _instance: Optional[DispatchStore] = None
 
-    def __new__(cls) -> "DispatchStore":
+    def __new__(cls) -> DispatchStore:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -61,24 +59,28 @@ class DispatchStore:
         address: str = "",
     ) -> None:
         """Register a new dispatch and its donor roster."""
-        roster = [
-            {"id": donor_id, "distance_km": (data or {}).get("distance_km")}
-            for donor_id, data in donors.items()
-        ]
+        roster = [{"id": donor_id, "distance_km": (data or {}).get("distance_km")} for donor_id, data in donors.items()]
         await db_create_dispatch(
-            dispatch_id, hospital_id, blood_group, lat, lng, roster,
-            units=units, urgency=urgency, address=address,
+            dispatch_id,
+            hospital_id,
+            blood_group,
+            lat,
+            lng,
+            roster,
+            units=units,
+            urgency=urgency,
+            address=address,
         )
-        logger.info("Dispatch %s registered with %d donors in Neo4j", dispatch_id, len(donors))
+        logger.info("Dispatch %s registered with %d donors", dispatch_id, len(donors))
 
-    async def register_call(
-        self, call_sid: str, dispatch_id: str, donor_id: str
-    ) -> None:
+    async def register_call(self, call_sid: str, dispatch_id: str, donor_id: str) -> None:
         """Map a Twilio call SID to a dispatch + donor pair."""
         await db_register_call_sid(call_sid, dispatch_id, donor_id)
         logger.debug(
-            "Call SID %s registered → dispatch=%s donor=%s in Neo4j",
-            call_sid, dispatch_id, donor_id,
+            "Call SID %s registered → dispatch=%s donor=%s",
+            call_sid,
+            dispatch_id,
+            donor_id,
         )
 
     # ── Lookups ───────────────────────────────────────────────────
@@ -87,15 +89,11 @@ class DispatchStore:
         """Return the full dispatch state, or None."""
         return await db_get_dispatch(dispatch_id)
 
-    async def get_by_call_sid(
-        self, call_sid: str
-    ) -> Optional[Tuple[str, str]]:
+    async def get_by_call_sid(self, call_sid: str) -> Optional[Tuple[str, str]]:
         """Look up (dispatch_id, donor_id) from a Twilio call SID."""
         return await db_get_by_call_sid(call_sid)
 
-    async def get_donor(
-        self, dispatch_id: str, donor_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_donor(self, dispatch_id: str, donor_id: str) -> Optional[Dict[str, Any]]:
         """Return a single donor's state within a dispatch."""
         dispatch = await self.get_dispatch(dispatch_id)
         if dispatch:
@@ -119,12 +117,15 @@ class DispatchStore:
         if success:
             logger.info(
                 "Donor %s in dispatch %s → %s",
-                donor_id, dispatch_id, status.value,
+                donor_id,
+                dispatch_id,
+                status.value,
             )
         else:
             logger.warning(
                 "update_donor_status: failed for donor %s in dispatch %s",
-                donor_id, dispatch_id,
+                donor_id,
+                dispatch_id,
             )
         return success
 
@@ -138,7 +139,7 @@ class DispatchStore:
     async def remove_dispatch(self, dispatch_id: str) -> None:
         """Remove a finished dispatch and all its CallSession nodes."""
         await db_remove_dispatch(dispatch_id)
-        logger.info("Dispatch %s removed from Neo4j", dispatch_id)
+        logger.info("Dispatch %s removed", dispatch_id)
 
     # ── Diagnostics ───────────────────────────────────────────────
 

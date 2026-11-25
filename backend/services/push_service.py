@@ -36,6 +36,7 @@ async def send_push_notification(
     title: str,
     body: str,
     data: Optional[Dict[str, Any]] = None,
+    channel_id: str = "emergency-requests",
 ) -> Dict[str, Any]:
     """
     Send a push notification to a single Expo device.
@@ -63,16 +64,16 @@ async def send_push_notification(
         "sound": "default",
         "priority": "high",
         "data": data or {},
+        # Android channel the donor app creates at start-up (high importance, sound).
+        "channelId": channel_id,
     }
 
     try:
         resp = await client.post(settings.expo_push_url, json=payload)
         resp.raise_for_status()
         result = resp.json()
-        logger.info(
-            "Push notification sent to token %s...%s",
-            expo_token[:20], expo_token[-6:],
-        )
+        # Never log the token itself: it addresses one donor's phone.
+        logger.info("Push notification sent to token ending %s", expo_token[-4:].rstrip("]"))
         return result
     except httpx.HTTPStatusError as exc:
         logger.error("Expo push error: %s", exc.response.text)
@@ -97,8 +98,8 @@ async def send_dispatch_notification(
     """
     return await send_push_notification(
         expo_token=expo_token,
-        title="🩸 Blood Donation — You're Needed!",
-        body=f"Thank you for accepting! Please head to hospital {hospital_id} now.",
+        title="Thank you for saying yes",
+        body="The hospital knows you are coming. Open HaemNet for directions.",
         data={
             "type": "dispatch_accepted",
             "dispatch_id": dispatch_id,

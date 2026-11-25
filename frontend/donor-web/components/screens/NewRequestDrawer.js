@@ -18,10 +18,11 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [warning, setWarning] = useState(null);
+  const [confirming, setConfirming] = useState(false);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    if (visible) { setError(null); setWarning(null); if (store.availability.status !== 'ready') store.refreshAvailability(); }
+    if (visible) { setError(null); setWarning(null); setConfirming(false); if (store.availability.status !== 'ready') store.refreshAvailability(); }
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = store.availability.data?.groups;
@@ -29,9 +30,16 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
     : form.bloodGroup === 'All negative' ? BLOOD_GROUPS.filter((g) => g.endsWith('-')) : [form.bloodGroup];
   const available = counts ? selectedGroups.reduce((total, g) => total + (counts[g] || 0), 0) : undefined;
 
-  const submit = async () => {
+  // First press asks for confirmation: a dispatch places real phone calls.
+  const review = () => {
     setError(null); setWarning(null);
     if (!form.address.trim()) return setError('Add the ward or delivery location so donors know where to go.');
+    setConfirming(true);
+  };
+
+  const submit = async () => {
+    setError(null); setWarning(null);
+    if (!form.address.trim()) { setConfirming(false); return setError('Add the ward or delivery location so donors know where to go.'); }
     setBusy(true);
     try {
       const res = await store.triggerDispatch({ ...form, address: form.address.trim(), patient: form.patient.trim() });
@@ -44,6 +52,7 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
     } catch (e) {
       setError(e.message);
     }
+    setConfirming(false);
     setBusy(false);
   };
 
@@ -135,15 +144,23 @@ export default function NewRequestDrawer({ visible, onClose, store, onCreated })
               )}
             </View>
 
+            {confirming ? (
+              <View style={[s.msg, { backgroundColor: color.amberSurface }]} accessibilityRole="alert">
+                <Text style={{ color: color.amberText, fontWeight: '600', marginBottom: 4 }}>Confirm before sending</Text>
+                <Text style={{ color: color.amberText }}>
+                  This will place real phone calls to {available !== undefined ? `up to ${available}` : 'matching'} donors for {form.units} unit{form.units > 1 ? 's' : ''} of {bg(form.bloodGroup)} ({form.urgency}) at {form.address.trim()}.
+                </Text>
+              </View>
+            ) : null}
             {warning ? <Text style={[s.msg, { color: color.amberText, backgroundColor: color.amberSurface }]}>{warning}</Text> : null}
             {error ? <Text style={[s.msg, { color: color.redText, backgroundColor: color.redSurface }]}>{error}</Text> : null}
           </ScrollView>
 
           <View style={s.foot}>
-            <Button variant="secondary" onPress={onClose} style={{ flex: 1, paddingVertical: 13 }}>Cancel</Button>
-            <Button variant="danger" onPress={submit} disabled={busy} style={{ flex: 2, paddingVertical: 13 }}
+            <Button variant="secondary" onPress={confirming && !busy ? () => setConfirming(false) : onClose} style={{ flex: 1, paddingVertical: 13 }}>{confirming && !busy ? 'Back' : 'Cancel'}</Button>
+            <Button variant="danger" onPress={confirming ? submit : review} disabled={busy} style={{ flex: 2, paddingVertical: 13 }}
               icon={busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Activity size={15} color="#FFFFFF" />}>
-              {busy ? 'Matching donors…' : 'Trigger dispatch'}
+              {busy ? 'Matching donors…' : confirming ? 'Confirm and place calls' : 'Review dispatch'}
             </Button>
           </View>
         </View>

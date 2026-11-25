@@ -9,13 +9,17 @@ and TTS (Text-to-Speech) models for multi-lingual conversations.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 
 from backend.config import settings
+from backend.services.http_retry import post_with_retry
 
 logger = logging.getLogger(__name__)
+
+# Speech and translation requests are safe to repeat, so throttling and server errors are retried.
+_RETRY = {429, 500, 502, 503, 504}
 
 _client: httpx.AsyncClient | None = None
 
@@ -35,6 +39,7 @@ async def _get_client() -> httpx.AsyncClient:
 
 
 # ── STT — Speech-to-Text ─────────────────────────────────────────
+
 
 async def transcribe_audio(
     audio_bytes: bytes,
@@ -56,10 +61,13 @@ async def transcribe_audio(
     }
 
     try:
-        resp = await client.post("/speech-to-text", files=files, data=data)
+        resp = await post_with_retry(
+            client, "/speech-to-text", retry_statuses=_RETRY, idempotent=True, files=files, data=data
+        )
         resp.raise_for_status()
         result = resp.json()
-        logger.info("STT transcript (%s): %s", language, result.get("transcript", "")[:80])
+        # Never log transcript text: donor speech is personal data (DPDP Act).
+        logger.info("STT ok (%s): transcript_len=%d", language, len(result.get("transcript", "")))
         return result
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam STT error: %s", exc.response.text)
@@ -67,6 +75,7 @@ async def transcribe_audio(
 
 
 # ── TTS — Text-to-Speech ─────────────────────────────────────────
+
 
 async def synthesize_speech(
     text: str,
@@ -86,15 +95,23 @@ async def synthesize_speech(
     }
 
     try:
-        resp = await client.post("/text-to-speech", json=payload, headers={"Content-Type": "application/json"})
+        resp = await post_with_retry(
+            client,
+            "/text-to-speech",
+            retry_statuses=_RETRY,
+            idempotent=True,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
         resp.raise_for_status()
         result = resp.json()
         # Sarvam returns base64-encoded audio in the response.
         import base64
+
         audio_b64 = result.get("audios", [None])[0]
         if audio_b64:
             return base64.b64decode(audio_b64)
-        logger.warning("TTS returned empty audio for text: %s", text[:60])
+        logger.warning("TTS returned empty audio (text_len=%d)", len(text))
         return b""
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam TTS error: %s", exc.response.text)
@@ -102,6 +119,7 @@ async def synthesize_speech(
 
 
 # ── Translate (helper) ───────────────────────────────────────────
+
 
 async def translate_text(
     text: str,
@@ -122,11 +140,11 @@ async def translate_text(
     }
 
     try:
-        resp = await client.post("/translate", json=payload)
+        resp = await post_with_retry(client, "/translate", retry_statuses=_RETRY, idempotent=True, json=payload)
         resp.raise_for_status()
         result = resp.json()
         translated = result.get("translated_text", text)
-        logger.info("Translated (%s→%s): %s", source_lang, target_lang, translated[:80])
+        logger.info("Translated (%s→%s): text_len=%d", source_lang, target_lang, len(translated))
         return translated
     except httpx.HTTPStatusError as exc:
         logger.error("Sarvam translate error: %s", exc.response.text)
@@ -148,6 +166,7 @@ def get_bcp47_code(language: str) -> str:
 
 
 # ── Cleanup ───────────────────────────────────────────────────────
+
 
 async def close() -> None:
     """Gracefully close the httpx client."""

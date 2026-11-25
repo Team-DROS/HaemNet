@@ -109,7 +109,7 @@ function EmergencyPanel({ store, em }) {
 
   const close = async () => {
     setBusy(true);
-    try { await store.closeEmergency(em.id); } catch (e) { /* surfaced by timeline */ }
+    try { await store.closeEmergency(em.id); } catch { /* surfaced by timeline */ }
     setBusy(false);
   };
 

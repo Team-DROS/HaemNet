@@ -11,8 +11,8 @@ from backend.schemas.models import (
 )
 from backend.services.geo import estimate_eta_minutes, haversine_km
 
-
 # ── geo ───────────────────────────────────────────────────────────
+
 
 def test_haversine_one_degree_of_latitude():
     assert abs(haversine_km(13.0, 80.0, 14.0, 80.0) - 111.19) < 0.1
@@ -31,6 +31,7 @@ def test_eta_estimate_grows_with_distance_and_handles_missing():
 
 # ── language ──────────────────────────────────────────────────────
 
+
 def test_supported_languages_pass_through_case_insensitively():
     assert normalise_language("Tamil") == "tamil"
     assert normalise_language("HINDI") == "hindi"
@@ -46,13 +47,18 @@ def test_donor_with_unsupported_language_does_not_break_matching():
     # Older app builds let donors pick Telugu; this used to raise and fail
     # the whole dispatch for every donor in the area.
     node = DonorNode(
-        id="6f1c7d2e-0b1a-4c9e-9f3a-2d4e5f6a7b8c", name="R", phone="+911234567890",
-        blood_group="O-", language="telugu", location={"lat": 13, "lng": 80},
+        id="6f1c7d2e-0b1a-4c9e-9f3a-2d4e5f6a7b8c",
+        name="R",
+        phone="+911234567890",
+        blood_group="O-",
+        language="telugu",
+        location={"lat": 13, "lng": 80},
     )
     assert node.language == DonorLanguage.ENGLISH
 
 
 # ── schemas ───────────────────────────────────────────────────────
+
 
 def test_status_update_new_fields_are_optional():
     update = DonorStatusUpdate(donor_id="d1", name="R", status=CallStatus.RINGING)
@@ -67,11 +73,14 @@ def test_lifecycle_statuses_exist():
 
 # ── Twilio mapping ────────────────────────────────────────────────
 
+
 def test_answered_and_no_answer_are_distinguished_from_decline():
     assert map_twilio_status("in-progress", "ringing") == CallStatus.ANSWERED
     assert map_twilio_status("no-answer", "ringing") == CallStatus.NO_ANSWER
     assert map_twilio_status("busy", "ringing") == CallStatus.NO_ANSWER
-    assert map_twilio_status("failed", "ringing") == CallStatus.DECLINED
+    # A call that failed or was cancelled never reached the donor, so it is not a decline.
+    assert map_twilio_status("failed", "ringing") == CallStatus.NO_ANSWER
+    assert map_twilio_status("canceled", "ringing") == CallStatus.NO_ANSWER
 
 
 def test_unknown_twilio_status_is_ignored_not_declined():
@@ -86,6 +95,7 @@ def test_late_webhook_never_overwrites_a_decision():
 
 
 # ── cooldown regression ───────────────────────────────────────────
+
 
 def test_reregistration_preserves_last_donation_date():
     # Editing a donor profile used to SET last_donated_date = null, lifting

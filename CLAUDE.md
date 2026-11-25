@@ -12,8 +12,8 @@ appear live on the hospital dashboard.
 | `frontend/donor-web/` | Hospital dashboard, `/admin` panel, `/verify-email` | Expo web, React Native Web, expo-router |
 | `frontend/donor-mobile/` | Donor Android app | Expo SDK 54, React Native |
 | `frontend/website/` | Public marketing and legal site | Static HTML, deployed on Vercel |
-| `docs/` | Runbook, release checklist, voice test plan | Markdown |
-| `.github/workflows/` | CI: backend tests, frontend builds, link check | GitHub Actions |
+| `docs/` | Runbook, releasing, release checklist, monitoring, voice and mobile test plans, Play Store kit | Markdown |
+| `.github/workflows/` | CI (backend tests, frontend builds, link check), tagged releases, donor app builds | GitHub Actions |
 
 Three owners: Role 1 backend and voice, Role 2 web and hospital platform, Role 3 mobile
 and release. Do not merge into another role's folders without that owner's review.
@@ -54,6 +54,10 @@ New endpoint checklist: put the rule in a service and raise a domain error, keep
 - Never put secrets in code, chat or `EXPO_PUBLIC_*` variables. Use `.env` files and the host dashboard.
 - Twilio webhooks must pass signature verification. Do not add unsigned callback routes.
 - Place calls and send SMS only through `get_telephony()` in `backend/services/telephony.py`, never by importing a provider module directly.
+- Every donor app string goes through `t()` with a key in all three of `components/i18n/en.js`, `hi.js` and `ta.js`; `npm test` fails when the tables differ.
+- Donor app logic goes in a small pure module with a Node test (`frontend/donor-mobile/tests/`); `DonorApp.js` only wires it to the screen.
+- Health check answers never leave the donor's phone. Push alerts carry blood group, units, urgency and distance only.
+- Production deploys only from a `vX.Y.Z` tag and the app only from a `donor-vX.Y.Z` tag (`docs/RELEASING.md`). Merges to `main` reach staging only.
 - Fail 3 times on the same bug: stop, summarise, start fresh.
 
 ## Gotchas

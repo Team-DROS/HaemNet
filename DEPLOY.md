@@ -8,9 +8,9 @@ describes the backend and dashboard; mobile builds use Expo/EAS.
 
 | Component | Source | Deployment configuration |
 | --- | --- | --- |
-| Backend | `backend/` | Root Dockerfile; `render.yaml` service `haemnet-api` |
-| Hospital dashboard | `frontend/donor-web/` | Expo static export; Render static service or existing frontend host |
-| Donor mobile | `frontend/donor-mobile/` | EAS development, preview APK, and production AAB profiles |
+| Backend | `backend/` | Root Dockerfile; `render.yaml` services `haemnet-api` (production) and `haemnet-api-staging` |
+| Hospital dashboard | `frontend/donor-web/` | Expo static export; `render.yaml` services `haemnet-dashboard` and `haemnet-dashboard-staging` |
+| Donor mobile | `frontend/donor-mobile/` | EAS development, preview and staging APK, and production AAB profiles |
 | Database | MongoDB / Atlas | Connection supplied to the backend; not provisioned by the blueprint |
 
 The documented API address is `https://haemnet-api.onrender.com`. Use the
@@ -18,6 +18,12 @@ actual service address if it differs. Confirm which repository/branch each
 service deploys; if a service builds a fork, sync the required changes first.
 Auto-deployment depends on the hosting service's repository settings, not just
 the presence of a blueprint.
+
+**Staging and production.** The `-staging` services deploy every merge to `main`
+automatically and use the `haemnet_staging` database. Production services have
+`autoDeploy: false` and only change when a `vX.Y.Z` tag is released through the
+Release workflow. The full flow, the one-time GitHub and Render setup, and rollback
+are in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Backend environment
 
@@ -61,6 +67,8 @@ All are listed in `backend/.env.example` and, as secrets, in `render.yaml`.
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS`, `MONGODB_MAX_POOL_SIZE` | Database timeouts and pool size |
 | `WEB_CONCURRENCY` | Uvicorn workers per container (above 1 needs `REDIS_URL`) |
 | `LOG_FORMAT=json` | One JSON object per log line |
+| `PUSH_REQUEST_ALERTS` | `true` (default) also sends an app alert to matched donors who have the app; `false` stops alerts without touching calls |
+| `GIT_COMMIT` | Commit reported by `/api/health` when not on Render (Render sets `RENDER_GIT_COMMIT` itself) |
 
 In production the backend refuses to start with a `JWT_SECRET` shorter than 32
 characters or left at a placeholder.
@@ -164,7 +172,7 @@ Do these in order on staging, then production. See `docs/RELEASE_CHECKLIST.md` f
 3. Register a test hospital, verify its email, upload a document, approve it from the admin panel.
 4. Raise a dispatch to a test donor number you control and run the voice test plan in `docs/VOICE_TEST_PLAN.md`.
 5. Confirm a forged Twilio callback is refused (403) and that `SERVER_BASE_URL` matches the URL Twilio calls exactly.
-6. Check Sentry receives a test error, uptime monitoring is on, and an Atlas backup restore has been tried once.
+6. Check Sentry receives a test error, uptime monitoring is on, and an Atlas backup restore has been tried once ([docs/MONITORING.md](docs/MONITORING.md)).
 7. Run the load test on staging only (`loadtest/locustfile.py`).
 
 ## Rollback
@@ -176,11 +184,13 @@ There is no automatic keyword fallback after an AI request fails.
 
 ## Donor mobile releases
 
-Follow the [mobile release guide](frontend/donor-mobile/README.md). The existing
-EAS profiles target `https://haemnet-api.onrender.com`; confirm the actual
-API origin before building. Preview creates an installable APK; production
-creates an AAB for store upload. A backend-only voice update does not require
-a new mobile binary.
+Follow [docs/RELEASING.md](docs/RELEASING.md) and the
+[app README](frontend/donor-mobile/README.md). Push a `donor-vX.Y.Z` tag and the
+"Donor app release" workflow builds the AAB and submits it to Play internal testing
+as a draft. The `staging` profile builds an APK against `haemnet-api-staging` for
+[phone testing](docs/MOBILE_TEST_PLAN.md); production targets
+`https://haemnet-api.onrender.com`, so confirm the actual API origin before building.
+A backend-only voice update does not require a new mobile binary.
 
 Everyday JS/UI work uses an installed development build and Fast Refresh.
 Rebuild native binaries for SDK, native dependency, or permission changes.

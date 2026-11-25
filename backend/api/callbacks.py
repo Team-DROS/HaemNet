@@ -8,17 +8,26 @@ Routes:
 
 from __future__ import annotations
 
-import json
 import asyncio
 import base64
+import html
+import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
 from backend.api.websockets import manager
+from backend.config import settings
+from backend.db_services import get_donor_push_token
 from backend.dispatch_store import dispatch_store
-from backend.schemas.models import CallStatus, DonorStatusUpdate, TERMINAL_OR_DECIDED
+from backend.schemas.models import TERMINAL_OR_DECIDED, CallStatus, DonorStatusUpdate
+from backend.services.call_retry import schedule_retry
+from backend.services.push_service import send_dispatch_notification
+from backend.services.telephony import get_telephony
+from backend.services.twilio_signature import verify_twilio_request
+from backend.services.voice_pipeline import active_sessions, create_voice_session
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +41,16 @@ router = APIRouter(tags=["twilio-callbacks"])
 # decline: previously an unexpected status marked the donor as declined.
 
 _TWILIO_STATUS_MAP = {
-    "queued":      None,
-    "initiated":   None,
-    "ringing":     None,           # dashboard already shows ringing from dispatch
+    "queued": None,
+    "initiated": None,
+    "ringing": None,  # dashboard already shows ringing from dispatch
     "in-progress": CallStatus.ANSWERED,
-    "completed":   None,           # outcome comes from the voice intent, not hang-up
-    "busy":        CallStatus.NO_ANSWER,
-    "no-answer":   CallStatus.NO_ANSWER,
-    "failed":      CallStatus.DECLINED,
-    "canceled":    CallStatus.DECLINED,
+    "completed": None,  # outcome comes from the voice intent, not hang-up
+    "busy": CallStatus.NO_ANSWER,
+    "no-answer": CallStatus.NO_ANSWER,
+    # The donor was never reached, so these are not a decision.
+    "failed": CallStatus.NO_ANSWER,
+    "canceled": CallStatus.NO_ANSWER,
 }
 
 
@@ -66,21 +76,18 @@ def map_twilio_status(twilio_status: str, current: Optional[str]) -> Optional[Ca
 
 # ── GET/POST /api/twilio/twiml ────────────────────────────────────
 
-from fastapi.responses import Response
-from backend.config import settings
 
-@router.post("/api/twilio/twiml")
-@router.get("/api/twilio/twiml")
+@router.post("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
+@router.get("/api/twilio/twiml", dependencies=[Depends(verify_twilio_request)])
 async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(default="")):
     """
     Returns the TwiML XML that instructs Twilio to connect the call
     to our Audio Stream WebSocket for real-time Sarvam AI conversational processing.
     """
     ws_url = settings.server_base_url.replace("http", "ws") + settings.twilio_audio_ws_path
-    
-    import html
+
     xml_safe_url = html.escape(ws_url)
-    
+
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
@@ -95,7 +102,8 @@ async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(
 
 # ── POST /api/twilio/gather ──────────────────────────────────────
 
-@router.post("/api/twilio/gather")
+
+@router.post("/api/twilio/gather", dependencies=[Depends(verify_twilio_request)])
 async def twilio_gather(
     dispatch_id: str = Query(default=""),
     donor_id: str = Query(default=""),
@@ -107,7 +115,9 @@ async def twilio_gather(
     """
     logger.info(
         "Gather response: Digits=%s dispatch_id=%s donor_id=%s",
-        Digits, dispatch_id, donor_id,
+        Digits,
+        dispatch_id,
+        donor_id,
     )
 
     if Digits == "1":
@@ -124,7 +134,9 @@ async def twilio_gather(
     # Update dispatch store
     if dispatch_id and donor_id:
         await dispatch_store.update_donor_status(
-            dispatch_id, donor_id, new_status,
+            dispatch_id,
+            donor_id,
+            new_status,
             eta_minutes=15 if intent == "accepted" else None,
         )
 
@@ -149,7 +161,8 @@ async def twilio_gather(
 
 # ── POST /api/twilio/status-callback ─────────────────────────────
 
-@router.post("/api/twilio/status-callback")
+
+@router.post("/api/twilio/status-callback", dependencies=[Depends(verify_twilio_request)])
 async def twilio_status_callback(
     CallSid: str = Form(default=""),
     CallStatus_param: str = Form(default="", alias="CallStatus"),
@@ -161,7 +174,10 @@ async def twilio_status_callback(
     """
     logger.info(
         "Twilio callback: SID=%s Status=%s dispatch_id=%s donor_id=%s",
-        CallSid, CallStatus_param, dispatch_id, donor_id,
+        CallSid,
+        CallStatus_param,
+        dispatch_id,
+        donor_id,
     )
 
     if not dispatch_id or not donor_id:
@@ -170,21 +186,20 @@ async def twilio_status_callback(
 
     # Map Twilio status to our enum, respecting any decision already made.
     current = await dispatch_store.get_donor(dispatch_id, donor_id)
-    mapped_status = map_twilio_status(
-        CallStatus_param, current.get("status") if current else None
-    )
+    mapped_status = map_twilio_status(CallStatus_param, current.get("status") if current else None)
 
     if mapped_status is None:
         logger.debug(
             "Twilio status '%s' for SID %s — no status update emitted",
-            CallStatus_param, CallSid,
+            CallStatus_param,
+            CallSid,
         )
         return {"status": "ack", "call_sid": CallSid}
 
     # Update the in-memory store.
-    updated = await dispatch_store.update_donor_status(
-        dispatch_id, donor_id, mapped_status
-    )
+    updated = await dispatch_store.update_donor_status(dispatch_id, donor_id, mapped_status)
+    if updated and mapped_status == CallStatus.NO_ANSWER:
+        await schedule_retry(dispatch_id, donor_id, CallStatus_param.lower(), manager.broadcast)
 
     if updated:
         # Fetch the donor info to build the WebSocket payload.
@@ -199,7 +214,9 @@ async def twilio_status_callback(
             await manager.broadcast(dispatch_id, ws_update)
             logger.info(
                 "Broadcast %s for donor %s (dispatch %s)",
-                mapped_status.value, donor_id, dispatch_id,
+                mapped_status.value,
+                donor_id,
+                dispatch_id,
             )
 
     return {"status": "ok", "call_sid": CallSid, "mapped_status": mapped_status.value}
@@ -207,13 +224,13 @@ async def twilio_status_callback(
 
 # ── WebSocket /ws/twilio/audio-stream ─────────────────────────────
 
+
 @router.websocket("/ws/twilio/audio-stream")
 async def twilio_audio_stream(websocket: WebSocket):
     """
     WebSocket endpoint for Twilio to stream live call audio.
     Twilio sends JSON messages with Base64 audio chunks.
     """
-    from backend.services.voice_pipeline import active_sessions, create_voice_session
 
     await websocket.accept()
     logger.info("Audio stream WebSocket connected")
@@ -225,20 +242,33 @@ async def twilio_audio_stream(websocket: WebSocket):
 
     async def send_audio(audio):
         # Only the AI engine uses playback acknowledgements; preserve legacy flow.
-        mark = session.playback_started() if hasattr(session, "playback_started") else None
-        await websocket.send_text(json.dumps({
-            "event": "media", "streamSid": stream_sid,
-            "media": {"payload": base64.b64encode(audio).decode("utf-8")},
-        }))
+        playback_started = getattr(session, "playback_started", None)
+        mark = playback_started() if callable(playback_started) else None
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "event": "media",
+                    "streamSid": stream_sid,
+                    "media": {"payload": base64.b64encode(audio).decode("utf-8")},
+                }
+            )
+        )
         if mark:
-            await websocket.send_text(json.dumps({
-                "event": "mark", "streamSid": stream_sid, "mark": {"name": mark},
-            }))
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "event": "mark",
+                        "streamSid": stream_sid,
+                        "mark": {"name": mark},
+                    }
+                )
+            )
         return mark
 
     async def finish_audio(audio):
         mark = await send_audio(audio)
         if mark:
+
             async def wait_for_playback():
                 while True:
                     event = json.loads(await websocket.receive_text())
@@ -246,9 +276,10 @@ async def twilio_audio_stream(websocket: WebSocket):
                         return
                     if event.get("event") == "mark" and event.get("mark", {}).get("name") == mark:
                         return
+
             try:
                 await asyncio.wait_for(wait_for_playback(), timeout=20)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Closing voice playback acknowledgement timed out")
 
     try:
@@ -257,22 +288,22 @@ async def twilio_audio_stream(websocket: WebSocket):
                 # A lost mark or stalled stream must not leave a call open forever.
                 try:
                     data_str = await asyncio.wait_for(websocket.receive_text(), timeout=35)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("AI voice stream idle; ending without another decision")
                     break
             else:
                 data_str = await websocket.receive_text()
             msg = json.loads(data_str)
-            
+
             if msg["event"] == "start":
                 stream_sid = msg["start"]["streamSid"]
                 call_sid = msg["start"]["callSid"]
-                
+
                 # Extract params passed via <Parameter> tags
                 custom_params = msg["start"].get("customParameters", {})
                 dispatch_id = custom_params.get("dispatch_id", "")
                 donor_id = custom_params.get("donor_id", "")
-                
+
                 if not dispatch_id or not donor_id:
                     logger.warning("Audio stream missing customParameters — closing")
                     await websocket.close(code=1008, reason="Missing params")
@@ -288,7 +319,7 @@ async def twilio_audio_stream(websocket: WebSocket):
                 blood_group = dispatch.get("blood_group", "") if dispatch else ""
 
                 session = create_voice_session(
-                    call_sid=call_sid, 
+                    call_sid=call_sid,
                     dispatch_id=dispatch_id,
                     donor_id=donor_id,
                     donor_name=donor.get("name", "Donor") if donor else "Donor",
@@ -297,8 +328,10 @@ async def twilio_audio_stream(websocket: WebSocket):
                     blood_group=blood_group,
                 )
                 active_sessions[call_sid] = session
-                logger.info("Twilio stream started. StreamSid: %s, CallSid: %s, donor: %s", stream_sid, call_sid, donor_id)
-                
+                logger.info(
+                    "Twilio stream started. StreamSid: %s, CallSid: %s, donor: %s", stream_sid, call_sid, donor_id
+                )
+
                 # Send the greeting immediately when stream starts
                 greeting_audio, _ = await session.handle_audio_chunk(b"")
                 if greeting_audio:
@@ -309,12 +342,12 @@ async def twilio_audio_stream(websocket: WebSocket):
             elif msg["event"] == "mark":
                 if session is not None and hasattr(session, "playback_finished"):
                     session.playback_finished(msg.get("mark", {}).get("name", ""))
-                    
+
             elif msg["event"] == "media":
                 if session is None or msg.get("media", {}).get("track", "inbound") != "inbound":
                     continue
                 audio_bytes = base64.b64decode(msg["media"]["payload"])
-                
+
                 # Process through the voice pipeline.
                 response_audio, intent = await session.handle_audio_chunk(audio_bytes)
 
@@ -333,12 +366,11 @@ async def twilio_audio_stream(websocket: WebSocket):
 
                 # If an intent was resolved, update the dispatch state.
                 if intent in ("accepted", "declined"):
-                    new_status = (
-                        CallStatus.ACCEPTED if intent == "accepted"
-                        else CallStatus.DECLINED
-                    )
+                    new_status = CallStatus.ACCEPTED if intent == "accepted" else CallStatus.DECLINED
                     await dispatch_store.update_donor_status(
-                        dispatch_id, donor_id, new_status,
+                        dispatch_id,
+                        donor_id,
+                        new_status,
                         eta_minutes=session.eta_minutes,
                     )
                     # Broadcast to dashboard.
@@ -351,7 +383,9 @@ async def twilio_audio_stream(websocket: WebSocket):
                     await manager.broadcast(dispatch_id, ws_update)
                     logger.info(
                         "Voice intent '%s' for donor %s (dispatch %s)",
-                        intent, donor_id, dispatch_id,
+                        intent,
+                        donor_id,
+                        dispatch_id,
                     )
 
                     # ── Post-acceptance routing ───────────────────────
@@ -364,25 +398,30 @@ async def twilio_audio_stream(websocket: WebSocket):
                         )
                         if routed:
                             await dispatch_store.update_donor_status(
-                                dispatch_id, donor_id, CallStatus.EN_ROUTE,
+                                dispatch_id,
+                                donor_id,
+                                CallStatus.EN_ROUTE,
                                 eta_minutes=session.eta_minutes,
                             )
-                            await manager.broadcast(dispatch_id, DonorStatusUpdate(
-                                donor_id=donor_id,
-                                name=session.donor_name,
-                                status=CallStatus.EN_ROUTE,
-                                eta_minutes=session.eta_minutes,
-                            ))
+                            await manager.broadcast(
+                                dispatch_id,
+                                DonorStatusUpdate(
+                                    donor_id=donor_id,
+                                    name=session.donor_name,
+                                    status=CallStatus.EN_ROUTE,
+                                    eta_minutes=session.eta_minutes,
+                                ),
+                            )
 
                     # Deliver a closing message and end the session.
                     if intent == "accepted":
                         closing_audio = await session.generate_closing_message(accepted=True)
                     else:
                         closing_audio = await session.generate_closing_message(accepted=False)
-                        
+
                     if closing_audio:
                         await finish_audio(closing_audio)
-                        
+
                     break
 
             elif msg["event"] == "stop":
@@ -402,6 +441,7 @@ async def twilio_audio_stream(websocket: WebSocket):
 
 # ── Post-acceptance routing (called from audio stream) ────────────
 
+
 async def _route_accepted_donor(
     dispatch_id: str,
     donor_id: str,
@@ -409,14 +449,9 @@ async def _route_accepted_donor(
     dispatch: Optional[dict],
 ) -> bool:
     """Send the accepted donor directions. Returns True if something was sent."""
-    from backend.db_services import get_donor_push_token
-    from backend.services.twilio_service import send_sms
-    from backend.services.push_service import send_dispatch_notification
 
     if not donor or not dispatch:
-        logger.warning(
-            "Cannot route donor %s — missing context", donor_id
-        )
+        logger.warning("Cannot route donor %s — missing context", donor_id)
         return False
 
     has_app = donor.get("has_app", False)
@@ -438,19 +473,20 @@ async def _route_accepted_donor(
                 )
                 logger.info("Donor %s routed via push notification", donor_id)
                 return True
-            else:
-                logger.warning(
-                    "Donor %s has_app=true but no push token — SMS fallback",
-                    donor_id,
-                )
+            logger.warning(
+                "Donor %s has_app=true but no push token — SMS fallback",
+                donor_id,
+            )
         except Exception as exc:
             logger.error("Push failed for donor %s: %s — SMS fallback", donor_id, exc)
 
     # Fallback — SMS with tracking link.
     if phone:
-        tracking_url = f"https://www.google.com/maps/search/?api=1&query={dispatch.get('lat', 0.0)},{dispatch.get('lng', 0.0)}"
+        tracking_url = (
+            f"https://www.google.com/maps/search/?api=1&query={dispatch.get('lat', 0.0)},{dispatch.get('lng', 0.0)}"
+        )
         try:
-            await send_sms(
+            await get_telephony().send_sms(
                 phone=phone,
                 message=f"Thank you for accepting! Navigate to the hospital: {tracking_url}",
             )

@@ -60,16 +60,23 @@ async def db(monkeypatch):
     monkeypatch.setattr(mongodb, "_client", None)
 
 
-async def seed_donor(phone="+919000000001", group="O-", km=1.0, name="Ramesh Kumar",
-                     language="tamil", last_donated=None):
+async def seed_donor(
+    phone="+919000000001", group="O-", km=1.0, name="Ramesh Kumar", language="tamil", last_donated=None
+):
     lat, lng = _offset_km(km)
     return await mongo_repo.register_donor(
-        name=name, phone=phone, blood_group=group, language=language, lat=lat, lng=lng,
+        name=name,
+        phone=phone,
+        blood_group=group,
+        language=language,
+        lat=lat,
+        lng=lng,
         last_donated_date=last_donated,
     )
 
 
 # ── donors, distance and cooldown ─────────────────────────────────
+
 
 async def test_register_is_an_upsert_keyed_on_phone(db):
     first = await seed_donor()
@@ -90,10 +97,14 @@ async def test_profile_edit_never_clears_the_cooldown(db):
 async def test_eligible_donors_respect_group_distance_and_cooldown(db):
     await seed_donor(phone="+919000000001", group="O-", km=1.0)
     await seed_donor(phone="+919000000002", group="O-", km=4.0)
-    await seed_donor(phone="+919000000003", group="O-", km=40.0)          # too far
-    await seed_donor(phone="+919000000004", group="A+", km=2.0)           # wrong group
-    await seed_donor(phone="+919000000005", group="O-", km=2.0,
-                     last_donated=(datetime.now(timezone.utc) - timedelta(days=5)).isoformat())  # recovering
+    await seed_donor(phone="+919000000003", group="O-", km=40.0)  # too far
+    await seed_donor(phone="+919000000004", group="A+", km=2.0)  # wrong group
+    await seed_donor(
+        phone="+919000000005",
+        group="O-",
+        km=2.0,
+        last_donated=(datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
+    )  # recovering
 
     donors = await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)
     assert [d.phone for d in donors] == ["+919000000001", "+919000000002"]  # nearest first
@@ -121,8 +132,13 @@ async def test_donation_starts_the_cooldown_and_delete_removes_the_donor(db):
 async def test_push_token_is_kept_and_returned(db):
     donor = await seed_donor()
     await mongo_repo.register_donor(
-        name="Ramesh", phone="+919000000001", blood_group="O-", language="tamil",
-        lat=HOSP_LAT, lng=HOSP_LNG, push_token="ExponentPushToken[abc]",
+        name="Ramesh",
+        phone="+919000000001",
+        blood_group="O-",
+        language="tamil",
+        lat=HOSP_LAT,
+        lng=HOSP_LNG,
+        push_token="ExponentPushToken[abc]",
     )
     assert await mongo_repo.get_donor_push_token(str(donor.id)) == "ExponentPushToken[abc]"
     # A later edit without a token must not wipe it.
@@ -132,15 +148,22 @@ async def test_push_token_is_kept_and_returned(db):
 
 # ── dispatch lifecycle ────────────────────────────────────────────
 
+
 async def test_dispatch_lifecycle_end_to_end(db):
     donor_a = await seed_donor(phone="+919000000001", km=1.0)
     donor_b = await seed_donor(phone="+919000000002", km=3.0, name="Anjali Joseph")
     await mongo_repo.db_create_hospital("HOSP-1001", "Apollo Hospital", "Greams Road", "+914400000000", "hash")
 
     await mongo_repo.db_create_dispatch(
-        "dp-1", "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG,
+        "dp-1",
+        "HOSP-1001",
+        "O-",
+        HOSP_LAT,
+        HOSP_LNG,
         [{"id": str(donor_a.id), "distance_km": 1.0}, {"id": str(donor_b.id), "distance_km": 3.0}],
-        units=2, urgency="critical", address="Trauma Bay 2",
+        units=2,
+        urgency="critical",
+        address="Trauma Bay 2",
     )
 
     dispatch = await mongo_repo.db_get_dispatch("dp-1")
@@ -192,11 +215,19 @@ async def test_history_counts_outcomes_per_request(db):
     donor = await seed_donor()
     await mongo_repo.db_create_hospital("HOSP-1001", "Apollo Hospital", "Greams Road", "+914400000000", "hash")
     for dispatch_id, status, fulfilled in (
-        ("dp-done", "donated", True), ("dp-partial", "accepted", False), ("dp-dead", "no_answer", False),
+        ("dp-done", "donated", True),
+        ("dp-partial", "accepted", False),
+        ("dp-dead", "no_answer", False),
     ):
         await mongo_repo.db_create_dispatch(
-            dispatch_id, "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG,
-            [{"id": str(donor.id), "distance_km": 1.0}], units=1, urgency="critical",
+            dispatch_id,
+            "HOSP-1001",
+            "O-",
+            HOSP_LAT,
+            HOSP_LNG,
+            [{"id": str(donor.id), "distance_km": 1.0}],
+            units=1,
+            urgency="critical",
         )
         await mongo_repo.db_update_donor_status(dispatch_id, str(donor.id), status)
         await mongo_repo.db_mark_complete(dispatch_id, fulfilled=fulfilled)
@@ -218,8 +249,9 @@ async def test_history_counts_outcomes_per_request(db):
 
 async def test_removing_a_dispatch_takes_its_calls_with_it(db):
     donor = await seed_donor()
-    await mongo_repo.db_create_dispatch("dp-1", "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG,
-                                        [{"id": str(donor.id), "distance_km": 1.0}])
+    await mongo_repo.db_create_dispatch(
+        "dp-1", "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG, [{"id": str(donor.id), "distance_km": 1.0}]
+    )
     await mongo_repo.db_remove_dispatch("dp-1")
     assert await mongo_repo.db_get_dispatch("dp-1") is None
     assert await db[mongo_repo.CALLS].count_documents({}) == 0
@@ -228,14 +260,16 @@ async def test_removing_a_dispatch_takes_its_calls_with_it(db):
 async def test_summary_lists_newest_first(db):
     donor = await seed_donor()
     for dispatch_id in ("dp-1", "dp-2"):
-        await mongo_repo.db_create_dispatch(dispatch_id, "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG,
-                                            [{"id": str(donor.id), "distance_km": 1.0}])
+        await mongo_repo.db_create_dispatch(
+            dispatch_id, "HOSP-1001", "O-", HOSP_LAT, HOSP_LNG, [{"id": str(donor.id), "distance_km": 1.0}]
+        )
     summary = await mongo_repo.db_summary()
     assert {row["dispatch_id"] for row in summary} == {"dp-1", "dp-2"}
     assert all(row["donors"] == 1 for row in summary)
 
 
 # ── hospitals and health ──────────────────────────────────────────
+
 
 async def test_hospital_round_trip_and_health(db):
     created = await mongo_repo.db_create_hospital("HOSP-1001", "Apollo", "Greams Road", "+914400000000", "hashed")
@@ -247,6 +281,7 @@ async def test_hospital_round_trip_and_health(db):
 
 
 # ── donor passwords ───────────────────────────────────────────────
+
 
 async def test_donor_password_is_created_once_and_cleared_with_the_donor(db):
     assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
@@ -264,3 +299,75 @@ async def test_admin_reset_clears_only_the_password(db):
     assert await mongo_repo.db_clear_donor_password("+919000000001") is True
     assert await mongo_repo.db_get_donor_password_hash("+919000000001") is None
     assert await mongo_repo.get_donor_by_phone("+919000000001") is not None
+
+
+# ── call consent, opt-out and platform indexes ────────────────────
+
+
+async def test_opted_out_donors_are_never_matched_or_counted(db):
+    await seed_donor(phone="+919000000001", km=1.0)
+    await seed_donor(phone="+919000000002", km=2.0)
+    assert await mongo_repo.db_set_calls_opt_out("+919000000001", True) is True
+    donors = await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)
+    assert [d.phone for d in donors] == ["+919000000002"]
+    assert await mongo_repo.db_eligible_counts_by_group(HOSP_LAT, HOSP_LNG) == {"O-": 1}
+    await mongo_repo.db_set_calls_opt_out("+919000000001", False)
+    assert len(await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)) == 2
+
+
+async def test_opt_out_for_an_unknown_donor_is_reported(db):
+    assert await mongo_repo.db_set_calls_opt_out("+919999999999", True) is False
+
+
+async def test_consent_is_timestamped_and_survives_profile_edits(db):
+    lat, lng = _offset_km(1.0)
+    await mongo_repo.register_donor("A", "+919000000001", "O-", "english", lat, lng, calls_consent=True)
+    doc = await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"})
+    assert doc["calls_consent_at"] is not None and doc["calls_opt_out"] is False
+    await mongo_repo.register_donor("A2", "+919000000001", "O-", "english", lat, lng)  # edit without the flag
+    assert (await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"}))["calls_consent_at"] == doc[
+        "calls_consent_at"
+    ]
+    await mongo_repo.register_donor("A2", "+919000000001", "O-", "english", lat, lng, calls_consent=False)
+    assert (await db[mongo_repo.DONORS].find_one({"phone": "+919000000001"}))["calls_opt_out"] is True
+
+
+async def test_platform_indexes_exist(db):
+    hospital_indexes = {i["name"] async for i in await db[mongo_repo.HOSPITALS].list_indexes()}
+    audit_indexes = {i["name"] async for i in await db["hospital_audit"].list_indexes()}
+    assert "status_1_registered_at_1" in hospital_indexes and "email_verification_hash_1" in hospital_indexes
+    assert "hospital_id_1_at_1" in audit_indexes
+
+
+async def test_push_token_follows_the_device_and_can_be_forgotten(db):
+    first = await seed_donor(phone="+919000000001")
+    second = await seed_donor(phone="+919000000002", name="Asha")
+    token = "ExponentPushToken[device-one-token]"
+    assert await mongo_repo.db_set_donor_push_token("+919000000001", token) is True
+    assert await mongo_repo.get_donor_push_token(str(first.id)) == token
+    # The same phone signs in as another donor: only the newest account keeps the token.
+    assert await mongo_repo.db_set_donor_push_token("+919000000002", token) is True
+    assert await mongo_repo.get_donor_push_token(str(first.id)) is None
+    assert await mongo_repo.get_donor_push_token(str(second.id)) == token
+    assert await mongo_repo.db_set_donor_push_token("+919000000002", None) is True
+    assert await mongo_repo.get_donor_push_token(str(second.id)) is None
+    assert await mongo_repo.db_set_donor_push_token("+919999999999", token) is False
+
+
+async def test_paused_donors_are_skipped_until_the_break_ends(db):
+    await seed_donor(phone="+919000000001", km=1.0)
+    await seed_donor(phone="+919000000002", km=2.0, name="Asha")
+    in_a_week = datetime.now(timezone.utc) + timedelta(days=7)
+    assert await mongo_repo.db_set_calls_paused_until("+919000000001", in_a_week) is True
+    matched = await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)
+    assert [d.phone for d in matched] == ["+919000000002"]
+    assert (await mongo_repo.db_eligible_counts_by_group(HOSP_LAT, HOSP_LNG))["O-"] == 1
+    paused = await mongo_repo.get_donor_by_phone("+919000000001")
+    assert paused.calls_paused_until is not None and abs(paused.calls_paused_until - in_a_week) < timedelta(seconds=1)
+
+    # A break that has ended no longer hides the donor, and ending one early clears it.
+    await mongo_repo.db_set_calls_paused_until("+919000000001", datetime.now(timezone.utc) - timedelta(minutes=1))
+    assert len(await mongo_repo.find_eligible_donors("O-", HOSP_LAT, HOSP_LNG)) == 2
+    await mongo_repo.db_set_calls_paused_until("+919000000001", None)
+    assert (await mongo_repo.get_donor_by_phone("+919000000001")).calls_paused_until is None
+    assert await mongo_repo.db_set_calls_paused_until("+919999999999", None) is False

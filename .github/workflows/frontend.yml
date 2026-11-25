@@ -1,0 +1,65 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # The release workflow runs the same checks on the tagged commit before deploying it.
+  workflow_call:
+
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard:
+    name: Hospital dashboard lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/donor-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/donor-web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: node node_modules/expo/bin/cli export --platform web --output-dir dist
+
+  mobile:
+    name: Donor app lint and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/donor-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/donor-mobile/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # Bundles the app the way a release build does, so a broken import or a missing
+      # native module fails here instead of in an EAS build.
+      - name: Android bundle builds
+        run: npx expo export --platform android --output-dir .expo-export-check
+
+  website:
+    name: Public website links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python frontend/website/check_links.py

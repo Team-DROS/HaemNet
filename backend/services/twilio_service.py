@@ -14,6 +14,7 @@ import httpx
 
 from backend.config import settings
 from backend.schemas.models import DonorNode
+from backend.services.http_retry import post_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ async def initiate_call(
     Place a single outbound call to `donor.phone` via Twilio.
     """
     client = await _get_client()
-    
+
     twiml_url = f"{settings.server_base_url}/api/twilio/twiml?dispatch_id={dispatch_id}&donor_id={donor.id}"
     status_cb = f"{settings.server_base_url}/api/twilio/status-callback?dispatch_id={dispatch_id}&donor_id={donor.id}"
 
@@ -58,9 +59,13 @@ async def initiate_call(
     }
 
     try:
-        resp = await client.post(
+        # 429 means Twilio did not start the call, so retrying cannot double-ring a donor.
+        resp = await post_with_retry(
+            client,
             f"/Accounts/{settings.twilio_account_sid}/Calls.json",
             data=payload,
+            retry_statuses={429},
+            idempotent=False,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -81,15 +86,12 @@ async def initiate_bulk_calls(
 ) -> List[Dict[str, Any]]:
     import asyncio
 
-    tasks = [
-        initiate_call(donor, dispatch_id, callback_url)
-        for donor in donors
-    ]
+    tasks = [initiate_call(donor, dispatch_id, callback_url) for donor in donors]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     successes: List[Dict[str, Any]] = []
-    for donor, result in zip(donors, results):
-        if isinstance(result, Exception):
+    for donor, result in zip(donors, results, strict=True):
+        if isinstance(result, BaseException):
             logger.error("Failed to call donor %s: %s", donor.id, result)
         else:
             successes.append(result)

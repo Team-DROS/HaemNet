@@ -1,0 +1,149 @@
+name: Release
+
+# Production deploys happen only here, from a version tag on main.
+#
+#   git tag -a v1.4.0 -m "v1.4.0" <commit on main> && git push origin v1.4.0
+#
+# 1. Checks the tag points at a commit that is on main.
+# 2. Runs the full backend and frontend CI on that commit.
+# 3. Waits for approval if the "production" environment has required reviewers.
+# 4. Triggers the Render deploy hooks for the API and the dashboard at that exact commit,
+#    then waits until /api/health reports the commit (so "deployed" means "live").
+# 5. Publishes a GitHub release with generated notes.
+#
+# Roll back: run this workflow by hand ("Run workflow") with an older tag. CI is skipped
+# for a redeploy of a tag that already passed it.
+#
+# Needs (Settings > Secrets and variables > Actions):
+#   secrets  RENDER_DEPLOY_HOOK_API, RENDER_DEPLOY_HOOK_DASHBOARD  (Render > service > Settings > Deploy Hook)
+#   variable PRODUCTION_API_URL  (optional, defaults to https://haemnet-api.onrender.com)
+# See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to deploy (use an older one to roll back), e.g. v1.4.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Tag is a release on main
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSHED_TAG: ${{ github.ref_name }}
+        run: |
+          TAG="${INPUT_TAG:-$PUSHED_TAG}"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$TAG' is not a release tag like v1.4.0"; exit 1
+          fi
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" main
+          SHA="$(git rev-list -n 1 "$TAG")"
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$TAG ($SHA) is not on main. Release only commits that were merged."; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  backend-ci:
+    name: Backend CI
+    needs: verify
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/main.yml
+
+  frontend-ci:
+    name: Frontend CI
+    needs: verify
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/frontend.yml
+
+  deploy:
+    name: Deploy to production
+    needs: [verify, backend-ci, frontend-ci]
+    # Runs after green CI on a tag push, or straight away for a manual (re)deploy.
+    if: >-
+      always() && needs.verify.result == 'success' && (
+        github.event_name == 'workflow_dispatch' ||
+        (needs.backend-ci.result == 'success' && needs.frontend-ci.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_API_URL || 'https://haemnet-api.onrender.com' }}/api/health
+    env:
+      SHA: ${{ needs.verify.outputs.sha }}
+      API_URL: ${{ vars.PRODUCTION_API_URL || 'https://haemnet-api.onrender.com' }}
+      HOOK_API: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+      HOOK_DASHBOARD: ${{ secrets.RENDER_DEPLOY_HOOK_DASHBOARD }}
+    steps:
+      - name: Check the deploy hooks are configured
+        run: |
+          missing=0
+          [ -n "$HOOK_API" ] || { echo "::error::Secret RENDER_DEPLOY_HOOK_API is not set"; missing=1; }
+          [ -n "$HOOK_DASHBOARD" ] || { echo "::error::Secret RENDER_DEPLOY_HOOK_DASHBOARD is not set"; missing=1; }
+          exit $missing
+
+      - name: Trigger Render deploys at the tagged commit
+        run: |
+          # Deploy hooks take ?ref=<commit> to deploy that commit instead of the branch head.
+          curl -fsS -X POST "${HOOK_API}&ref=${SHA}" -o /dev/null
+          curl -fsS -X POST "${HOOK_DASHBOARD}&ref=${SHA}" -o /dev/null
+          echo "Deploys triggered for ${SHA:0:12}"
+
+      - name: Wait until the API runs the tagged commit
+        run: |
+          want="${SHA:0:12}"
+          for attempt in $(seq 1 60); do
+            body="$(curl -fsS --max-time 60 "$API_URL/api/health" || true)"
+            commit="$(echo "$body" | jq -r '.commit // empty' 2>/dev/null || true)"
+            status="$(echo "$body" | jq -r '.status // empty' 2>/dev/null || true)"
+            echo "attempt $attempt: commit=${commit:-?} status=${status:-unreachable}"
+            if [ "$commit" = "$want" ] && [ "$status" = "healthy" ]; then
+              echo "Production API is live on $want" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production did not report $want within 20 minutes. Check the Render deploy log; roll back by running this workflow with the previous tag."
+          exit 1
+
+      - name: Deep health check
+        run: |
+          curl -fsS --max-time 60 "$API_URL/api/health/deep" | tee deep.json
+          echo
+          [ "$(jq -r .status deep.json)" = "healthy" ] || { echo "::warning::Deep health is degraded; see the checks above."; }
+
+  publish:
+    name: GitHub release notes
+    needs: [verify, deploy]
+    if: github.event_name == 'push' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"

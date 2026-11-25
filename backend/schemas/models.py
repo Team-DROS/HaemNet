@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 # ── Enums ─────────────────────────────────────────────────────────
 
+
 class Urgency(str, Enum):
     """Allowed urgency levels for a dispatch request."""
+
     ROUTINE = "routine"
     URGENT = "urgent"
     CRITICAL = "critical"
@@ -39,6 +41,7 @@ class CallStatus(str, Enum):
     ``completed`` is kept for backward compatibility with older clients and
     means the same as ``en_route`` (the donor has been sent directions).
     """
+
     RINGING = "ringing"
     ANSWERED = "answered"
     NO_ANSWER = "no_answer"
@@ -62,6 +65,7 @@ TERMINAL_OR_DECIDED = {
 
 class DonorLanguage(str, Enum):
     """Languages supported for AI voice conversations."""
+
     TAMIL = "tamil"
     HINDI = "hindi"
     ENGLISH = "english"
@@ -77,7 +81,7 @@ def normalise_language(value: Optional[str]) -> str:
     so unsupported values fall back to English instead.
     """
     lang = (value or "").strip().lower()
-    if lang in {l.value for l in DonorLanguage}:
+    if lang in {language.value for language in DonorLanguage}:
         return lang
     if lang:
         logger.warning("Unsupported donor language %r; using english", value)
@@ -86,8 +90,10 @@ def normalise_language(value: Optional[str]) -> str:
 
 # ── Request / Response Schemas ────────────────────────────────────
 
+
 class Coordinates(BaseModel):
     """Geographic coordinates of the requesting hospital."""
+
     lat: float = Field(..., ge=-90, le=90, description="Latitude")
     lng: float = Field(..., ge=-180, le=180, description="Longitude")
 
@@ -97,6 +103,7 @@ class DispatchRequest(BaseModel):
     Trigger Payload (Frontend → Backend).
     Sent by the Hospital Web App to initiate an emergency dispatch.
     """
+
     hospital_id: str = Field(..., min_length=1, description="Unique hospital identifier")
     blood_group: str = Field(..., min_length=1, description="Required blood group, e.g. 'O-'")
     urgency: Urgency = Field(..., description="Urgency level of the request")
@@ -108,6 +115,7 @@ class DispatchRequest(BaseModel):
 
 class DispatchResponse(BaseModel):
     """Acknowledgement returned after a dispatch is successfully queued."""
+
     dispatch_id: str = Field(..., description="Unique ID for this dispatch session")
     donors_matched: int = Field(..., ge=0, description="Number of eligible donors found")
     message: str = Field(default="Dispatch initiated")
@@ -124,6 +132,7 @@ class DonorStatusUpdate(BaseModel):
     ``distance_km`` and ``language`` are sent with the first (ringing) update;
     later updates may omit them and clients should keep the earlier values.
     """
+
     donor_id: str = Field(..., description="Unique donor identifier")
     name: str = Field(..., description="Donor display name")
     status: CallStatus = Field(..., description="Current call status")
@@ -136,11 +145,13 @@ class DonorStatusUpdate(BaseModel):
 
 # ── Internal Domain Models ────────────────────────────────────────
 
+
 class DonorNode(BaseModel):
     """
-    Mirrors the Donor Node properties stored in Neo4j.
+    A donor as stored in the database (MongoDB document or Neo4j node).
     Used internally — never exposed directly to the frontend.
     """
+
     id: UUID
     name: str
     phone: str
@@ -149,6 +160,9 @@ class DonorNode(BaseModel):
     location: Coordinates
     has_app: bool = False
     last_donated_date: Optional[datetime] = None
+    calls_opt_out: bool = False
+    # The donor asked for no calls until this time ("not available this week"). None means available.
+    calls_paused_until: Optional[datetime] = None
 
     @field_validator("language", mode="before")
     @classmethod
@@ -161,7 +175,7 @@ class DonorNode(BaseModel):
         if self.last_donated_date is None:
             return True
         last = self.last_donated_date
-        if last.tzinfo is None:  # Neo4j datetimes are aware; older payloads may be naive UTC
+        if last.tzinfo is None:  # stored datetimes are aware; older payloads may be naive UTC
             last = last.replace(tzinfo=timezone.utc)
         delta = datetime.now(timezone.utc) - last
         return delta.days > 56
@@ -169,16 +183,16 @@ class DonorNode(BaseModel):
 
 class DonationLog(BaseModel):
     """Payload sent when hospital staff logs a successful donation."""
+
     donor_id: str = Field(..., description="Donor whose donation is being recorded")
     hospital_id: str = Field(..., description="Hospital where the donation occurred")
     notes: Optional[str] = Field(None, description="Optional clinical notes")
-    dispatch_id: Optional[str] = Field(
-        None, description="Dispatch the donation fulfils; lets the request auto-close"
-    )
+    dispatch_id: Optional[str] = Field(None, description="Dispatch the donation fulfils; lets the request auto-close")
 
 
 class DonorResponse(BaseModel):
     """A donor accepting or declining a request from the mobile app."""
+
     dispatch_id: str = Field(..., min_length=1)
     phone: Optional[str] = Field(None, description="Optional; the signed-in donor's phone is used")
     accept: bool
@@ -186,9 +200,14 @@ class DonorResponse(BaseModel):
 
 class DonorRegistration(BaseModel):
     """Payload from mobile app to register/update a donor."""
+
     name: str = Field(..., description="Donor's full name")
     phone: str = Field(..., description="Donor's phone number")
     blood_group: str = Field(..., description="Blood group (e.g. O+)")
     language: str = Field(default="english", description="Preferred language for AI voice")
     lat: float = Field(..., description="Latitude")
     lng: float = Field(..., description="Longitude")
+    calls_consent: Optional[bool] = Field(
+        default=None,
+        description="True when the donor ticked consent to automated emergency calls; stored with a timestamp",
+    )

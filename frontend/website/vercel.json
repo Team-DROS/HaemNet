@@ -1,0 +1,23 @@
+{
+  "outputDirectory": "src",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/pages/index.html" },
+    { "source": "/how-it-works", "destination": "/pages/how-it-works.html" },
+    { "source": "/for-hospitals", "destination": "/pages/for-hospitals.html" },
+    { "source": "/for-donors", "destination": "/pages/for-donors.html" },
+    { "source": "/about", "destination": "/pages/about.html" },
+    { "source": "/contact", "destination": "/pages/contact.html" },
+    { "source": "/privacy", "destination": "/pages/privacy.html" },
+    { "source": "/delete-account", "destination": "/pages/delete-account.html" },
+    { "source": "/terms", "destination": "/pages/terms.html" },
+    { "source": "/thank-you", "destination": "/pages/thank-you.html" }
+  ],
+  "headers": [
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+      { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" }
+    ] }
+  ]
+}

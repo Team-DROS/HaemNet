@@ -180,11 +180,13 @@ export function useDispatchStore() {
   }, []);
 
   // ── HTTP ───────────────────────────────────────────────────────
-  const request = useCallback(async (path, { method = 'GET', body, form, auth = true } = {}) => {
+  const request = useCallback(async (path, { method = 'GET', body, form, formData, auth = true } = {}) => {
     const headers = {};
     if (auth && profileRef.current?.token) headers.Authorization = `Bearer ${profileRef.current.token}`;
     let payload;
-    if (form) {
+    if (formData) {
+      payload = formData; // the browser sets the multipart boundary itself
+    } else if (form) {
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
       payload = new URLSearchParams(form).toString();
     } else if (body) {
@@ -193,15 +195,18 @@ export function useDispatchStore() {
     }
     const res = await fetch(`${API_URL}${path}`, { method, headers, body: payload });
     let data = null;
-    try { data = await res.json(); } catch (e) { data = null; }
+    try { data = await res.json(); } catch { data = null; }
     if (res.status === 401 && auth && profileRef.current) {
       await clearSession('Your session expired. Please sign in again.');
     }
     if (!res.ok) {
       const detail = data?.detail;
-      const message = Array.isArray(detail) ? detail.map((d) => d.msg).join(', ') : detail || `Request failed (${res.status})`;
+      const message = Array.isArray(detail) ? detail.map((d) => d.msg).join(', ')
+        : (detail && typeof detail === 'object') ? detail.message || `Request failed (${res.status})`
+        : detail || `Request failed (${res.status})`;
       const err = new Error(message);
       err.status = res.status;
+      err.code = detail && typeof detail === 'object' ? detail.code : undefined;
       throw err;
     }
     return data;
@@ -230,7 +235,7 @@ export function useDispatchStore() {
           delete user.password_hash; // older builds stored the hash; never keep it
           setProfile(user);
         }
-      } catch (e) { /* ignore corrupt storage */ }
+      } catch { /* ignore corrupt storage */ }
       setBooting(false);
     })();
   }, []);
@@ -246,10 +251,45 @@ export function useDispatchStore() {
     return user;
   }, [request]);
 
-  const register = useCallback(async ({ name, location, phone, password }) => {
-    const data = await request('/api/auth/register', { method: 'POST', body: { name, location, phone, password }, auth: false });
+  const loginStaff = useCallback(async (hospitalId, email, password) => {
+    const data = await request('/api/auth/staff-token', {
+      method: 'POST', body: { hospital_id: hospitalId.trim(), email: email.trim(), password }, auth: false,
+    });
+    const user = { ...data.user, token: data.access_token };
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+    setNotice(null);
+    setProfile(user);
+    return user;
+  }, [request]);
+
+  const listStaff = useCallback(async () => (await request('/api/hospitals/me/staff')).staff, [request]);
+  const addStaff = useCallback((member) => request('/api/hospitals/me/staff', { method: 'POST', body: member }), [request]);
+  const removeStaff = useCallback((id) => request(`/api/hospitals/me/staff/${id}`, { method: 'DELETE' }), [request]);
+
+  const register = useCallback(async (fields) => {
+    const data = await request('/api/auth/register', { method: 'POST', body: fields, auth: false });
     return data.id;
   }, [request]);
+
+  // Verification status, documents and the review decision for this hospital.
+  const refreshProfile = useCallback(async () => {
+    const me = await request('/api/hospitals/me');
+    const merged = { ...profileRef.current, ...me, token: profileRef.current?.token };
+    delete merged.password_hash;
+    setProfile(merged);
+    AsyncStorage.setItem(USER_KEY, JSON.stringify(merged)).catch(() => {});
+    return me;
+  }, [request]);
+
+  const uploadDocument = useCallback(async (kind, file) => {
+    const formData = new FormData();
+    formData.append('kind', kind);
+    formData.append('file', file);
+    await request('/api/hospitals/me/documents', { method: 'POST', formData });
+    return refreshProfile();
+  }, [request, refreshProfile]);
+
+  const resendVerification = useCallback(() => request('/api/hospitals/resend-verification', { method: 'POST' }), [request]);
 
   const logout = useCallback(() => clearSession(null), [clearSession]);
 
@@ -263,7 +303,7 @@ export function useDispatchStore() {
 
   const handleMessage = useCallback((raw) => {
     let msg;
-    try { msg = JSON.parse(raw); } catch (e) { return; }
+    try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || msg.type === 'pong') return;
     if (msg.type === 'auth_ok') { retry.current.attempts = 0; setWsState('live'); return; }
     if (msg.type === 'auth_error') return; // the close handler signs the user out
@@ -301,7 +341,7 @@ export function useDispatchStore() {
     let socket;
     try {
       socket = new WebSocket(WS_URL);
-    } catch (e) {
+    } catch {
       setWsState('offline');
       return;
     }
@@ -310,7 +350,7 @@ export function useDispatchStore() {
     socket.onopen = () => {
       // First message authenticates; the server confirms with auth_ok.
       socket.send(JSON.stringify({ type: 'auth', token: profileRef.current?.token || '' }));
-      heartbeat = setInterval(() => { try { socket.send('ping'); } catch (e) { /* closed */ } }, 25000);
+      heartbeat = setInterval(() => { try { socket.send('ping'); } catch { /* closed */ } }, 25000);
     };
     socket.onmessage = (event) => handleMessage(event.data);
     socket.onclose = (event) => {
@@ -339,7 +379,7 @@ export function useDispatchStore() {
         });
         return next;
       });
-    } catch (e) { /* dashboard still works from the live feed */ }
+    } catch { /* dashboard still works from the live feed */ }
   }, [request]);
 
   const refreshAvailability = useCallback(async () => {
@@ -358,7 +398,7 @@ export function useDispatchStore() {
       // The backend can run on MongoDB or Neo4j; database_status covers both,
       // and older builds only sent the engine's own field.
       setHealth({ ...data, dbOk: (data.database_status || data.mongodb || data.neo4j) === 'connected' });
-    } catch (e) {
+    } catch {
       setHealth({ status: 'unreachable' });
     }
   }, [request]);
@@ -380,7 +420,7 @@ export function useDispatchStore() {
         if (profileRef.current) AsyncStorage.setItem(historyKey(profileRef.current.id), JSON.stringify(next)).catch(() => {});
         return next;
       });
-    } catch (e) { /* keep showing the local copy */ }
+    } catch { /* keep showing the local copy */ }
   }, [request]);
 
   // Everything that starts when a hospital signs in.
@@ -395,13 +435,14 @@ export function useDispatchStore() {
       try {
         const saved = await AsyncStorage.getItem(historyKey(profile.id));
         if (saved) setHistory(JSON.parse(saved));
-      } catch (e) { /* ignore */ }
+      } catch { /* ignore */ }
       refreshHistory();
     })();
+    const retryState = retry.current;
     return () => {
       clearInterval(healthTimer);
-      retry.current.stopped = true;
-      if (retry.current.timer) clearTimeout(retry.current.timer);
+      retryState.stopped = true;
+      if (retryState.timer) clearTimeout(retryState.timer);
       if (ws.current) ws.current.close();
     };
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -431,13 +472,20 @@ export function useDispatchStore() {
 
   // ── Actions ────────────────────────────────────────────────────
   const triggerDispatch = useCallback(async ({ patient, bloodGroup, units, urgency, address }) => {
-    const data = await request('/api/dispatch', {
-      method: 'POST',
-      body: {
-        hospital_id: profileRef.current?.id, blood_group: bloodGroup, urgency,
-        coordinates: { lat: 0, lng: 0 }, address, patient_name: patient || null, units,
-      },
-    });
+    let data;
+    try {
+      data = await request('/api/dispatch', {
+        method: 'POST',
+        body: {
+          hospital_id: profileRef.current?.id, blood_group: bloodGroup, urgency,
+          coordinates: { lat: 0, lng: 0 }, address, patient_name: patient || null, units,
+        },
+      });
+    } catch (e) {
+      // Approval was withdrawn: show the right screen instead of an error.
+      if (e.code && e.code.startsWith('hospital_')) await refreshProfile().catch(() => {});
+      throw e;
+    }
     if (!data.donors_matched) return { matched: 0, message: data.message };
     const createdAt = toMs(data.created_at);
     update(data.dispatch_id, (em) => {
@@ -452,7 +500,7 @@ export function useDispatchStore() {
     });
     setSelectedId(data.dispatch_id);
     return { matched: data.donors_matched, id: data.dispatch_id };
-  }, [request, update]);
+  }, [request, update, refreshProfile]);
 
   const markDonated = useCallback(async (emergencyId, donorId) => {
     await request('/api/donate', {
@@ -468,7 +516,7 @@ export function useDispatchStore() {
   }, [request, update]);
 
   return {
-    booting, profile, login, register, logout, notice, setNotice,
+    booting, profile, login, loginStaff, listStaff, addStaff, removeStaff, register, refreshProfile, uploadDocument, resendVerification, logout, notice, setNotice,
     emergencies, ordered, selectedId, setSelectedId, selected: selectedId ? emergencies[selectedId] : null,
     history, wsState, health, availability, now,
     triggerDispatch, markDonated, closeEmergency, refreshAvailability, refreshHistory, reconnect: connect,

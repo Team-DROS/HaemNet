@@ -23,7 +23,15 @@ def get_client() -> AsyncMongoClient:
     """Return the process-wide MongoDB client, creating it lazily."""
     global _client
     if _client is None:
-        _client = AsyncMongoClient(settings.mongodb_uri, appname="haemnet-backend")
+        _client = AsyncMongoClient(
+            settings.mongodb_uri,
+            appname="haemnet-backend",
+            serverSelectionTimeoutMS=settings.mongodb_server_selection_timeout_ms,
+            connectTimeoutMS=settings.mongodb_server_selection_timeout_ms,
+            maxPoolSize=settings.mongodb_max_pool_size,
+            retryWrites=True,
+            retryReads=True,
+        )
         logger.info("MongoDB client initialized")
     return _client
 

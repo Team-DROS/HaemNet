@@ -6,7 +6,7 @@ import bcrypt
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from backend.api import auth, routes
+from backend.api import auth, donors
 from backend.api.websockets import manager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.tests.conftest import HOSPITAL, donor, donor_headers
@@ -17,6 +17,7 @@ def hospital_token(hospital_id=HOSPITAL):
 
 
 # ── token roles ───────────────────────────────────────────────────
+
 
 def test_donor_token_cannot_call_hospital_endpoints(client, store):
     res = client.get("/api/dispatches/active", headers=donor_headers())
@@ -45,8 +46,9 @@ def test_donor_cannot_read_or_answer_for_someone_else(client, store):
     store.add("dp-1", donors=[donor("d1", "+919000000001")])
     intruder = donor_headers("+919222222222")
     assert client.get("/api/donor/requests/9000000001", headers=intruder).status_code == 403
-    res = client.post("/api/donor/respond", json={"dispatch_id": "dp-1", "phone": "9000000001", "accept": True},
-                      headers=intruder)
+    res = client.post(
+        "/api/donor/respond", json={"dispatch_id": "dp-1", "phone": "9000000001", "accept": True}, headers=intruder
+    )
     assert res.status_code == 403
     assert store.dispatches["dp-1"]["donors"]["d1"]["status"] == "ringing"
 
@@ -57,7 +59,7 @@ def test_register_uses_verified_phone(client, monkeypatch):
     async def fake_register(**kwargs):
         saved.update(kwargs)
 
-    monkeypatch.setattr(routes, "register_donor", fake_register)
+    monkeypatch.setattr(donors, "register_donor", fake_register)
     body = {"name": "Ramesh", "phone": "9000000001", "blood_group": "O-", "language": "Tamil", "lat": 13.0, "lng": 80.2}
     assert client.post("/api/donor/register", json=body, headers=donor_headers("+919333333333")).status_code == 403
     assert client.post("/api/donor/register", json=body, headers=donor_headers()).status_code == 200
@@ -66,6 +68,7 @@ def test_register_uses_verified_phone(client, monkeypatch):
 
 
 # ── hospital login throttling ─────────────────────────────────────
+
 
 def test_login_is_throttled_after_repeated_failures(client, monkeypatch):
     hashed = bcrypt.hashpw(b"right", bcrypt.gensalt(rounds=4)).decode()
@@ -181,6 +184,7 @@ def test_register_validates_number_and_password(client, logins):
 
 
 # ── dashboard WebSocket isolation ─────────────────────────────────
+
 
 def test_websocket_rejects_missing_or_bad_token(client):
     with client.websocket_connect("/ws/dashboard") as ws:

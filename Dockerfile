@@ -43,7 +43,10 @@ COPY database/ ./database/
 
 # Cloud Run / Render both inject PORT — default to 8000 for local runs
 ENV PORT=8000
+# Worker processes per container. More than 1 needs REDIS_URL so limits and live
+# dashboard updates are shared between workers (see backend/README.md).
+ENV WEB_CONCURRENCY=1
 EXPOSE 8000
 
 # --loop asyncio is required: PyMongo's async client hangs on uvloop.
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT} --loop asyncio --proxy-headers --forwarded-allow-ips=*"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT} --loop asyncio --workers ${WEB_CONCURRENCY} --proxy-headers --forwarded-allow-ips=*"]

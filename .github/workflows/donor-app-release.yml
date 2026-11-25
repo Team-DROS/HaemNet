@@ -1,0 +1,92 @@
+name: Donor app release
+
+# Builds the donor app on EAS from a donor-vX.Y.Z tag (or by hand), after the same lint
+# and tests as CI. The tag must match "version" in frontend/donor-mobile/app.json, so the
+# Play Store version name always matches the tag; EAS bumps the version code itself.
+#
+#   git tag -a donor-v1.3.0 -m "Donor app 1.3.0" && git push origin donor-v1.3.0
+#
+# A tag builds the production AAB and submits it to the Play Console internal track as a
+# draft (eas.json "submit.production"), so nothing reaches donors without a person
+# promoting it in the console. Run by hand to build a staging APK for testers, or to
+# send a build to the closed test track.
+#
+# Needs: secret EXPO_TOKEN (expo.dev > Account settings > Access tokens). Submitting also
+# needs the Google Play service account key uploaded to EAS once (eas credentials).
+# See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["donor-v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        type: choice
+        options: [staging, preview, production]
+        default: staging
+      submit:
+        description: "Submit to Google Play (production profile only)"
+        type: choice
+        options: [none, production, closed-test]
+        default: none
+
+permissions:
+  contents: read
+
+concurrency:
+  group: donor-app-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend/donor-mobile
+    env:
+      PROFILE: ${{ inputs.profile || 'production' }}
+      SUBMIT: ${{ github.event_name == 'push' && 'production' || inputs.submit || 'none' }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the release settings
+        env:
+          TAG: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          [ -n "$EXPO_TOKEN" ] || { echo "::error::Secret EXPO_TOKEN is not set (expo.dev > Access tokens)"; exit 1; }
+          version="$(node -p "require('./app.json').expo.version")"
+          if [ "$EVENT" = "push" ] && [ "$TAG" != "donor-v$version" ]; then
+            echo "::error::Tag $TAG does not match app.json version $version. Bump the version in a PR first."; exit 1
+          fi
+          if [ "$SUBMIT" != "none" ] && [ "$PROFILE" != "production" ]; then
+            echo "::error::Only production builds (AAB) can go to Google Play."; exit 1
+          fi
+          echo "Building $PROFILE (version $version), submit: $SUBMIT" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/donor-mobile/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build on EAS
+        run: |
+          if [ "$SUBMIT" = "none" ]; then
+            eas build --platform android --profile "$PROFILE" --non-interactive --no-wait
+          else
+            eas build --platform android --profile "$PROFILE" --non-interactive --auto-submit-with-profile "$SUBMIT"
+          fi
+          echo "Follow the build at https://expo.dev (project donor-mobile > Builds)." >> "$GITHUB_STEP_SUMMARY"

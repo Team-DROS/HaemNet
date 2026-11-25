@@ -9,42 +9,57 @@ from __future__ import annotations
 
 import asyncio
 import logging
-
-import sentry_sdk
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.auth import donor_router as donor_auth_router, router as auth_router
+from backend.api.admin import router as admin_router
+from backend.api.auth import donor_router as donor_auth_router
+from backend.api.auth import router as auth_router
 from backend.api.callbacks import router as callback_router
-from backend.api.routes import router as api_router
+from backend.api.contact import router as contact_router
+from backend.api.dispatches import router as dispatches_router
+from backend.api.donors import router as donors_router
+from backend.api.errors import register_error_handlers
+from backend.api.health import router as health_router
+from backend.api.hospital_account import router as hospital_account_router
+from backend.api.hospital_staff import router as hospital_staff_router
+from backend.api.websockets import manager as ws_manager
 from backend.api.websockets import router as ws_router
 from backend.config import settings
+from backend.db_services import close as close_database
+from backend.db_services import ensure_indexes
+from backend.db_services.mongodb import close as close_mongodb
+from backend.hardening import SecurityMiddleware
+from backend.observability import RequestIdMiddleware, configure_logging
+from backend.services.push_service import close as close_push
+from backend.services.redis_client import close as close_redis
+from backend.services.sarvam_service import close as close_sarvam
+from backend.services.telephony import get_telephony
 
-# ── Logging ───────────────────────────────────────────────────────
-
-logging.basicConfig(
-    level=logging.DEBUG if settings.app_env == "development" else logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
+SERVICE_NAME = "AI Blood Dispatch Network"
+SERVICE_VERSION = "0.1.0"
 
-# ── Sentry Setup ──────────────────────────────────────────────────
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-    )
+
+def _is_production() -> bool:
+    return settings.app_env.lower() == "production"
+
+
+# ── Startup and shutdown steps ────────────────────────────────────
+
+
+def _configure_sentry() -> None:
+    if not settings.sentry_dsn:
+        logger.warning("SENTRY_DSN not set. Sentry is disabled.")
+        return
+    sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
     logger.info("Sentry initialized")
-else:
-    logger.warning("SENTRY_DSN not set. Sentry is disabled.")
 
-
-# ── Lifespan (startup / shutdown) ─────────────────────────────────
 
 def _warn_if_uvloop() -> None:
     """
@@ -60,90 +75,123 @@ def _warn_if_uvloop() -> None:
         return
     if "uvloop" in loop_module:
         logger.error(
-            "Running on uvloop with the MongoDB backend: requests will hang. "
-            "Start the server with `--loop asyncio`."
+            "Running on uvloop with the MongoDB backend: requests will hang. Start the server with `--loop asyncio`."
         )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Manage resources that need setup/teardown around the app's
-    lifecycle (e.g. HTTP clients, DB connections).
-    """
+def _log_startup_configuration() -> None:
+    """Say what is and is not configured, so a misconfigured deploy is obvious from the logs."""
+    logger.info("Starting up (env=%s, database=%s)", settings.app_env, settings.db_backend)
     logger.info(
-        "🚀  Blood Dispatch Backend starting up (env=%s, database=%s)",
-        settings.app_env, settings.db_backend,
+        "Voice interpretation mode=%s model=%s",
+        settings.voice_intent_mode,
+        settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords",
     )
-    _warn_if_uvloop()
-    logger.info("Voice interpretation mode=%s model=%s", settings.voice_intent_mode,
-                settings.voice_intent_model if settings.voice_intent_mode == "ai" else "keywords")
+    if settings.app_env.lower() in {"production", "staging"} and not settings.s3_bucket:
+        logger.warning(
+            "S3_BUCKET is not set: hospital documents are stored on local disk and are lost "
+            "on hosts with an ephemeral disk (for example Render free). Set S3_BUCKET for production."
+        )
     if not settings.twilio_configured:
         logger.warning("Twilio is not configured: AI voice calls are disabled.")
     if not settings.sarvam_configured:
         logger.warning("Sarvam AI is not configured: the voice agent cannot speak or listen.")
+
+
+async def _prepare_database() -> None:
     try:
-        from backend.db_services import ensure_indexes
         await ensure_indexes()
     except Exception as exc:  # the app still starts; /api/health reports the problem
         logger.error("Could not prepare database indexes: %s", exc)
-    yield
-    # Shutdown — close service clients.
-    from backend.db_services import close as close_db
-    from backend.db_services.mongodb import close as close_mongodb
-    from backend.services.twilio_service import close as close_twilio
-    from backend.services.push_service import close as close_push
-    from backend.services.sarvam_service import close as close_sarvam
 
-    await close_twilio()
+
+async def _close_clients() -> None:
+    await close_redis()
+    await get_telephony().close()
     await close_sarvam()
     await close_push()
-    await close_db()
+    await close_database()
     await close_mongodb()
-    logger.info("🛑  Blood Dispatch Backend shut down cleanly.")
 
 
-# ── App Factory ───────────────────────────────────────────────────
-
-app = FastAPI(
-    title="AI Blood Dispatch Network",
-    description=(
-        "Real-time, AI-orchestrated emergency blood dispatch system. "
-        "Queries the donor database for eligible donors, orchestrates "
-        "concurrent multilingual AI voice calls, and streams live status "
-        "updates to hospital dashboards via WebSocket."
-    ),
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-# ── CORS ──────────────────────────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ── Mount Routers ─────────────────────────────────────────────────
-app.include_router(api_router)
-app.include_router(ws_router)
-app.include_router(callback_router)
-app.include_router(auth_router)
-app.include_router(donor_auth_router)
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Set up resources before serving and release them on shutdown."""
+    get_telephony()  # fail at startup, not on the first emergency, if TELEPHONY_PROVIDER is misspelt
+    _log_startup_configuration()
+    _warn_if_uvloop()
+    await _prepare_database()
+    await ws_manager.start_pubsub()
+    yield
+    await ws_manager.stop_pubsub()
+    await _close_clients()
+    logger.info("Shut down cleanly.")
 
 
-# ── Root ──────────────────────────────────────────────────────────
+# ── App factory ───────────────────────────────────────────────────
 
-@app.get("/", tags=["meta"])
-async def root():
-    """API root — service identification."""
-    return {
-        "service": "AI Blood Dispatch Network",
-        "version": "0.1.0",
-        "docs": "/docs",
-        "health": "/api/health",
-        "voice_intent_mode": settings.voice_intent_mode,
-        "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,
-    }
+
+def create_app() -> FastAPI:
+    """Build the application. Settings are read when this is called."""
+    configure_logging(logging.DEBUG if settings.app_env == "development" else logging.INFO, settings.log_format.lower())
+    _configure_sentry()
+
+    application = FastAPI(
+        title=SERVICE_NAME,
+        description=(
+            "Real-time, AI-orchestrated emergency blood dispatch system. "
+            "Finds eligible donors, orchestrates concurrent multilingual AI voice calls, "
+            "and streams live status updates to hospital dashboards via WebSocket."
+        ),
+        version=SERVICE_VERSION,
+        lifespan=lifespan,
+        # Interactive API docs list every endpoint; keep them off in production.
+        docs_url=None if _is_production() else "/docs",
+        redoc_url=None,
+        openapi_url=None if _is_production() else "/openapi.json",
+    )
+
+    register_error_handlers(application)
+
+    # Added innermost first: a request meets CORS, then request IDs, then security headers and size limits.
+    application.add_middleware(SecurityMiddleware)
+    application.add_middleware(RequestIdMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    for router in (
+        health_router,
+        dispatches_router,
+        donors_router,
+        ws_router,
+        callback_router,
+        auth_router,
+        donor_auth_router,
+        hospital_account_router,
+        hospital_staff_router,
+        admin_router,
+        contact_router,
+    ):
+        application.include_router(router)
+
+    @application.get("/", tags=["meta"])
+    async def root() -> dict:
+        """Service identification."""
+        return {
+            "service": SERVICE_NAME,
+            "version": SERVICE_VERSION,
+            "docs": None if _is_production() else "/docs",
+            "health": "/api/health",
+            "voice_intent_mode": settings.voice_intent_mode,
+            "voice_intent_model": settings.voice_intent_model if settings.voice_intent_mode == "ai" else None,
+        }
+
+    return application
+
+
+app = create_app()

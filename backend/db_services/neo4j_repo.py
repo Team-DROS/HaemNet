@@ -24,8 +24,8 @@ from typing import List, Optional
 from uuid import uuid4
 
 from neo4j import AsyncDriver, AsyncGraphDatabase
-from neo4j.exceptions import SessionExpired, ServiceUnavailable
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from backend.config import settings
 from backend.schemas.models import Coordinates, DonorNode
@@ -52,7 +52,7 @@ def _get_driver() -> AsyncDriver:
 
 async def ensure_indexes() -> None:
     """No-op: the Neo4j schema and indexes are managed in database/schema.cypher."""
-    return None
+    return
 
 
 async def db_health() -> dict:
@@ -140,7 +140,7 @@ ORDER BY point.distance(d.location, point({latitude: $lat, longitude: $lng})) AS
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def find_eligible_donors(
     blood_group: str,
@@ -174,7 +174,9 @@ async def find_eligible_donors(
     donors = [_record_to_donor_node(r) for r in records]
     logger.info(
         "find_eligible_donors: %d matches (blood_group=%s, radius=%skm)",
-        len(donors), blood_group, radius_km,
+        len(donors),
+        blood_group,
+        radius_km,
     )
     return donors
 
@@ -195,7 +197,7 @@ RETURN d.id AS id
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def update_donation_date(
     donor_id: str,
@@ -246,7 +248,7 @@ RETURN
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def get_donor_by_id(donor_id: str) -> Optional[DonorNode]:
     """
@@ -279,11 +281,12 @@ RETURN
     d.last_donated_date AS last_donated_date
 """
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def get_donor_by_phone(phone: str) -> Optional[DonorNode]:
     """
@@ -322,7 +325,7 @@ RETURN d.push_token AS push_token
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def get_donor_push_token(donor_id: str) -> Optional[str]:
     """
@@ -372,7 +375,7 @@ RETURN
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def register_donor(
     name: str,
@@ -383,6 +386,7 @@ async def register_donor(
     lng: float,
     last_donated_date: Optional[str] = None,
     push_token: Optional[str] = None,
+    calls_consent: Optional[bool] = None,  # accepted for API parity; consent is only stored on MongoDB
 ) -> DonorNode:
     """
     Create or update a donor who registered via the mobile app.
@@ -411,6 +415,8 @@ async def register_donor(
         )
         record = await result.single()
 
+    if record is None:
+        raise RuntimeError("Donor upsert returned no record")
     logger.info("Donor registered/updated: phone=%s", phone)
     return _record_to_donor_node(record.data())
 
@@ -467,7 +473,7 @@ async def db_clear_donor_password(phone: str) -> bool:
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def delete_donor(phone: str) -> bool:
     """
@@ -485,6 +491,7 @@ async def delete_donor(phone: str) -> bool:
         logger.info("Donor deleted: phone=%s", phone)
         return True
     return False
+
 
 # -----------------------------------------------------------------------------
 # 6. DISPATCH STORE INTEGRATION
@@ -511,11 +518,12 @@ MERGE (c)-[:CALLED]->(d)
 RETURN dp.id AS id
 """
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((SessionExpired, ServiceUnavailable)),
-    reraise=True
+    reraise=True,
 )
 async def db_create_dispatch(
     dispatch_id: str,
@@ -534,10 +542,7 @@ async def db_create_dispatch(
     ``roster`` is a list of ``{"id": donor_id, "distance_km": float | None}``.
     A plain list of donor-id strings is still accepted for older callers.
     """
-    roster = [
-        entry if isinstance(entry, dict) else {"id": entry, "distance_km": None}
-        for entry in roster
-    ]
+    roster = [entry if isinstance(entry, dict) else {"id": entry, "distance_km": None} for entry in roster]
     driver = _get_driver()
     created_at = datetime.now(timezone.utc).isoformat()
     async with driver.session() as session:
@@ -555,15 +560,18 @@ async def db_create_dispatch(
             roster=roster,
         )
 
+
 _REGISTER_CALL_SID_QUERY = """
 MATCH (c:CallSession {dispatch_id: $dispatch_id, donor_id: $donor_id})
 SET c.sid = $call_sid
 """
 
+
 async def db_register_call_sid(call_sid: str, dispatch_id: str, donor_id: str) -> None:
     driver = _get_driver()
     async with driver.session() as session:
         await session.run(_REGISTER_CALL_SID_QUERY, call_sid=call_sid, dispatch_id=dispatch_id, donor_id=donor_id)
+
 
 _GET_DISPATCH_QUERY = """
 MATCH (dp:Dispatch {id: $dispatch_id})
@@ -585,6 +593,7 @@ RETURN dp.id AS dispatch_id, dp.hospital_id AS hospital_id, dp.blood_group AS bl
        }) AS donors
 """
 
+
 async def db_get_dispatch(dispatch_id: str) -> Optional[dict]:
     driver = _get_driver()
     async with driver.session() as session:
@@ -600,10 +609,12 @@ async def db_get_dispatch(dispatch_id: str) -> Optional[dict]:
         data["donors"] = donors_dict
         return data
 
+
 _GET_BY_CALL_SID_QUERY = """
 MATCH (c:CallSession {sid: $call_sid})
 RETURN c.dispatch_id AS dispatch_id, c.donor_id AS donor_id
 """
+
 
 async def db_get_by_call_sid(call_sid: str) -> Optional[tuple[str, str]]:
     driver = _get_driver()
@@ -613,6 +624,7 @@ async def db_get_by_call_sid(call_sid: str) -> Optional[tuple[str, str]]:
         if record:
             return record["dispatch_id"], record["donor_id"]
         return None
+
 
 _UPDATE_DONOR_STATUS_QUERY = """
 MATCH (c:CallSession {dispatch_id: $dispatch_id, donor_id: $donor_id})
@@ -630,16 +642,24 @@ RETURN c.donor_id
 # Statuses that mean the donor said yes (used for time-to-first-acceptance).
 _ACCEPT_STATUSES = ["accepted", "en_route", "completed", "donated"]
 
-async def db_update_donor_status(dispatch_id: str, donor_id: str, status: str, eta_minutes: Optional[int] = None) -> bool:
+
+async def db_update_donor_status(
+    dispatch_id: str, donor_id: str, status: str, eta_minutes: Optional[int] = None
+) -> bool:
     driver = _get_driver()
     async with driver.session() as session:
         result = await session.run(
-            _UPDATE_DONOR_STATUS_QUERY, dispatch_id=dispatch_id, donor_id=donor_id, status=status,
-            eta_minutes=eta_minutes, now=datetime.now(timezone.utc).isoformat(),
+            _UPDATE_DONOR_STATUS_QUERY,
+            dispatch_id=dispatch_id,
+            donor_id=donor_id,
+            status=status,
+            eta_minutes=eta_minutes,
+            now=datetime.now(timezone.utc).isoformat(),
             accept_statuses=_ACCEPT_STATUSES,
         )
         record = await result.single()
         return record is not None
+
 
 _MARK_COMPLETE_QUERY = """
 MATCH (dp:Dispatch {id: $dispatch_id})
@@ -648,13 +668,17 @@ SET dp.is_complete = true,
     dp.fulfilled = coalesce(dp.fulfilled, false) OR $fulfilled
 """
 
+
 async def db_mark_complete(dispatch_id: str, fulfilled: bool = False) -> None:
     driver = _get_driver()
     async with driver.session() as session:
         await session.run(
-            _MARK_COMPLETE_QUERY, dispatch_id=dispatch_id, fulfilled=fulfilled,
+            _MARK_COMPLETE_QUERY,
+            dispatch_id=dispatch_id,
+            fulfilled=fulfilled,
             now=datetime.now(timezone.utc).isoformat(),
         )
+
 
 _REMOVE_DISPATCH_QUERY = """
 MATCH (dp:Dispatch {id: $dispatch_id})
@@ -662,15 +686,18 @@ OPTIONAL MATCH (dp)-[:HAS_CALL]->(c:CallSession)
 DETACH DELETE dp, c
 """
 
+
 async def db_remove_dispatch(dispatch_id: str) -> None:
     driver = _get_driver()
     async with driver.session() as session:
         await session.run(_REMOVE_DISPATCH_QUERY, dispatch_id=dispatch_id)
 
+
 _ACTIVE_COUNT_QUERY = """
 MATCH (dp:Dispatch {is_complete: false})
 RETURN count(dp) AS active_count
 """
+
 
 async def db_active_count() -> int:
     driver = _get_driver()
@@ -679,12 +706,14 @@ async def db_active_count() -> int:
         record = await result.single()
         return record["active_count"] if record else 0
 
+
 _SUMMARY_QUERY = """
 MATCH (dp:Dispatch)
 OPTIONAL MATCH (dp)-[:HAS_CALL]->(c:CallSession)
 RETURN dp.id AS dispatch_id, count(c) AS donors, dp.is_complete AS is_complete, dp.created_at AS created_at
 ORDER BY dp.created_at DESC
 """
+
 
 async def db_summary() -> list[dict]:
     driver = _get_driver()
@@ -700,8 +729,12 @@ WHERE point.distance(d.location, point({latitude: $lat, longitude: $lng})) <= $r
 RETURN d.blood_group AS blood_group, count(d) AS available
 """
 
+
 async def db_eligible_counts_by_group(
-    lat: float, lng: float, radius_km: float = 10.0, cooldown_days: int = 56,
+    lat: float,
+    lng: float,
+    radius_km: float = 10.0,
+    cooldown_days: int = 56,
 ) -> dict[str, int]:
     """
     How many donors of each blood group could be called right now within
@@ -713,8 +746,11 @@ async def db_eligible_counts_by_group(
     driver = _get_driver()
     async with driver.session() as session:
         result = await session.run(
-            _ELIGIBLE_COUNTS_QUERY, lat=lat, lng=lng,
-            radius_meters=radius_km * 1000, cooldown_cutoff=cooldown_cutoff,
+            _ELIGIBLE_COUNTS_QUERY,
+            lat=lat,
+            lng=lng,
+            radius_meters=radius_km * 1000,
+            cooldown_cutoff=cooldown_cutoff,
         )
         return {record["blood_group"]: record["available"] async for record in result}
 
@@ -725,6 +761,7 @@ RETURN dp.id AS dispatch_id
 ORDER BY dp.created_at DESC
 LIMIT $limit
 """
+
 
 async def db_active_dispatch_ids(hospital_id: str, limit: int = 20) -> list[str]:
     """Open dispatches for one hospital, newest first."""
@@ -765,8 +802,12 @@ async def db_dispatch_history(hospital_id: str, since_iso: str, limit: int = 500
     driver = _get_driver()
     async with driver.session() as session:
         result = await session.run(
-            _HISTORY_QUERY, hospital_id=hospital_id, since=since_iso, limit=limit,
-            answered=_ANSWERED_STATUSES, accepted=_ACCEPT_STATUSES,
+            _HISTORY_QUERY,
+            hospital_id=hospital_id,
+            since=since_iso,
+            limit=limit,
+            answered=_ANSWERED_STATUSES,
+            accepted=_ACCEPT_STATUSES,
         )
         return [record.data() async for record in result]
 
@@ -790,6 +831,7 @@ RETURN dp.id AS dispatch_id,
 ORDER BY dp.created_at DESC
 """
 
+
 async def db_requests_for_donor(phone: str) -> list[dict]:
     """
     Open requests this donor was matched to and has not yet decided on.
@@ -804,6 +846,7 @@ async def db_requests_for_donor(phone: str) -> list[dict]:
         )
         return [record.data() async for record in result]
 
+
 _CREATE_HOSPITAL_QUERY = """
 MERGE (h:Hospital {id: $id})
 SET h.name = $name,
@@ -813,17 +856,22 @@ SET h.name = $name,
 RETURN h
 """
 
-async def db_create_hospital(id: str, name: str, location: str, phone: str, password_hash: str) -> dict:
+
+async def db_create_hospital(id: str, name: str, location: str, phone: str, password_hash: str) -> Optional[dict]:
     driver = _get_driver()
     async with driver.session() as session:
-        result = await session.run(_CREATE_HOSPITAL_QUERY, id=id, name=name, location=location, phone=phone, password_hash=password_hash)
+        result = await session.run(
+            _CREATE_HOSPITAL_QUERY, id=id, name=name, location=location, phone=phone, password_hash=password_hash
+        )
         record = await result.single()
         return record["h"] if record else None
+
 
 _GET_HOSPITAL_QUERY = """
 MATCH (h:Hospital {id: $id})
 RETURN h
 """
+
 
 async def db_get_hospital_by_id(id: str) -> Optional[dict]:
     driver = _get_driver()
@@ -831,3 +879,15 @@ async def db_get_hospital_by_id(id: str) -> Optional[dict]:
         result = await session.run(_GET_HOSPITAL_QUERY, id=id)
         record = await result.single()
         return record["h"] if record else None
+
+
+async def db_set_calls_opt_out(phone: str, opt_out: bool) -> bool:
+    raise NotImplementedError("Call opt-out needs the MongoDB data layer")
+
+
+async def db_set_calls_paused_until(phone: str, until: Optional[datetime]) -> bool:
+    raise NotImplementedError("Pausing calls needs the MongoDB data layer")
+
+
+async def db_set_donor_push_token(phone: str, token: Optional[str]) -> bool:
+    raise NotImplementedError("Push token updates need the MongoDB data layer")

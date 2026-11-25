@@ -7,14 +7,17 @@ import { Check, HaemNetMark, Hospital, Lock, Mic, Navigation, Network, Phone, Ma
 import { color, font, radius } from '../theme';
 import { Button } from '../ui';
 import ThemeToggle from '../ThemeToggle';
+import Turnstile, { TURNSTILE_SITE_KEY } from '../Turnstile';
 
 export default function LoginScreen({ store, theme, onToggleTheme }) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '' });
+  const [form, setForm] = useState({ id: '', password: '', name: '', location: '', phone: '', email: '', staffEmail: '', contact: '', hfr: '', regNo: '', licence: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [asStaff, setAsStaff] = useState(false);
+  const [botToken, setBotToken] = useState(null);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
@@ -22,21 +25,36 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
     if (mode === 'login') {
       if (!form.id.trim() || !form.password) return setError('Enter your hospital ID and password.');
       setBusy(true);
-      try { await store.login(form.id, form.password); } catch (e) {
-        setError(e.status === 401 ? 'Hospital ID or password is incorrect.' : `Could not sign in: ${e.message}`);
+      if (asStaff && !form.staffEmail.trim()) { setBusy(false); return setError('Enter your staff email address.'); }
+      try {
+        if (asStaff) await store.loginStaff(form.id, form.staffEmail, form.password);
+        else await store.login(form.id, form.password);
+      } catch (e) {
+        setError(e.status === 401 ? (asStaff ? 'Hospital ID, email or password is incorrect.' : 'Hospital ID or password is incorrect.') : `Could not sign in: ${e.message}`);
       }
       setBusy(false);
     } else {
-      if (!form.name.trim() || !form.location.trim() || form.password.length < 6) {
-        return setError('Fill in every field. Passwords need at least 6 characters.');
+      if (!form.name.trim() || !form.location.trim() || !form.contact.trim() || form.password.length < 8) {
+        return setError('Fill in every required field. Passwords need at least 8 characters.');
       }
+      if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setError('Enter the hospital\'s official email address.');
       if (!/^\d{10}$/.test(form.phone)) return setError('Enter a 10-digit mobile number.');
+      if (!form.hfr.trim() && !form.regNo.trim()) return setError('Enter your HFR ID or state registration number.');
+      if (TURNSTILE_SITE_KEY && !botToken) return setError('Complete the spam check first.');
       setBusy(true);
       try {
-        const id = await store.register({ name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password });
-        setForm((f) => ({ ...f, id }));
-        setMode('login');
-        setSuccess(`Registered. Your hospital ID is ${id}. Keep it safe; you sign in with it.`);
+        const id = await store.register({
+          name: form.name.trim(), location: form.location.trim(), phone: `+91${form.phone}`, password: form.password,
+          official_email: form.email.trim(), contact_person: form.contact.trim(),
+          hfr_id: form.hfr.trim() || null, registration_number: form.regNo.trim() || null,
+          blood_centre_licence: form.licence.trim() || null, turnstile_token: botToken,
+        });
+        // Sign in straight away so the hospital lands on the verification steps.
+        try { await store.login(id, form.password); } catch {
+          setForm((f) => ({ ...f, id }));
+          setMode('login');
+          setSuccess(`Registered. Your hospital ID is ${id}. Sign in to finish verification.`);
+        }
       } catch (e) { setError(`Registration failed: ${e.message}`); }
       setBusy(false);
     }
@@ -69,6 +87,11 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
             <>
               <Field label="Hospital name" icon={<Hospital size={16} color={color.faint} />} value={form.name} onChangeText={set('name')} placeholder="Apollo Hospital" />
               <Field label="Full address" icon={<MapPin size={16} color={color.faint} />} value={form.location} onChangeText={set('location')} placeholder="21 Greams Lane, Chennai 600006" />
+              <Field label="Official hospital email" icon={<Phone size={16} color={color.faint} />} value={form.email} onChangeText={set('email')} placeholder="blood.bank@hospital.in" keyboardType="email-address" autoCapitalize="none" />
+              <Field label="Contact person" icon={<Hospital size={16} color={color.faint} />} value={form.contact} onChangeText={set('contact')} placeholder="Dr A. Rao, Blood bank in-charge" />
+              <Field label="ABDM HFR ID" icon={<Hospital size={16} color={color.faint} />} value={form.hfr} onChangeText={set('hfr')} placeholder="IN0410000000" autoCapitalize="characters" mono />
+              <Field label="State registration number" icon={<Hospital size={16} color={color.faint} />} value={form.regNo} onChangeText={set('regNo')} placeholder="Clinical Establishments registration" />
+              <Field label="Blood centre licence (optional)" icon={<Hospital size={16} color={color.faint} />} value={form.licence} onChangeText={set('licence')} placeholder="If you store blood" />
               <Field label="Blood bank in-charge phone (+91)" icon={<Phone size={16} color={color.faint} />} value={form.phone}
                 onChangeText={(t) => set('phone')(t.replace(/\D/g, '').slice(0, 10))} placeholder="9876543210" keyboardType="number-pad" maxLength={10} />
             </>
@@ -78,8 +101,14 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
               onChangeText={(t) => set('id')(t.toUpperCase())} placeholder="HOSP-1001" autoCapitalize="characters" mono
               right={/^HOSP-\w+$/.test(form.id) ? <Check size={13} color={color.green} /> : null} />
           )}
+          {mode === 'login' && asStaff && (
+            <Field label="Staff email" icon={<Phone size={16} color={color.faint} />} value={form.staffEmail}
+              onChangeText={set('staffEmail')} placeholder="you@hospital.in" keyboardType="email-address" autoCapitalize="none" />
+          )}
           <Field label={mode === 'login' ? 'Password' : 'Create a password'} icon={<Lock size={16} color={color.faint} />}
             value={form.password} onChangeText={set('password')} placeholder="••••••••" secureTextEntry onSubmitEditing={submit} />
+
+          {mode === 'register' && <Turnstile onToken={setBotToken} />}
 
           {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -87,6 +116,12 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
             icon={busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}>
             {mode === 'login' ? 'Sign in' : 'Register hospital'}
           </Button>
+
+          {mode === 'login' && (
+            <Pressable onPress={() => { setAsStaff(!asStaff); setError(null); }} accessibilityRole="button" style={{ marginTop: 14, alignSelf: 'center' }}>
+              <Text style={s.switchLink}>{asStaff ? 'Sign in as the hospital owner' : 'Sign in as staff'}</Text>
+            </Pressable>
+          )}
 
           <Pressable onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setSuccess(null); }}
             accessibilityRole="button" style={{ marginTop: 22, alignSelf: 'center' }}>

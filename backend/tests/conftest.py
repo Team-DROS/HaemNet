@@ -252,3 +252,13 @@ def _reset_call_quota():
     from backend.services import call_guard
 
     call_guard.reset_quotas()
+
+
+@pytest.fixture(autouse=True)
+def _reset_otp():
+    from backend.api import auth
+    from backend.services import otp
+
+    otp.reset_for_tests()
+    auth._otp_by_phone.clear()
+    auth._otp_by_ip.clear()

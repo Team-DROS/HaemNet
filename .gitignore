@@ -42,6 +42,7 @@ database/README.md
 *.md
 !README.md
 !DEPLOY.md
+!SECURITY.md
 !frontend/donor-mobile/README.md
 !frontend/donor-mobile/PRIVACY.md
 !frontend/donor-mobile/tests/

@@ -10,6 +10,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { bg, palette, mono, radius, shadow } from './theme';
 import { API_URL, REQUEST_TIMEOUT_MS } from './config';
 import { clearSession, loadSession, saveSession } from './session';
+import {
+  callsConsentField, codeErrorMessage, consentRequired, digitsOnly, isValidCode, registerBody, resendCountdown,
+} from './donorAuth';
 
 const ThemeContext = createContext(null);
 
@@ -96,6 +99,12 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  // Phone verification: the server says whether a texted code is needed to create an account.
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpSentAt, setOtpSentAt] = useState(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
   // ─── PROFILE STATE ───
   const [name, setName] = useState('');
@@ -113,6 +122,10 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [regError, setRegError] = useState('');
+  // Consent to automated emergency calls (asked when joining) and the donor's pause switch.
+  const [callsConsent, setCallsConsent] = useState(false);
+  const [callsOptOut, setCallsOptOut] = useState(false);
+  const [callsBusy, setCallsBusy] = useState(false);
 
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -134,8 +147,26 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
 
   useEffect(() => { checkLoginStatus(); }, []);
+  // Intentionally keyed on the session only: reload the profile when the donor signs in, not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (isLoggedIn && currentUser) loadProfile(); }, [isLoggedIn, currentUser]);
+  // Recalculate only when the last donation date changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
+  useEffect(() => {
+    // Ask the server whether sign-up needs a texted code. If it cannot be reached, assume not;
+    // the server still enforces the rule and the error message tells the donor what to do.
+    axios.get(`${SERVER_BASE_URL}/api/donor/auth/config`, { timeout: WAKE_TIMEOUT_MS })
+      .then((res) => setOtpRequired(Boolean(res.data?.otp_required)))
+      .catch(() => setOtpRequired(false));
+  }, []);
+  useEffect(() => {
+    if (!otpSentAt) return undefined;
+    const tick = () => setResendIn(resendCountdown(otpSentAt, Date.now()));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [otpSentAt]);
 
   // ─── AUTHENTICATION ───
   // Donors create an account with their phone number and a password, then
@@ -191,6 +222,21 @@ function DonorExperience({ theme, onToggleTheme }) {
     setAuthMode(mode);
     setAuthError(''); setAuthNotice('');
     setPassword(''); setConfirmPassword('');
+    setOtpSentAt(null); setOtpCode(''); setResendIn(0);
+  };
+
+  const sendCode = async () => {
+    setAuthError(''); setAuthNotice('');
+    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
+    setOtpBusy(true);
+    try {
+      await axios.post(`${SERVER_BASE_URL}/api/donor/auth/otp/request`, { phone: loginId }, { timeout: WAKE_TIMEOUT_MS });
+      setOtpSentAt(Date.now()); setOtpCode('');
+      setAuthNotice(`We texted a 6-digit code to +91 ${loginId}.`);
+    } catch (err) {
+      setAuthError(codeErrorMessage(err, 'send'));
+    }
+    setOtpBusy(false);
   };
 
   const submitAuth = async () => {
@@ -199,13 +245,28 @@ function DonorExperience({ theme, onToggleTheme }) {
     if (authMode === 'register') {
       if (password.length < MIN_PASSWORD) return setAuthError(`Use at least ${MIN_PASSWORD} characters for your password.`);
       if (password !== confirmPassword) return setAuthError('The two passwords do not match.');
+      if (otpRequired && !otpSentAt) return setAuthError('Tap "Send code" first, then enter the code we text you.');
+      if (otpRequired && !isValidCode(otpCode)) return setAuthError('Enter the 6-digit code we texted you.');
     } else if (!password) {
       return setAuthError('Enter your password.');
     }
     setAuthLoading(true);
+    let otpToken = null;
     try {
+      if (authMode === 'register' && otpRequired) {
+        try {
+          const proof = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/otp/verify`,
+            { phone: loginId, code: otpCode.trim() }, { timeout: WAKE_TIMEOUT_MS });
+          otpToken = proof.data?.otp_token;
+        } catch (err) {
+          setAuthError(codeErrorMessage(err, 'verify'));
+          setAuthLoading(false);
+          return;
+        }
+      }
       const path = authMode === 'register' ? 'register' : 'login';
-      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/${path}`, { phone: loginId, password }, { timeout: WAKE_TIMEOUT_MS });
+      const body = authMode === 'register' ? registerBody(loginId, password, otpToken) : { phone: loginId, password };
+      const res = await axios.post(`${SERVER_BASE_URL}/api/donor/auth/${path}`, body, { timeout: WAKE_TIMEOUT_MS });
       const session = { id: localDigits(res.data?.phone), token: res.data?.access_token };
       if (!session.token || session.id.length !== 10) throw new Error('Unexpected sign-in response');
       await saveSession(session);
@@ -289,6 +350,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         // Returning donor on a new phone: start the form from what the network knows.
         if (backendProfile) {
           setIsRegistered(true);
+          setCallsOptOut(Boolean(backendProfile.calls_opt_out));
           setName(backendProfile.name || '');
           const serverGroup = backendProfile.blood_group || 'O+';
           if (BLOOD_GROUPS.includes(serverGroup) && serverGroup !== 'Others') {
@@ -369,6 +431,9 @@ function DonorExperience({ theme, onToggleTheme }) {
 
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
     if (!finalBloodGroup) return setRegError('Specify your blood group.');
+    if (consentRequired(isRegistered) && !callsConsent) {
+      return setRegError('Please agree to receive automated emergency calls to join the network.');
+    }
 
     const finalPhone = withCountryCode(currentUser.id); // always the number the donor signed in with
 
@@ -387,6 +452,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         language: profile.language,
         lat: profile.lat,
         lng: profile.lng,
+        ...callsConsentField(isRegistered, callsConsent),
       });
       await AsyncStorage.setItem(getProfileKey(), JSON.stringify(profile));
       setIsSaving(false); setIsRegistered(true); setIsEditing(false);
@@ -394,6 +460,18 @@ function DonorExperience({ theme, onToggleTheme }) {
       setIsSaving(false);
       setRegError(`Could not save your profile: ${serverError(err, `the server returned ${err.response?.status}`)}`);
     }
+  };
+
+  const toggleCalls = async () => {
+    const next = !callsOptOut;
+    setCallsBusy(true); setRegError('');
+    try {
+      await api('post', '/api/donor/calls/preference', { opt_out: next });
+      setCallsOptOut(next);
+    } catch (err) {
+      setRegError(`Could not change your call setting: ${serverError(err, 'please try again')}`);
+    }
+    setCallsBusy(false);
   };
 
   const clearProfile = async () => {
@@ -441,6 +519,8 @@ function DonorExperience({ theme, onToggleTheme }) {
     } catch (err) {
       if (err.response?.status !== 401) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
     }
+    // `api` reads the current token from a ref, so its changing identity does not matter here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donorPhone]);
 
   // Poll while the app is in the foreground and the donor is registered.
@@ -679,6 +759,20 @@ function DonorExperience({ theme, onToggleTheme }) {
               style={s.input} accessibilityLabel="Confirm password" />
           </Field>
         ) : null}
+        {authMode === 'register' && otpRequired ? (
+          <Field label="Verification code" hint="We text a code to this number to confirm it is yours.">
+            <View style={s.phoneRow}>
+              <TextInput value={otpCode} onChangeText={(v) => { setOtpCode(digitsOnly(v)); if (authError) setAuthError(''); }}
+                placeholder="6-digit code" placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
+                autoComplete="sms-otp" textContentType="oneTimeCode"
+                style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Verification code" />
+              <TouchableOpacity onPress={sendCode} disabled={otpBusy || resendIn > 0} accessibilityRole="button"
+                accessibilityLabel="Send verification code" style={{ paddingHorizontal: 14, opacity: otpBusy || resendIn > 0 ? 0.5 : 1 }}>
+                <Text style={s.switchLink}>{otpBusy ? 'Sending...' : resendIn > 0 ? `Resend in ${resendIn}s` : otpSentAt ? 'Resend' : 'Send code'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Field>
+        ) : null}
 
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
@@ -865,6 +959,21 @@ function DonorExperience({ theme, onToggleTheme }) {
 
           {renderLocationPicker()}
 
+          {consentRequired(isRegistered) ? (
+            <TouchableOpacity onPress={() => { setCallsConsent((v) => !v); if (regError) setRegError(''); }}
+              accessibilityRole="checkbox" accessibilityState={{ checked: callsConsent }}
+              accessibilityLabel="I agree to receive automated emergency calls" style={[s.row, { gap: 12, marginTop: 18, alignItems: 'flex-start' }]}>
+              <View style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: callsConsent ? color.green : color.faint,
+                backgroundColor: callsConsent ? color.green : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                {callsConsent ? <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>✓</Text> : null}
+              </View>
+              <Text style={[s.hint, { flex: 1 }]}>
+                I agree that HaemNet and hospitals may call me with an automated voice call when someone nearby needs my blood
+                group. I can pause these calls at any time in the app.
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           {regError ? <Notice tone="red">{regError}</Notice> : null}
 
           <View style={[s.row, { marginTop: 22, gap: 10 }]}>
@@ -952,8 +1061,13 @@ function DonorExperience({ theme, onToggleTheme }) {
             <View style={s.metaList}>
               <MetaRow label="Location" value={address || 'Not set'} />
               <MetaRow label="Call language" value={language} />
-              <MetaRow label="Matching radius" value="10 km" last />
+              <MetaRow label="Matching radius" value="10 km" />
+              <MetaRow label="Automated calls" value={callsOptOut ? 'Paused' : 'On'} last />
             </View>
+
+            <SecondaryButton onPress={toggleCalls} busy={callsBusy} style={{ marginTop: 14 }}>
+              {callsOptOut ? 'Resume automated calls' : 'Pause automated calls'}
+            </SecondaryButton>
 
             <View style={[s.row, { gap: 10, marginTop: 14 }]}>
               <SecondaryButton onPress={() => setIsEditing(true)} style={{ flex: 1 }}>Edit profile</SecondaryButton>

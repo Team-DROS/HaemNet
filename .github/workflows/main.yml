@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # The release workflow runs the same checks on the tagged commit before deploying it.
+  workflow_call:
+
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:

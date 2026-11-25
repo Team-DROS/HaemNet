@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # The release workflow runs the same checks on the tagged commit before deploying it.
+  workflow_call:
+
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -43,6 +49,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # Bundles the app the way a release build does, so a broken import or a missing
+      # native module fails here instead of in an EAS build.
+      - name: Android bundle builds
+        run: npx expo export --platform android --output-dir .expo-export-check
 
   website:
     name: Public website links

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import { COOLDOWN_DAYS, cooldownProgress } from './cooldown';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
   Linking, Image, Alert, RefreshControl, AppState, StatusBar,
@@ -13,8 +14,6 @@ import { clearSession, loadSession, saveSession } from './session';
 
 const ThemeContext = createContext(null);
 
-const COOLDOWN_DAYS = 56;
-const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
 const POLL_MS = 15000;
 const WAKE_TIMEOUT_MS = REQUEST_TIMEOUT_MS; // Render free instances can take a minute to wake.
 
@@ -118,9 +117,10 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [locationError, setLocationError] = useState('');
 
   const [lastDonatedDate, setLastDonatedDate] = useState(null);
-  const [daysRemaining, setDaysRemaining] = useState(0);
-  const [daysElapsed, setDaysElapsed] = useState(0);
-  const [progressPercent, setProgressPercent] = useState(100);
+  // Derived from lastDonatedDate on render rather than copied into state.
+  const { daysRemaining, daysElapsed, progressPercent } = useMemo(
+    () => cooldownProgress(lastDonatedDate), [lastDonatedDate],
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   // ─── DONATION LOG STATE ───
@@ -134,8 +134,9 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
 
   useEffect(() => { checkLoginStatus(); }, []);
+  // loadProfile and api read the session through userRef, so they never see a stale token.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (isLoggedIn && currentUser) loadProfile(); }, [isLoggedIn, currentUser]);
-  useEffect(() => { calculateCooldown(); }, [lastDonatedDate]);
 
   // ─── AUTHENTICATION ───
   // Donors create an account with their phone number and a password, then
@@ -441,6 +442,8 @@ function DonorExperience({ theme, onToggleTheme }) {
     } catch (err) {
       if (err.response?.status !== 401) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
     }
+    // api reads the token through userRef, so it is intentionally not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donorPhone]);
 
   // Poll while the app is in the foreground and the donor is registered.
@@ -590,22 +593,6 @@ function DonorExperience({ theme, onToggleTheme }) {
   };
 
   // ─── COOLDOWN ───
-  const calculateCooldown = () => {
-    if (!lastDonatedDate) {
-      setDaysRemaining(0);
-      setDaysElapsed(COOLDOWN_DAYS);
-      setProgressPercent(100);
-      return;
-    }
-    const today = new Date();
-    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const donationMidnight = new Date(lastDonatedDate.getFullYear(), lastDonatedDate.getMonth(), lastDonatedDate.getDate());
-    const diffDays = Math.floor((todayMidnight.getTime() - donationMidnight.getTime()) / MS_IN_A_DAY);
-    setDaysElapsed(diffDays);
-    setDaysRemaining(Math.max(0, COOLDOWN_DAYS - diffDays));
-    setProgressPercent(Math.max(0, Math.min(100, (diffDays / COOLDOWN_DAYS) * 100)));
-  };
-
   const getNextEligibleDateText = () => {
     if (!lastDonatedDate) return '';
     const eligibleDate = new Date(lastDonatedDate.getTime());

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -196,8 +197,13 @@ async def get_donor_requests(phone: str, donor_phone: str = Depends(get_current_
     _require_same_donor(phone, donor_phone)
     requests: List[Dict[str, Any]] = []
     seen = set()
-    for variant in phone_variants(donor_phone):
-        for req in await dispatch_store.requests_for_donor(variant):
+    # Older records may store the number in another format; look up every
+    # spelling at once rather than one after another (the app polls this).
+    per_variant = await asyncio.gather(
+        *(dispatch_store.requests_for_donor(variant) for variant in phone_variants(donor_phone))
+    )
+    for found in per_variant:
+        for req in found:
             if req["dispatch_id"] in seen:
                 continue
             seen.add(req["dispatch_id"])

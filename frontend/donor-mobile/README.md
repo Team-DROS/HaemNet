@@ -1,9 +1,10 @@
 # HaemNet Donor (Android)
 
 The donor application for HaemNet: phone-and-password accounts, secure session
-storage, donor profiles, nearby requests, acceptance/decline, external map
-directions, and a 56-day cooldown view. Requests are polled while the app is
-open; the backend runs the AI phone conversations independently.
+storage, donor profiles, push alerts for nearby requests, a pre-donation health
+check before saying yes, pausing calls for a few days, offline use with saved
+data, and the whole app in English, Hindi and Tamil. The backend runs the AI
+phone conversations independently; the app is a second, faster way to answer.
 
 | | |
 | --- | --- |
@@ -27,6 +28,24 @@ another Expo project.
 - The app asks the backend (`GET /api/donor/auth/config`) whether a texted code is required. When it is, the sign-up form shows a verification code field with a Send code button (30 second resend); the code is checked just before the account is created.
 - Joining the network needs a tick on the automated-calls consent box; the app sends `calls_consent: true`, and editing a profile never rewrites it.
 - The profile card has a Pause / Resume automated calls button (`POST /api/donor/calls/preference`).
+- Privacy policy and terms links sit next to the consent box and on the profile card (`LEGAL_LINKS` in `components/config.js`, from `EXPO_PUBLIC_WEBSITE_URL`, HTTPS only).
+
+## Features and where they live
+
+Business rules are kept in small pure modules with Node tests (`tests/*.test.js`);
+`components/DonorApp.js` only wires them to the screen.
+
+| Feature | Logic | Notes |
+| --- | --- | --- |
+| Push alerts | `pushLogic.js`, `push.js` | Channel `emergency-requests` (high importance, sound, lock screen). The Expo push token is sent to `POST /api/donor/push-token` after joining and cleared on sign out. Tapping an alert opens the dashboard with that request outlined. Calls stay the main channel; alerts are extra. |
+| Health check | `eligibility.js` | Six yes/no questions (feeling well, age and weight, medication, alcohol in 24 h, recent procedure, pregnancy) before "Yes, I am ready to donate", plus the 56-day recovery period. Answers stay on the phone; only accept or decline is sent. A failed check only offers "Let the hospital know", which declines. |
+| Availability | `availability.js` | Pause for 3 days, 1 week or 2 weeks (`POST /api/donor/availability`, 0 to 30 days). Matching skips the donor until then, retries included. Separate from the permanent Pause automated calls. |
+| Offline | `network.js` | NetInfo banner; the saved profile and up to 6 hours of saved requests show with their age. A server outage never shows the join form. Polling stops while offline and requests refresh on reconnect. |
+| Languages | `i18n.js`, `i18n/en.js`, `hi.js`, `ta.js` | Every string goes through `t()`. Picker on sign-in and the profile card; a fresh install follows the donor's AI call language. Dates use `en-IN`, `hi-IN`, `ta-IN`. A test checks the three tables have the same keys and placeholders. |
+| Crash reporting | `monitoringLogic.js`, `monitoring.js`, `ErrorBoundary.js` | Sentry, only when `EXPO_PUBLIC_SENTRY_DSN` is set. Phone numbers, tokens and JWTs are scrubbed from every event and breadcrumb; console breadcrumbs are dropped. A crash shows a tap-to-retry screen in three languages. |
+
+When you add a string, add it to all three tables. Hindi and Tamil wording needs a native
+speaker's review before release ([MOBILE_TEST_PLAN.md](../../docs/MOBILE_TEST_PLAN.md), row 33).
 - Pure helpers for this live in `components/donorAuth.js` with tests in `tests/donorAuth.test.js`.
 
 ## Local development
@@ -46,7 +65,7 @@ node node_modules/expo/bin/cli start --go --port 8082
 Checks before every release:
 
 ```bash
-npm test          # config unit tests
+npm test          # unit tests for config, auth, push, health check, availability, offline, i18n, scrubbing
 npm run lint      # expo lint
 npm run doctor    # expo-doctor
 npx expo export --platform android --output-dir .expo-export-check   # bundles the release JS
@@ -74,6 +93,7 @@ No backend secret is ever embedded in the app.
 | Test APK | GitHub Actions workflow "Android test APK (not for release)" on the fork | Android debug key | Quick tester installs. JavaScript is bundled, so it runs without Metro. Never hand it to donors or upload it to Play. |
 | Debug APK | `npx expo run:android` on a developer machine | Android debug key | Development only. Has **no** JavaScript bundle and needs Metro running. |
 | Preview APK | `eas build --platform android --profile preview` | EAS release keystore | Direct install on phones for testing and demos. |
+| Staging APK | Actions > Donor app release > profile `staging` | EAS release keystore | Talks to `haemnet-api-staging`. Use it for [MOBILE_TEST_PLAN.md](../../docs/MOBILE_TEST_PLAN.md) before every release. |
 | Production AAB | `eas build --platform android --profile production` | EAS release keystore (upload key) | Google Play upload only. An AAB cannot be installed directly. |
 
 Build commands (run from `frontend/donor-mobile`, logged in with `eas login` as `umasuthan`):
@@ -145,9 +165,13 @@ renamed the file, or opening the GitHub Actions `.zip` instead of the APK inside
   and a Play versionCode can never be reused.
 - `version` in `app.json` (versionName) and `package.json` stay in step; bump
   both for a user-visible release.
-- Release procedure: merge to Team-DROS `main` > sync the fork > run the checks
-  above > build preview > install and test on a phone > build production >
-  upload to Play (owner only).
+- Release procedure: see [docs/RELEASING.md](../../docs/RELEASING.md). In short: bump
+  the version in a PR, test a staging build on three phones, merge, then push a
+  `donor-vX.Y.Z` tag. The "Donor app release" workflow builds the AAB and submits
+  it to Play internal testing as a draft. Store listing, Data safety answers and the
+  closed test plan: [docs/PLAY_STORE.md](../../docs/PLAY_STORE.md).
+- Push on Android needs Firebase: `google-services.json` comes from the EAS file
+  variable `GOOGLE_SERVICES_JSON` (see `app.config.js`) and is never committed.
 
 ## Permissions
 
@@ -156,6 +180,7 @@ renamed the file, or opening the GitHub Actions `.zip` instead of the APK inside
 | Location (coarse and fine, while in use) | Match the donor to hospitals within 10 km |
 | Camera | Optional profile photo |
 | Photos (Android 12 and older: storage read) | Optional profile photo from the gallery |
+| Notifications (Android 13+ asks once after joining) | Alerts for nearby requests; can be turned on later from the profile card |
 
 The app does not request background location or the microphone; both are
 explicitly blocked in `app.json`. See [PRIVACY.md](PRIVACY.md).
@@ -171,9 +196,9 @@ explicitly blocked in `app.json`. See [PRIVACY.md](PRIVACY.md).
    is the real owner, and the donor creates the account again. The profile
    and donation history are kept.
 
-SMS and email codes were removed in 1.2.0: the Twilio trial could not deliver
-SMS to Indian numbers, and free email services were not worth the setup.
-Twilio is still used for the AI voice calls.
+Sign-up can require an SMS code when the server sets `DONOR_OTP_REQUIRED=true`
+(see "Sign-up, phone verification and call consent" above). Sign-in always uses
+the password.
 
 ## How the mobile app relates to AI calls
 
@@ -188,13 +213,14 @@ require a new APK when the mobile API contract stays the same.
 
 ## Known limitations
 
-- The phone number is not verified (no SMS), so someone could create an
-  account for a number before its owner does. If that happens, the team can
-  reset it with the tool above.
+- Unless `DONOR_OTP_REQUIRED=true`, the phone number is not verified, so someone
+  could create an account for a number before its owner does. If that happens,
+  the team can reset it with the tool above.
 - The production API runs on Render's free tier and sleeps when idle. The first
   request after a sleep can take close to a minute.
-- New requests are found by polling every 15 seconds while the app is open.
-  Push notifications are not wired end to end.
+- Requests are also polled every 15 seconds while the app is open. Push alerts
+  depend on Firebase and Google Play services; aggressive battery savers on some
+  phones delay them, which is why the voice call stays the main channel.
 - Directions open an external maps application. There is no embedded
   `react-native-maps` screen or continuous live donor GPS tracking.
 - Native crash investigation still needs device logs and reproduction steps;

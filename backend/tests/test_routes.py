@@ -19,7 +19,18 @@ async def test_health_check(mock_health):
         "database": "mongodb",
         "database_status": "connected",
         "mongodb": "connected",
+        "commit": None,
     }
+
+
+@pytest.mark.asyncio
+@patch("backend.api.health.db_health", new_callable=AsyncMock)
+async def test_health_reports_the_deployed_commit(mock_health, monkeypatch):
+    mock_health.return_value = {"backend": "mongodb", "status": "connected"}
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "0123456789abcdef0123")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/health")
+    assert response.json()["commit"] == "0123456789ab"
 
 
 @pytest.mark.asyncio

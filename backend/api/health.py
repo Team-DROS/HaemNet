@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import httpx
 from fastapi import APIRouter
 
@@ -11,6 +13,12 @@ from backend.services import redis_client
 from backend.services.file_storage import get_storage, persistent
 
 router = APIRouter(prefix="/api", tags=["health"])
+
+
+def running_commit() -> str | None:
+    """The git commit this instance runs (Render sets RENDER_GIT_COMMIT), so a release can confirm it is live."""
+    commit = (os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("GIT_COMMIT") or "").strip()
+    return commit[:12] or None
 
 
 @router.get("/health")
@@ -25,6 +33,7 @@ async def health_check():
         "database_status": status,
         # Kept so older dashboards that read this field keep working.
         health["backend"]: status,
+        "commit": running_commit(),
     }
 
 

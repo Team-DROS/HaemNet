@@ -10,10 +10,12 @@ respond to requests through an Expo mobile app. MongoDB stores donor records,
 dispatch history, and call state.
 
 [![Backend CI](https://github.com/Team-DROS/HaemNet/actions/workflows/main.yml/badge.svg)](https://github.com/Team-DROS/HaemNet/actions/workflows/main.yml)
+[![Frontend CI](https://github.com/Team-DROS/HaemNet/actions/workflows/frontend.yml/badge.svg)](https://github.com/Team-DROS/HaemNet/actions/workflows/frontend.yml)
 [Live website](https://haemnet-dashboard.onrender.com/) ·
 [API health](https://haemnet-api.onrender.com/api/health) ·
 [API documentation](https://haemnet-api.onrender.com/docs) ·
-[Deployment guide](DEPLOY.md)
+[Deployment guide](DEPLOY.md) ·
+[Security policy](SECURITY.md)
 
 ## What HaemNet does
 

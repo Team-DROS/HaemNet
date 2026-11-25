@@ -112,6 +112,42 @@ function build() {
     icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
   }, null, 2));
 
+  // Cloudflare Pages reads _headers from the output folder. The policy follows the
+  // settings: the form service and analytics hosts are allowed only when configured.
+  const originOf = (u) => { try { return new URL(u).origin; } catch { return null; } };
+  const formOrigin = site.formEndpoint ? originOf(site.formEndpoint) : null;
+  const stats = site.plausibleDomain ? 'https://plausible.io' : null;
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self'${stats ? ' ' + stats : ''}`,
+    "style-src 'self' https://fonts.googleapis.com",
+    "style-src-attr 'unsafe-inline'",
+    'font-src https://fonts.gstatic.com',
+    "img-src 'self' data:",
+    `connect-src 'self'${formOrigin ? ' ' + formOrigin : ''}${stats ? ' ' + stats : ''}`,
+    "form-action 'self' mailto:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+  ].join('; ');
+  writeFileSync(join(dist, '_headers'), [
+    '/*',
+    `  Content-Security-Policy: ${csp}`,
+    '  X-Content-Type-Options: nosniff',
+    '  Referrer-Policy: strict-origin-when-cross-origin',
+    '  Permissions-Policy: camera=(), microphone=(), geolocation=()',
+    '  Strict-Transport-Security: max-age=63072000; includeSubDomains',
+    '',
+    '/css/*',
+    '  Cache-Control: public, max-age=3600, must-revalidate',
+    '/js/*',
+    '  Cache-Control: public, max-age=3600, must-revalidate',
+    '/*.png',
+    '  Cache-Control: public, max-age=86400',
+    '/*.svg',
+    '  Cache-Control: public, max-age=86400',
+    '',
+  ].join('\n'));
+
   // Link check: every internal href/src must resolve to a built file.
   const exists = (p) => {
     const clean = p.split('#')[0].split('?')[0];

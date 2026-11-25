@@ -13,6 +13,8 @@ import { clearSession, loadSession, saveSession } from './session';
 import {
   callsConsentField, codeErrorMessage, consentRequired, digitsOnly, isValidCode, registerBody, resendCountdown,
 } from './donorAuth';
+import { listenForAlerts, listenForAlertTaps, setUpAlerts } from './push';
+import { alertTarget, tokenUpdate } from './pushLogic';
 
 const ThemeContext = createContext(null);
 
@@ -20,6 +22,10 @@ const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
 const POLL_MS = 15000;
 const WAKE_TIMEOUT_MS = REQUEST_TIMEOUT_MS; // Render free instances can take a minute to wake.
+
+const ALERT_LABELS = {
+  on: 'On', off: 'Off', blocked: 'Off in phone settings', pending: 'Connecting…', unsupported: 'Not on this device',
+};
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Others'];
 // The AI voice agent speaks these three languages. Anything else falls back to English on the server.
@@ -145,6 +151,13 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [responding, setResponding] = useState(null); // dispatch_id being answered
   const [respondMsg, setRespondMsg] = useState('');
   const [activeTrip, setActiveTrip] = useState(null); // accepted request the donor is travelling to
+  const [highlightId, setHighlightId] = useState(null); // request opened from a push alert
+
+  // ─── PUSH ALERTS ───
+  // 'on' | 'off' | 'blocked' | 'pending' | 'unsupported'; see pushLogic.alertState.
+  const [alertsState, setAlertsState] = useState('off');
+  const [alertsBusy, setAlertsBusy] = useState(false);
+  const scrollRef = useRef(null);
 
   useEffect(() => { checkLoginStatus(); }, []);
   // Intentionally keyed on the session only: reload the profile when the donor signs in, not on every render.
@@ -285,6 +298,8 @@ function DonorExperience({ theme, onToggleTheme }) {
   };
 
   const handleLogout = async (message) => {
+    const session = userRef.current;
+    if (session && typeof message !== 'string') forgetPushToken(session);
     await clearSession();
     setIsLoggedIn(false);
     setCurrentUser(null);
@@ -294,7 +309,51 @@ function DonorExperience({ theme, onToggleTheme }) {
     setIsRegistered(false);
     setRequests([]);
     setActiveTrip(null);
+    setHighlightId(null);
     setAuthNotice(typeof message === 'string' ? message : '');
+  };
+
+  // ─── PUSH ALERTS ───
+  const pushKey = (id) => `@donor_push_${id}`;
+
+  // Register this phone for request alerts, or tell the server it no longer has a token.
+  // Runs after the donor joins and whenever the app returns to the foreground; tokens can rotate.
+  const syncAlerts = async (ask) => {
+    const session = userRef.current;
+    if (!session) return;
+    const { state, token } = await setUpAlerts({ ask });
+    setAlertsState(state);
+    try {
+      const saved = await AsyncStorage.getItem(pushKey(session.id));
+      const { needed, token: next } = tokenUpdate(saved, token);
+      if (!needed) return;
+      await api('post', '/api/donor/push-token', { token: next });
+      if (next) await AsyncStorage.setItem(pushKey(session.id), next);
+      else await AsyncStorage.removeItem(pushKey(session.id));
+    } catch {
+      // Kept for the next launch. The automated call still reaches the donor without it.
+    }
+  };
+
+  const turnOnAlerts = async () => {
+    if (alertsState === 'blocked') {
+      explainBlockedPermission('Alerts are turned off', 'Allow notifications for HaemNet Donor in Settings so a request reaches you even when the app is closed.');
+      return;
+    }
+    setAlertsBusy(true);
+    await syncAlerts(true);
+    setAlertsBusy(false);
+  };
+
+  // On sign-out the phone stops receiving this donor's alerts. Best-effort and not awaited,
+  // so signing out never waits on a sleeping server.
+  const forgetPushToken = (session) => {
+    AsyncStorage.getItem(pushKey(session.id)).then((saved) => {
+      if (!saved) return;
+      AsyncStorage.removeItem(pushKey(session.id)).catch(() => {});
+      axios.post(`${SERVER_BASE_URL}/api/donor/push-token`, { token: null },
+        { headers: { Authorization: `Bearer ${session.token}` }, timeout: 10000 }).catch(() => {});
+    }).catch(() => {});
   };
 
   // ─── PROFILE LOGIC ───
@@ -478,7 +537,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     try {
       await api('delete', `/api/donor/profile/${encodeURIComponent(withCountryCode(currentUser.id))}`);
 
-      await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey()]);
+      await AsyncStorage.multiRemove([getProfileKey(), getLogKey(), getTripKey(), pushKey(currentUser.id)]);
       setName(''); setPhone(localDigits(currentUser.id)); setBloodGroup('O+'); setCustomBloodGroup(''); setLanguage('English');
       setLat(null); setLng(null); setAddress(''); setLocationSource(null);
       setProfilePic(null); setLastDonatedDate(null); setDonationLog([]); setActiveTrip(null); setRequests([]);
@@ -535,6 +594,32 @@ function DonorExperience({ theme, onToggleTheme }) {
     });
     return () => { clearInterval(timer); sub.remove(); };
   }, [donorPhone, isEditing, fetchRequests]);
+
+  // Once the donor has joined, ask for alerts and keep the token fresh each time the app opens.
+  useEffect(() => {
+    if (!donorPhone) return undefined;
+    syncAlerts(true);
+    const sub = AppState.addEventListener('change', (next) => { if (next === 'active') syncAlerts(false); });
+    return () => sub.remove();
+    // syncAlerts reads the session from a ref; re-run only when the donor changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [donorPhone]);
+
+  // A tap on an alert opens the app on that request; an alert while the app is open refreshes the list.
+  const fetchRef = useRef(fetchRequests);
+  fetchRef.current = fetchRequests;
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    const stopTaps = listenForAlertTaps((response) => {
+      const target = alertTarget(response);
+      if (!target) return;
+      setHighlightId(target.action === 'show-request' ? target.dispatchId : null);
+      scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+      fetchRef.current();
+    });
+    const stopAlerts = listenForAlerts((notification) => { if (alertTarget(notification)) fetchRef.current(); });
+    return () => { stopTaps(); stopAlerts(); };
+  }, [isLoggedIn]);
 
   const respond = async (req, accept) => {
     if (responding) return; // one answer at a time; ignores double taps
@@ -879,6 +964,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={s.root}
       contentContainerStyle={s.rootContent}
       keyboardShouldPersistTaps="handled"
@@ -1001,6 +1087,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 
           {requests.map((req) => (
             <RequestCard key={req.dispatch_id} req={req} busy={responding === req.dispatch_id}
+              highlighted={highlightId === req.dispatch_id}
               onAccept={() => respond(req, true)} onDecline={() => respond(req, false)} />
           ))}
 
@@ -1062,8 +1149,15 @@ function DonorExperience({ theme, onToggleTheme }) {
               <MetaRow label="Location" value={address || 'Not set'} />
               <MetaRow label="Call language" value={language} />
               <MetaRow label="Matching radius" value="10 km" />
-              <MetaRow label="Automated calls" value={callsOptOut ? 'Paused' : 'On'} last />
+              <MetaRow label="Automated calls" value={callsOptOut ? 'Paused' : 'On'} />
+              <MetaRow label="Request alerts" value={ALERT_LABELS[alertsState] || 'Off'} last />
             </View>
+
+            {alertsState === 'off' || alertsState === 'blocked' ? (
+              <SecondaryButton onPress={turnOnAlerts} busy={alertsBusy} style={{ marginTop: 14 }}>
+                {alertsState === 'blocked' ? 'Allow alerts in Settings' : 'Turn on request alerts'}
+              </SecondaryButton>
+            ) : null}
 
             <SecondaryButton onPress={toggleCalls} busy={callsBusy} style={{ marginTop: 14 }}>
               {callsOptOut ? 'Resume automated calls' : 'Pause automated calls'}
@@ -1106,12 +1200,12 @@ function DonorExperience({ theme, onToggleTheme }) {
 
 // ─── PIECES ───
 
-function RequestCard({ req, busy, onAccept, onDecline }) {
-  const { s } = useContext(ThemeContext);
+function RequestCard({ req, busy, highlighted, onAccept, onDecline }) {
+  const { color, s } = useContext(ThemeContext);
   const critical = req.urgency === 'critical';
   const ago = minutesAgo(req.created_at);
   return (
-    <View style={[s.requestCard, shadow]}>
+    <View style={[s.requestCard, shadow, highlighted && { borderColor: color.red, borderWidth: 2 }]}>
       <View style={s.requestBand}>
         <View style={s.liveDot} />
         <Text style={s.requestBandText}>{critical ? 'Critical request' : 'Urgent request'}{ago ? ` · ${ago}` : ''}</Text>

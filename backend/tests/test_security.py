@@ -277,3 +277,14 @@ async def test_events_with_unknown_owner_are_dropped():
     await mgr.register(sock, "HOSP-1001")
     await mgr.broadcast_raw("dp-x", {"type": "dispatch_closed"})
     assert sock.sent == []
+
+
+def test_twiml_escapes_stream_parameters(client):
+    res = client.get("/api/twilio/twiml", params={
+        "dispatch_id": 'dp-1"/><Hangup/><x a="',
+        "donor_id": "<script>",
+    })
+    assert res.status_code == 200
+    assert "<Hangup/>" not in res.text
+    assert "<script>" not in res.text
+    assert "&lt;script&gt;" in res.text

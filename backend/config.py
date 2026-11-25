@@ -122,6 +122,9 @@ class Settings(BaseSettings):
 
     # ── Expo Push Notifications ──────────────────────────────────
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+    # Also alert donors who have the app when a request first goes out, alongside the call.
+    # The call stays the primary channel; a push only brings the request up on screen sooner.
+    push_request_alerts: bool = True
 
     # ── Twilio Audio Streaming ───────────────────────────────────
     twilio_audio_ws_path: str = "/ws/twilio/audio-stream"

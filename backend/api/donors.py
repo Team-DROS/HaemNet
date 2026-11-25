@@ -6,7 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.auth import get_current_donor
 from backend.api.websockets import manager
@@ -25,6 +25,7 @@ from backend.schemas.models import (
     DonorStatusUpdate,
     normalise_language,
 )
+from backend.services.donor_push import save_push_token
 from backend.services.geo import estimate_eta_minutes
 from backend.services.phone import phone_variants
 
@@ -80,6 +81,26 @@ async def set_call_preference(payload: CallPreference, donor_phone: str = Depend
         raise HTTPException(status_code=404, detail="Complete your donor profile first")
     logger.info("Donor …%s set calls_opt_out=%s", donor_phone[-4:], payload.opt_out)
     return {"status": "ok", "calls_opt_out": payload.opt_out}
+
+
+# ── POST /api/donor/push-token ─────────────────────────────────────
+
+
+class PushTokenUpdate(BaseModel):
+    # None or empty forgets the token (sign-out, or notifications turned off on the phone).
+    token: Optional[str] = Field(None, max_length=256)
+
+
+@router.post("/donor/push-token")
+async def set_push_token(payload: PushTokenUpdate, donor_phone: str = Depends(get_current_donor)):
+    """Register this phone for request alerts, or stop them. Only for the signed-in donor."""
+    try:
+        found = await save_push_token(donor_phone, payload.token)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail="Push tokens need the MongoDB data layer") from exc
+    if not found:
+        raise HTTPException(status_code=404, detail="Complete your donor profile first")
+    return {"status": "ok", "push_enabled": bool(payload.token and payload.token.strip())}
 
 
 # ── GET /api/donor/profile/{phone} ─────────────────────────────────

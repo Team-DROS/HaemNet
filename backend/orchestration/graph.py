@@ -105,7 +105,6 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     from backend.config import settings
     from backend.dispatch_store import dispatch_store
     from backend.schemas.models import DonorNode
-    from backend.services.twilio_service import initiate_call
 
     dispatch_id = state.get("dispatch_id", "")
     donors = state.get("donors", {})
@@ -202,7 +201,6 @@ async def route_donor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     or SMS with web-tracking link (fallback path).
     """
     from backend.db_services import get_donor_push_token
-    from backend.services.twilio_service import send_sms
     from backend.services.push_service import send_dispatch_notification
 
     dispatch_id = state.get("dispatch_id", "")

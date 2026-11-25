@@ -15,9 +15,11 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
 from backend.api.twilio_auth import verify_twilio_request
 from backend.api.websockets import manager
+from backend.config import settings
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorStatusUpdate, TERMINAL_OR_DECIDED
 
@@ -70,8 +72,6 @@ def map_twilio_status(twilio_status: str, current: Optional[str]) -> Optional[Ca
 
 # ── GET/POST /api/twilio/twiml ────────────────────────────────────
 
-from fastapi.responses import Response
-from backend.config import settings
 
 @router.post("/api/twilio/twiml", dependencies=_signed)
 @router.get("/api/twilio/twiml", dependencies=_signed)

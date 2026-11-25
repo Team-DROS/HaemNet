@@ -394,7 +394,7 @@ async def register_new_donor(payload: DonorRegistration, donor_phone: str = Depe
         return {"status": "ok", "message": "Donor successfully registered"}
     except Exception as exc:
         logger.exception("Failed to register donor: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to register donor")
+        raise HTTPException(status_code=500, detail="Failed to register donor") from exc
 
 
 # ── GET /api/donor/profile/{phone} ─────────────────────────────────
@@ -425,7 +425,7 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
         raise
     except Exception as exc:
         logger.exception("Failed to get donor profile: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to get donor profile")
+        raise HTTPException(status_code=500, detail="Failed to get donor profile") from exc
 
 
 # ── DELETE /api/donor/profile/{phone} ───────────────────────────────
@@ -446,7 +446,7 @@ async def remove_donor_profile(phone: str, donor_phone: str = Depends(get_curren
         raise
     except Exception as exc:
         logger.exception("Failed to delete donor profile: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to delete donor profile")
+        raise HTTPException(status_code=500, detail="Failed to delete donor profile") from exc
 
 
 # ── GET /api/donor/requests/{phone} ────────────────────────────────

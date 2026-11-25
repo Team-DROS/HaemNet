@@ -1,7 +1,6 @@
 """Consent and audio regressions. No phone calls or provider requests."""
 
 import audioop
-import json
 from unittest.mock import AsyncMock
 
 import httpx

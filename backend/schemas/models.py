@@ -77,7 +77,7 @@ def normalise_language(value: Optional[str]) -> str:
     so unsupported values fall back to English instead.
     """
     lang = (value or "").strip().lower()
-    if lang in {l.value for l in DonorLanguage}:
+    if lang in {member.value for member in DonorLanguage}:
         return lang
     if lang:
         logger.warning("Unsupported donor language %r; using english", value)

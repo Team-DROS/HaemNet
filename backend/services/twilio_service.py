@@ -88,7 +88,7 @@ async def initiate_bulk_calls(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     successes: List[Dict[str, Any]] = []
-    for donor, result in zip(donors, results):
+    for donor, result in zip(donors, results, strict=True):
         if isinstance(result, Exception):
             logger.error("Failed to call donor %s: %s", donor.id, result)
         else:

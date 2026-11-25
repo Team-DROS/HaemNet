@@ -53,6 +53,7 @@ New endpoint checklist: put the rule in a service and raise a domain error, keep
 - Only `approved` hospitals can dispatch. Records with no status are legacy and count as approved.
 - Never put secrets in code, chat or `EXPO_PUBLIC_*` variables. Use `.env` files and the host dashboard.
 - Twilio webhooks must pass signature verification. Do not add unsigned callback routes.
+- Place calls and send SMS only through `get_telephony()` in `backend/services/telephony.py`, never by importing a provider module directly.
 - Fail 3 times on the same bug: stop, summarise, start fresh.
 
 ## Gotchas

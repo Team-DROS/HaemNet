@@ -249,3 +249,9 @@ bucket cannot be reached the account is kept and the caller gets a 503 so it can
 - **Audit trail:** each request raised, closed and donation logged writes an audit entry with the acting staff member (visible to admins and in the hospital export). A failed audit write never blocks a request.
 - **Donor calls:** `POST /api/donor/calls/preference` opts a donor out of (or back into) automated calls; opted-out donors are never matched. The mobile app should send `calls_consent: true` at sign-up; the time is stored.
 - **Load test:** `loadtest/locustfile.py` (staging only, it refuses to run without an explicit opt-in because dispatches place real calls).
+
+## Donor phone verification and telephony
+
+- `POST /api/donor/auth/otp/request` texts a 6-digit code (3 per number and 10 per client per hour). `POST /api/donor/auth/otp/verify` exchanges it for a 30-minute `otp_token` that is neither a donor nor a hospital token. Codes are stored as keyed hashes, expire after `OTP_TTL_SECONDS`, work once, and allow `OTP_MAX_ATTEMPTS` wrong guesses. With `DONOR_OTP_REQUIRED=true`, `POST /api/donor/auth/register` needs the `otp_token`. The donor app must be updated before turning this on. Use `REDIS_URL` when running more than one instance.
+- Calls and SMS go through `TelephonyProvider` (`services/telephony.py`). To add a provider, implement `start_call`, `send_sms` and `close`, register it in `_PROVIDERS`, set `TELEPHONY_PROVIDER`, and add that provider's webhook verification (`services/twilio_signature.py` covers Twilio only). A misspelt provider name stops the backend at startup.
+- A call that fails to start, or that the provider reports as failed or cancelled, is recorded as "no answer", never as a decline.

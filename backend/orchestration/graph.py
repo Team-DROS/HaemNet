@@ -28,6 +28,7 @@ from backend.schemas.models import CallStatus, DonorNode, DonorStatusUpdate
 from backend.services.blood_groups import request_groups
 from backend.services.call_guard import cap_donors
 from backend.services.calling import donor_node_for_call, place_call
+from backend.services.donor_push import alert_donors_of_request
 from backend.services.error_reporting import report_exception
 from backend.services.geo import haversine_km
 from backend.services.push_service import send_dispatch_notification
@@ -160,8 +161,16 @@ async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:
         ).model_dump()
         updates.append(update)
 
-    # Execute all calls concurrently.
-    await asyncio.gather(*call_tasks, return_exceptions=True)
+    # Execute all calls concurrently, and alert donors who have the app at the same time so the
+    # request is on their screen when the phone rings. Alerts are best-effort and never raise.
+    alerts = alert_donors_of_request(
+        dispatch_id,
+        donors,
+        blood_group=state.get("blood_group", ""),
+        units=int(state.get("units", 1) or 1),
+        urgency=state.get("urgency", "urgent"),
+    )
+    await asyncio.gather(*call_tasks, alerts, return_exceptions=True)
 
     logger.info("Initiated %d calls for dispatch %s", len(donors), dispatch_id)
     return {**state, "updates": updates}

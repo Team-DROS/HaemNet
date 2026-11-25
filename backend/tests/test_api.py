@@ -39,12 +39,12 @@ def test_register_issues_an_id_when_none_given(client, monkeypatch):
     monkeypatch.setattr(auth, "db_get_hospital_by_id", fake_get)
     monkeypatch.setattr(auth, "db_create_hospital", fake_create)
     res = client.post("/api/auth/register", json={
-        "name": "Apollo", "location": "Chennai", "phone": "+91", "password": "pw",
+        "name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "long-enough-pw",
     })
     assert res.status_code == 200
     assert res.json()["id"].startswith("HOSP-")
     assert created["id"] == res.json()["id"]
-    assert created["password_hash"] != "pw"
+    assert created["password_hash"] != "long-enough-pw"
 
 
 # ── dispatch ──────────────────────────────────────────────────────
@@ -277,3 +277,17 @@ def test_manual_close_is_not_marked_fulfilled(client, store, auth_headers, broad
     store.add("dp-1", donors=[donor("d1", "+919000000001")])
     assert client.post("/api/dispatches/dp-1/close", headers=auth_headers).status_code == 200
     assert store.dispatches["dp-1"]["fulfilled"] is False
+
+
+@pytest.mark.parametrize("payload", [
+    {"name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "short"},
+    {"name": "Apollo", "location": "Chennai", "phone": "+919876543210", "password": "x" * 73},
+    {"name": "   ", "location": "Chennai", "phone": "+919876543210", "password": "long-enough-pw"},
+    {"name": "Apollo", "location": "Chennai", "phone": "call me", "password": "long-enough-pw"},
+    {"name": "A" * 121, "location": "Chennai", "phone": "+919876543210", "password": "long-enough-pw"},
+    {"id": "<script>", "name": "Apollo", "location": "Chennai", "phone": "+919876543210",
+     "password": "long-enough-pw"},
+])
+def test_register_rejects_invalid_hospital_input(client, payload):
+    res = client.post("/api/auth/register", json=payload)
+    assert res.status_code == 422

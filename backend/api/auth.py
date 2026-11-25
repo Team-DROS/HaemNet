@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 import bcrypt
 from backend.config import settings
 from backend.db_services import (
@@ -46,14 +46,33 @@ donor_router = APIRouter(prefix="/api/donor/auth", tags=["donor-auth"])
 # Failed hospital sign-ins: 10 per ID per 15 minutes, then 429.
 _login_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)
 
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_BYTES = 72  # bcrypt ignores anything longer
+
+
 class HospitalRegister(BaseModel):
     # Optional: when omitted the server issues a unique ID. Clients used to
     # pick a random 3-digit ID themselves, which collided often.
-    id: Optional[str] = None
-    name: str
-    location: str
-    phone: str
-    password: str
+    id: Optional[str] = Field(None, max_length=32, pattern=r"^[A-Za-z0-9-]*$")
+    name: str = Field(..., min_length=2, max_length=120)
+    location: str = Field(..., min_length=2, max_length=300)
+    phone: str = Field(..., min_length=7, max_length=20, pattern=r"^\+?[0-9 ()-]+$")
+    password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
+
+    @field_validator("name", "location", "phone")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def _password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > MAX_PASSWORD_BYTES:
+            raise ValueError("password is too long (72 bytes at most)")
+        return value
 
 
 _PUBLIC_HOSPITAL_FIELDS = ("id", "name", "location", "phone")
@@ -186,9 +205,6 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 # SMS or email step: the number itself is not verified, which is noted in
 # the donor app README. A forgotten password is reset by an admin with
 # `python -m backend.tools.reset_donor_password <phone>`.
-
-MIN_PASSWORD_LENGTH = 8
-MAX_PASSWORD_BYTES = 72  # bcrypt ignores anything longer
 
 # Failed donor sign-ins: 10 per number per 15 minutes, then 429.
 _donor_failures = SlidingWindowLimiter(max_events=10, window_seconds=15 * 60)

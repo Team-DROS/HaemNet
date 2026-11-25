@@ -27,8 +27,8 @@ export default function LoginScreen({ store, theme, onToggleTheme }) {
       }
       setBusy(false);
     } else {
-      if (!form.name.trim() || !form.location.trim() || form.password.length < 6) {
-        return setError('Fill in every field. Passwords need at least 6 characters.');
+      if (!form.name.trim() || !form.location.trim() || form.password.length < 8) {
+        return setError('Fill in every field. Passwords need at least 8 characters.');
       }
       if (!/^\d{10}$/.test(form.phone)) return setError('Enter a 10-digit mobile number.');
       setBusy(true);

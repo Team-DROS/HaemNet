@@ -167,3 +167,29 @@ def test_mongo_client_fails_fast(monkeypatch):
     mongodb.get_client()
     monkeypatch.setattr(mongodb, "_client", None)
     assert captured["serverSelectionTimeoutMS"] == 5000 and captured["maxPoolSize"] == 100
+
+
+@pytest.mark.asyncio
+async def test_a_call_that_cannot_be_started_shows_no_answer_not_declined(monkeypatch):
+    from types import SimpleNamespace
+
+    from backend.orchestration import graph
+    from backend.schemas.models import CallStatus
+
+    recorded = []
+
+    async def no_wait():
+        return None
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("provider down")
+
+    class Store:
+        async def update_donor_status(self, dispatch_id, donor_id, status, **kwargs):
+            recorded.append((dispatch_id, donor_id, status))
+
+    monkeypatch.setattr(graph, "wait_for_slot", no_wait)
+    monkeypatch.setattr(graph, "initiate_call", boom)
+    monkeypatch.setattr(graph, "dispatch_store", Store())
+    await graph._initiate_single_call(SimpleNamespace(), "dp-1", "d1", "cb")
+    assert recorded == [("dp-1", "d1", CallStatus.NO_ANSWER)]

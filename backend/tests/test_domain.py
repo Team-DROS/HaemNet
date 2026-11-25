@@ -78,7 +78,9 @@ def test_answered_and_no_answer_are_distinguished_from_decline():
     assert map_twilio_status("in-progress", "ringing") == CallStatus.ANSWERED
     assert map_twilio_status("no-answer", "ringing") == CallStatus.NO_ANSWER
     assert map_twilio_status("busy", "ringing") == CallStatus.NO_ANSWER
-    assert map_twilio_status("failed", "ringing") == CallStatus.DECLINED
+    # A call that failed or was cancelled never reached the donor, so it is not a decline.
+    assert map_twilio_status("failed", "ringing") == CallStatus.NO_ANSWER
+    assert map_twilio_status("canceled", "ringing") == CallStatus.NO_ANSWER
 
 
 def test_unknown_twilio_status_is_ignored_not_declined():

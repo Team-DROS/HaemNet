@@ -82,3 +82,12 @@ def test_no_token_allowed_in_development_but_not_in_production(client, store, mo
     assert client.post(PATH + QUERY, data={"CallSid": "CA1", "CallStatus": "completed"}).status_code == 200
     monkeypatch.setattr(settings, "app_env", "production")
     assert client.post(PATH + QUERY, data={"CallSid": "CA1", "CallStatus": "completed"}).status_code == 403
+
+
+def test_failed_and_canceled_calls_are_not_recorded_as_declines(client, signed):
+    for index, twilio_status in enumerate(["failed", "canceled"]):
+        signed.dispatches["dp-1"]["donors"]["d1"]["status"] = "ringing"
+        params = {"CallSid": f"CA{index}", "CallStatus": twilio_status}
+        res = client.post(PATH + QUERY, data=params, headers={"X-Twilio-Signature": sign(params)})
+        assert res.status_code == 200
+        assert signed.dispatches["dp-1"]["donors"]["d1"]["status"] == "no_answer"

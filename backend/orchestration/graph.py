@@ -202,11 +202,11 @@ async def _initiate_single_call(
             dispatch_id,
             exc,
         )
-        # Mark as declined so the dashboard shows failure.
+        # The donor was never reached, so this is not a decline: show "no answer".
         await dispatch_store.update_donor_status(
             dispatch_id,
             donor_id,
-            CallStatus.DECLINED,
+            CallStatus.NO_ANSWER,
         )
 
 

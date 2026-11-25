@@ -47,8 +47,9 @@ _TWILIO_STATUS_MAP = {
     "completed": None,  # outcome comes from the voice intent, not hang-up
     "busy": CallStatus.NO_ANSWER,
     "no-answer": CallStatus.NO_ANSWER,
-    "failed": CallStatus.DECLINED,
-    "canceled": CallStatus.DECLINED,
+    # The donor was never reached, so these are not a decision.
+    "failed": CallStatus.NO_ANSWER,
+    "canceled": CallStatus.NO_ANSWER,
 }
 
 

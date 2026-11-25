@@ -25,6 +25,7 @@ from backend.schemas.models import (
     DonorStatusUpdate,
     normalise_language,
 )
+from backend.services.donor_availability import MAX_PAUSE_DAYS, is_paused, pause_calls
 from backend.services.donor_push import save_push_token
 from backend.services.geo import estimate_eta_minutes
 from backend.services.phone import phone_variants
@@ -83,6 +84,26 @@ async def set_call_preference(payload: CallPreference, donor_phone: str = Depend
     return {"status": "ok", "calls_opt_out": payload.opt_out}
 
 
+# ── POST /api/donor/availability ───────────────────────────────────
+
+
+class AvailabilityUpdate(BaseModel):
+    # Days without automated calls, counted from now. 0 ends a break early.
+    pause_days: int = Field(..., ge=0, le=MAX_PAUSE_DAYS)
+
+
+@router.post("/donor/availability")
+async def set_availability(payload: AvailabilityUpdate, donor_phone: str = Depends(get_current_donor)):
+    """Take a short break from automated calls ("not available this week"). Ends by itself."""
+    try:
+        found, until = await pause_calls(donor_phone, payload.pause_days)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail="Pausing calls needs the MongoDB data layer") from exc
+    if not found:
+        raise HTTPException(status_code=404, detail="Complete your donor profile first")
+    return {"status": "ok", "calls_paused_until": until.isoformat() if until else None}
+
+
 # ── POST /api/donor/push-token ─────────────────────────────────────
 
 
@@ -127,6 +148,10 @@ async def get_donor_profile(phone: str, donor_phone: str = Depends(get_current_d
                 "blood_group": donor.blood_group,
                 "last_donated_date": donor.last_donated_date.isoformat() if donor.last_donated_date else None,
                 "calls_opt_out": donor.calls_opt_out,
+                # Only a break still in effect is reported; an expired one reads as available.
+                "calls_paused_until": donor.calls_paused_until.isoformat()
+                if donor.calls_paused_until and is_paused(donor)
+                else None,
             },
         }
     except HTTPException:

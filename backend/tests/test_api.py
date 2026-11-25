@@ -274,6 +274,32 @@ async def test_broadcast_stamps_dispatch_id_and_time():
     assert msg["timestamp"]
 
 
+async def test_slow_dashboard_socket_does_not_block_others(monkeypatch):
+    import asyncio
+
+    from backend.api import websockets
+
+    monkeypatch.setattr(websockets, "SEND_TIMEOUT_SECONDS", 0.05)
+
+    class SlowWS(_FakeWS):
+        async def send_text(self, text):
+            await asyncio.sleep(10)
+
+    mgr = DashboardConnectionManager()
+    mgr.bind("dp-42", "HOSP-1001")
+    slow, fast = SlowWS(), _FakeWS()
+    await mgr.register(slow, "HOSP-1001")
+    await mgr.register(fast, "HOSP-1001")
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    await mgr.broadcast("dp-42", DonorStatusUpdate(donor_id="d1", name="R", status=CallStatus.ANSWERED))
+
+    assert loop.time() - started < 1
+    assert len(fast.sent) == 1
+    assert mgr.connection_count("HOSP-1001") == 1  # the stalled socket was dropped
+
+
 # ── network availability ──────────────────────────────────────────
 
 

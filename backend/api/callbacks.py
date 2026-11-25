@@ -14,8 +14,9 @@ import base64
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Form, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Form, Query, WebSocket, WebSocketDisconnect
 
+from backend.api.twilio_auth import verify_twilio_request
 from backend.api.websockets import manager
 from backend.dispatch_store import dispatch_store
 from backend.schemas.models import CallStatus, DonorStatusUpdate, TERMINAL_OR_DECIDED
@@ -23,6 +24,9 @@ from backend.schemas.models import CallStatus, DonorStatusUpdate, TERMINAL_OR_DE
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["twilio-callbacks"])
+
+# HTTP webhooks must carry a valid Twilio signature (see twilio_auth.py).
+_signed = [Depends(verify_twilio_request)]
 
 
 # ── Twilio status → our CallStatus mapping ────────────────────────
@@ -69,8 +73,8 @@ def map_twilio_status(twilio_status: str, current: Optional[str]) -> Optional[Ca
 from fastapi.responses import Response
 from backend.config import settings
 
-@router.post("/api/twilio/twiml")
-@router.get("/api/twilio/twiml")
+@router.post("/api/twilio/twiml", dependencies=_signed)
+@router.get("/api/twilio/twiml", dependencies=_signed)
 async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(default="")):
     """
     Returns the TwiML XML that instructs Twilio to connect the call
@@ -95,7 +99,7 @@ async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(
 
 # ── POST /api/twilio/gather ──────────────────────────────────────
 
-@router.post("/api/twilio/gather")
+@router.post("/api/twilio/gather", dependencies=_signed)
 async def twilio_gather(
     dispatch_id: str = Query(default=""),
     donor_id: str = Query(default=""),
@@ -149,7 +153,7 @@ async def twilio_gather(
 
 # ── POST /api/twilio/status-callback ─────────────────────────────
 
-@router.post("/api/twilio/status-callback")
+@router.post("/api/twilio/status-callback", dependencies=_signed)
 async def twilio_status_callback(
     CallSid: str = Form(default=""),
     CallStatus_param: str = Form(default="", alias="CallStatus"),

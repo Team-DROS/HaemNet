@@ -8,7 +8,7 @@ file sitting next to this module or via real env vars in production.
 from __future__ import annotations
 
 import json
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import field_validator, model_validator
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,7 +39,10 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
-    
+    # Verify X-Twilio-Signature on webhooks. Unset means: required in
+    # production and staging, skipped in development.
+    twilio_validate_signatures: Optional[bool] = None
+
     sentry_dsn: str = ""
 
     # ── Sarvam AI (STT / TTS) ────────────────────────────────────
@@ -118,6 +121,12 @@ class Settings(BaseSettings):
     @property
     def twilio_configured(self) -> bool:
         return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_phone_number)
+
+    @property
+    def twilio_signature_required(self) -> bool:
+        if self.twilio_validate_signatures is not None:
+            return self.twilio_validate_signatures
+        return self.app_env.lower() in {"production", "staging"}
 
     @property
     def sarvam_configured(self) -> bool:

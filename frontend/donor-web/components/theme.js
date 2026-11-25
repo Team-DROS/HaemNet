@@ -18,7 +18,7 @@ const light = {
   text: '#0F1A2B',
   primary: '#0F1A2B', primaryHover: '#1D2A40',
   text2: '#58637A',
-  muted: '#8B95A7',
+  muted: '#667085', // 4.6:1 on canvas, meets WCAG AA for small text
   faint: '#AEB6C4',
   disabled: '#C3CAD5',
 

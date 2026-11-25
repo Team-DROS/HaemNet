@@ -7,7 +7,7 @@ from backend.api import auth, dispatches
 from backend.api.websockets import DashboardConnectionManager
 from backend.schemas.models import CallStatus, DonorStatusUpdate
 from backend.services import dispatching as planning
-from backend.tests.conftest import HOSPITAL, donor, donor_headers
+from backend.tests.conftest import HOSPITAL, donor, donor_headers, matched_donor
 
 # ── auth ──────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ def test_dispatch_is_recorded_against_the_authenticated_hospital(client, auth_he
     captured = {}
 
     async def fake_find(**kwargs):
-        return [object()]
+        return [matched_donor()]
 
     async def fake_run(dispatch_id, state):
         captured.update(state)

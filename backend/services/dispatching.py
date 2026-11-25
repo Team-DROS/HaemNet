@@ -5,12 +5,13 @@ Kept free of HTTP concerns so the rules can be read, tested and reused on their 
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.db_services import find_eligible_donors
-from backend.orchestration.graph import DispatchState
+from backend.orchestration.graph import DispatchState, donor_call_states
 from backend.schemas.models import DispatchRequest
 from backend.services.blood_groups import request_groups
 from backend.services.call_guard import cap_donors
@@ -36,10 +37,11 @@ async def plan_dispatch(request: DispatchRequest, hospital_id: str) -> PlannedDi
         if coords:
             lat, lng = coords
 
-    donors = []
-    for group in request_groups(request.blood_group):
-        donors.extend(await find_eligible_donors(blood_group=group, lat=lat, lng=lng))
-    donors = cap_donors(donors, lat, lng)
+    # Every compatible group concurrently ("All positive" is four lookups).
+    per_group = await asyncio.gather(
+        *(find_eligible_donors(blood_group=group, lat=lat, lng=lng) for group in request_groups(request.blood_group))
+    )
+    donors = cap_donors([donor for group in per_group for donor in group], lat, lng)
     if not donors:
         return PlannedDispatch(dispatch_id, created_at, 0, None)
 
@@ -53,4 +55,7 @@ async def plan_dispatch(request: DispatchRequest, hospital_id: str) -> PlannedDi
         lat=lat,
         lng=lng,
     ).model_dump()
+    # Hand the matched donors to the pipeline so it calls exactly these
+    # donors instead of querying the database a second time.
+    state["donors"] = donor_call_states(donors, lat, lng)
     return PlannedDispatch(dispatch_id, created_at, len(donors), state)

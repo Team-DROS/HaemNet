@@ -7,7 +7,7 @@ from backend.api import dispatches, health
 from backend.config import settings
 from backend.main import app
 from backend.services import dispatching as planning
-from backend.tests.conftest import HOSPITAL
+from backend.tests.conftest import HOSPITAL, matched_donor
 
 BODY = {
     "hospital_id": HOSPITAL,
@@ -76,9 +76,7 @@ def test_docs_are_hidden_in_production(monkeypatch):
 @pytest.fixture
 def dispatching(monkeypatch):
     async def fake_find(**kwargs):
-        from types import SimpleNamespace
-
-        return [SimpleNamespace(location=SimpleNamespace(lat=13.06, lng=80.25))]
+        return [matched_donor(13.06, 80.25)]
 
     async def fake_run(dispatch_id, state):
         pass

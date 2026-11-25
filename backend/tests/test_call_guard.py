@@ -1,11 +1,10 @@
 """Call cost guards: donors per request and requests per hospital per day."""
 
-from types import SimpleNamespace
-
 from backend.api import dispatches
 from backend.config import settings
 from backend.services import call_guard
 from backend.services import dispatching as planning
+from backend.tests.conftest import matched_donor
 
 BODY = {
     "hospital_id": "HOSP-1001",
@@ -17,7 +16,7 @@ BODY = {
 
 
 def donor_at(offset):
-    return SimpleNamespace(location=SimpleNamespace(lat=13.06 + offset, lng=80.25))
+    return matched_donor(13.06 + offset, 80.25)
 
 
 def test_cap_keeps_the_closest_donors(monkeypatch):

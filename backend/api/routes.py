@@ -332,6 +332,10 @@ async def log_donation(
     dispatch = None
     if payload.dispatch_id:
         dispatch = await _owned_dispatch(payload.dispatch_id, hospital_id)
+        # Check before touching the donor record: a wrong donor ID must not
+        # put an unrelated donor on a 56-day cooldown.
+        if payload.donor_id not in (dispatch.get("donors") or {}):
+            raise HTTPException(status_code=404, detail="Donor was not matched to this request")
 
     success = await update_donation_date(
         donor_id=payload.donor_id,

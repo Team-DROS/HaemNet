@@ -291,3 +291,18 @@ def test_manual_close_is_not_marked_fulfilled(client, store, auth_headers, broad
 def test_register_rejects_invalid_hospital_input(client, payload):
     res = client.post("/api/auth/register", json=payload)
     assert res.status_code == 422
+
+
+def test_donation_for_donor_outside_dispatch_is_rejected(client, auth_headers, store, monkeypatch):
+    touched = []
+
+    async def record(**kwargs):
+        touched.append(kwargs["donor_id"])
+        return True
+
+    monkeypatch.setattr(routes, "update_donation_date", record)
+    store.add("dp-1", donors=[donor("d1", "+919000000001", status="en_route")])
+    res = client.post("/api/donate", headers=auth_headers,
+                      json={"donor_id": "stranger", "hospital_id": HOSPITAL, "dispatch_id": "dp-1"})
+    assert res.status_code == 404
+    assert touched == []  # no cooldown applied to the wrong donor

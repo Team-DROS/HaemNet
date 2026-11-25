@@ -16,7 +16,7 @@ from typing import Optional
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.config import settings
 from backend.db_services import (
@@ -27,6 +27,7 @@ from backend.db_services import (
     get_donor_by_phone,
 )
 from backend.services import hospital_platform as hp
+from backend.services import otp
 from backend.services.passwords import get_password_hash, verify_password  # noqa: F401  (re-exported)
 from backend.services.phone import normalise_phone
 from backend.services.rate_limit import Limiter, enforce
@@ -42,6 +43,10 @@ DONOR_TOKEN_EXPIRE_DAYS = 30
 ROLE_HOSPITAL = "hospital"
 ROLE_DONOR = "donor"
 ROLE_ADMIN = "admin"
+# A short-lived proof that a phone number was verified by SMS. It is neither a donor nor a
+# hospital token, so it cannot be used to call any other endpoint.
+ROLE_PHONE_VERIFIED = "phone_verified"
+PHONE_VERIFIED_MINUTES = 30
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 donor_bearer = HTTPBearer(auto_error=False)
@@ -259,11 +264,25 @@ MAX_PASSWORD_BYTES = 72  # bcrypt ignores anything longer
 _donor_failures = Limiter("donor_login", max_events=10, window_seconds=15 * 60)
 # New accounts: 5 per number per hour (stops scripted squatting on numbers).
 _donor_signups = Limiter("donor_signup", max_events=5, window_seconds=3600)
+# Verification texts cost money: 3 per number and 10 per client address per hour.
+_otp_by_phone = Limiter("otp_request_phone", max_events=3, window_seconds=3600)
+_otp_by_ip = Limiter("otp_request_ip", max_events=10, window_seconds=3600)
 
 
 class DonorCredentials(BaseModel):
     phone: str
     password: str
+    # Proof from POST /otp/verify. Required to register when DONOR_OTP_REQUIRED is on.
+    otp_token: Optional[str] = None
+
+
+class OtpRequest(BaseModel):
+    phone: str
+
+
+class OtpVerify(BaseModel):
+    phone: str
+    code: str = Field(min_length=4, max_length=8)
 
 
 def _donor_phone(raw: str) -> str:
@@ -291,11 +310,42 @@ async def _donor_session(phone: str) -> dict:
     return {"access_token": token, "token_type": "bearer", "phone": phone, "registered": registered}
 
 
+def _phone_verified(otp_token: Optional[str], phone: str) -> bool:
+    claims = _decode(otp_token) if otp_token else None
+    return claims is not None and claims.get("role") == ROLE_PHONE_VERIFIED and claims.get("sub") == phone
+
+
+@donor_router.post("/otp/request")
+async def request_phone_code(payload: OtpRequest, request: Request):
+    """Text a one-time code to the number. The answer is the same whether or not an account exists."""
+    phone = _donor_phone(payload.phone)
+    await enforce(
+        _otp_by_ip, request.client.host if request.client else "unknown", "Too many requests. Try again later."
+    )
+    await enforce(_otp_by_phone, phone, "Too many codes requested for this number. Try again later.")
+    await otp.send_code(phone)
+    return {"sent": True, "expires_in": settings.otp_ttl_seconds}
+
+
+@donor_router.post("/otp/verify")
+async def verify_phone_code(payload: OtpVerify):
+    """Exchange a correct code for a proof of phone ownership, used when registering."""
+    phone = _donor_phone(payload.phone)
+    if not await otp.check_code(phone, payload.code):
+        raise HTTPException(status_code=400, detail="That code is wrong or has expired.")
+    token = create_access_token(
+        {"sub": phone, "role": ROLE_PHONE_VERIFIED}, expires_delta=timedelta(minutes=PHONE_VERIFIED_MINUTES)
+    )
+    return {"otp_token": token, "expires_in": PHONE_VERIFIED_MINUTES * 60}
+
+
 @donor_router.post("/register")
 async def register_donor_account(payload: DonorCredentials):
     """Create a donor account (phone + password) and sign it in."""
     phone = _donor_phone(payload.phone)
     _check_new_password(payload.password)
+    if settings.donor_otp_required and not _phone_verified(payload.otp_token, phone):
+        raise HTTPException(status_code=403, detail="Verify your phone number with the code we text you first.")
     await enforce(_donor_signups, phone, "Too many attempts. Try again later.")
 
     created = await db_create_donor_password(phone, get_password_hash(payload.password))

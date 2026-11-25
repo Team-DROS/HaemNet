@@ -19,21 +19,19 @@ import {
 import { listenForAlerts, listenForAlertTaps, setUpAlerts } from './push';
 import { alertTarget, tokenUpdate } from './pushLogic';
 import { HEALTH_QUESTIONS, evaluateAnswers } from './eligibility';
-import { DEFAULT_LANGUAGE, isAppLanguage, makeT } from './i18n';
+import { APP_LANGUAGES, DEFAULT_LANGUAGE, appLanguageForCall, isAppLanguage, makeT } from './i18n';
 
 const ThemeContext = createContext(null);
 // { t, language, setLanguage }: the app's text in the donor's chosen language (see i18n.js).
-const I18nContext = createContext({ t: makeT(DEFAULT_LANGUAGE), language: DEFAULT_LANGUAGE, setLanguage: () => {} });
+const I18nContext = createContext({
+  t: makeT(DEFAULT_LANGUAGE), language: DEFAULT_LANGUAGE, setLanguage: () => {}, adoptIfUnset: () => {},
+});
 const LANGUAGE_KEY = '@haemnet_language';
 
 const COOLDOWN_DAYS = 56;
 const MS_IN_A_DAY = 24 * 60 * 60 * 1000;
 const POLL_MS = 15000;
 const WAKE_TIMEOUT_MS = REQUEST_TIMEOUT_MS; // Render free instances can take a minute to wake.
-
-const ALERT_LABELS = {
-  on: 'On', off: 'Off', blocked: 'Off in phone settings', pending: 'Connecting…', unsupported: 'Not on this device',
-};
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Others'];
 // The AI voice agent speaks these three languages. Anything else falls back to English on the server.
@@ -54,20 +52,20 @@ function parseUtc(value) {
   return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(str) ? str : `${str}Z`).getTime();
 }
 
-function minutesAgo(value) {
-  const t = parseUtc(value);
-  if (Number.isNaN(t)) return null;
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  return `${Math.floor(mins / 60)} h ago`;
+function minutesAgo(value, t) {
+  const time = parseUtc(value);
+  if (Number.isNaN(time)) return null;
+  const mins = Math.max(0, Math.round((Date.now() - time) / 60000));
+  if (mins < 1) return t('common.justNow');
+  if (mins < 60) return t('common.minAgo', { minutes: mins });
+  return t('common.hoursAgo', { hours: Math.floor(mins / 60) });
 }
 
 // Permission denied for good ("don't ask again"): the only way back is Settings.
-function explainBlockedPermission(title, message) {
+function explainBlockedPermission(t, title, message) {
   Alert.alert(title, message, [
-    { text: 'Not now', style: 'cancel' },
-    { text: 'Open settings', onPress: () => Linking.openSettings().catch(() => {}) },
+    { text: t('common.notNow'), style: 'cancel' },
+    { text: t('common.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
   ]);
 }
 
@@ -94,9 +92,11 @@ export default function DonorApp() {
   }, [theme]);
 
   const [language, setLanguageState] = useState(DEFAULT_LANGUAGE);
+  // True once the donor picked a language on this phone; until then the app follows their call language.
+  const chosen = useRef(false);
   useEffect(() => {
     AsyncStorage.getItem(LANGUAGE_KEY).then((saved) => {
-      if (isAppLanguage(saved)) setLanguageState(saved);
+      if (isAppLanguage(saved)) { chosen.current = true; setLanguageState(saved); }
     }).catch(() => {});
   }, []);
   const i18n = useMemo(() => ({
@@ -104,9 +104,11 @@ export default function DonorApp() {
     language,
     setLanguage: (next) => {
       if (!isAppLanguage(next)) return;
+      chosen.current = true;
       setLanguageState(next);
       AsyncStorage.setItem(LANGUAGE_KEY, next).catch(() => {});
     },
+    adoptIfUnset: (next) => { if (!chosen.current && isAppLanguage(next)) setLanguageState(next); },
   }), [language]);
 
   return (
@@ -121,7 +123,7 @@ export default function DonorApp() {
 
 function DonorExperience({ theme, onToggleTheme }) {
   const { color, s } = useContext(ThemeContext);
-  const { t } = useContext(I18nContext);
+  const { t, adoptIfUnset } = useContext(I18nContext);
   // ─── AUTHENTICATION STATE ───
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { id: 10-digit phone, token }
@@ -200,6 +202,8 @@ function DonorExperience({ theme, onToggleTheme }) {
   const [alertsBusy, setAlertsBusy] = useState(false);
   const scrollRef = useRef(null);
 
+  // Once, at start-up: restore a saved session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { checkLoginStatus(); }, []);
   // Intentionally keyed on the session only: reload the profile when the donor signs in, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,7 +243,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       });
     } catch (err) {
       if (err.response?.status === 401 && token) {
-        await handleLogout('Your session expired. Sign in again.');
+        await handleLogout(t('auth.sessionExpired'));
       }
       throw err;
     }
@@ -254,7 +258,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         setIsLoggedIn(true);
       }
     } catch {
-      Alert.alert('Sign in', 'Could not check your sign-in status.');
+      Alert.alert(t('auth.signInTitle'), t('auth.statusFailed'));
     }
   };
 
@@ -264,11 +268,11 @@ function DonorExperience({ theme, onToggleTheme }) {
     if (typeof detail === 'string' && detail.length < 200) return detail;
     if (!err.response) {
       return err.code === 'ECONNABORTED'
-        ? 'HaemNet is taking too long to respond. It may be waking up; try again in a minute.'
-        : 'Cannot reach HaemNet. Check your connection.';
+        ? t('error.slow')
+        : t('error.noConnection');
     }
-    if (status === 429) return 'Too many attempts. Wait a minute and try again.';
-    if (status >= 500) return 'HaemNet is having trouble right now. Try again shortly.';
+    if (status === 429) return t('error.tooMany');
+    if (status >= 500) return t('error.server');
     return fallback;
   };
 
@@ -281,12 +285,12 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const sendCode = async () => {
     setAuthError(''); setAuthNotice('');
-    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
+    if (loginId.length !== 10) return setAuthError(t('auth.enterPhone'));
     setOtpBusy(true);
     try {
       await axios.post(`${SERVER_BASE_URL}/api/donor/auth/otp/request`, { phone: loginId }, { timeout: WAKE_TIMEOUT_MS });
       setOtpSentAt(Date.now()); setOtpCode('');
-      setAuthNotice(`We texted a 6-digit code to +91 ${loginId}.`);
+      setAuthNotice(t('auth.codeSent', { phone: loginId }));
     } catch (err) {
       setAuthError(codeErrorMessage(err, 'send'));
     }
@@ -295,14 +299,14 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const submitAuth = async () => {
     setAuthError(''); setAuthNotice('');
-    if (loginId.length !== 10) return setAuthError('Enter your 10-digit mobile number.');
+    if (loginId.length !== 10) return setAuthError(t('auth.enterPhone'));
     if (authMode === 'register') {
-      if (password.length < MIN_PASSWORD) return setAuthError(`Use at least ${MIN_PASSWORD} characters for your password.`);
-      if (password !== confirmPassword) return setAuthError('The two passwords do not match.');
-      if (otpRequired && !otpSentAt) return setAuthError('Tap "Send code" first, then enter the code we text you.');
-      if (otpRequired && !isValidCode(otpCode)) return setAuthError('Enter the 6-digit code we texted you.');
+      if (password.length < MIN_PASSWORD) return setAuthError(t('auth.passwordShort', { min: MIN_PASSWORD }));
+      if (password !== confirmPassword) return setAuthError(t('auth.passwordMismatch'));
+      if (otpRequired && !otpSentAt) return setAuthError(t('auth.sendCodeFirst'));
+      if (otpRequired && !isValidCode(otpCode)) return setAuthError(t('auth.enterCode'));
     } else if (!password) {
-      return setAuthError('Enter your password.');
+      return setAuthError(t('auth.enterPassword'));
     }
     setAuthLoading(true);
     let otpToken = null;
@@ -330,9 +334,9 @@ function DonorExperience({ theme, onToggleTheme }) {
     } catch (err) {
       if (err.response?.status === 409) {
         setAuthMode('login'); setConfirmPassword('');
-        setAuthNotice('This number already has an account. Sign in with your password.');
+        setAuthNotice(t('auth.numberExists'));
       } else {
-        setAuthError(serverError(err, authMode === 'register' ? 'Could not create your account.' : 'Could not sign you in.'));
+        setAuthError(serverError(err, authMode === 'register' ? t('auth.createFailed') : t('auth.signInFailed')));
       }
     }
     setAuthLoading(false);
@@ -380,7 +384,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const turnOnAlerts = async () => {
     if (alertsState === 'blocked') {
-      explainBlockedPermission('Alerts are turned off', 'Allow notifications for HaemNet Donor in Settings so a request reaches you even when the app is closed.');
+      explainBlockedPermission(t, t('alerts.blockedTitle'), t('alerts.blockedBody'));
       return;
     }
     setAlertsBusy(true);
@@ -428,6 +432,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         }
 
         setLanguage(LANGUAGES.includes(profile.language) ? profile.language : 'English');
+        adoptIfUnset(appLanguageForCall(profile.language));
         setLat(profile.lat != null && Number.isFinite(Number(profile.lat)) ? Number(profile.lat) : null);
         setLng(profile.lng != null && Number.isFinite(Number(profile.lng)) ? Number(profile.lng) : null);
         setAddress(profile.address || '');
@@ -521,7 +526,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 
       setDonationLog(currentLog);
     } catch {
-      Alert.alert('Error', 'Failed to load profile');
+      Alert.alert(t('common.error'), t('profile.loadFailed'));
     }
     setProfileLoading(false);
     if (isRefresh) {
@@ -532,17 +537,17 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const handleRegister = async () => {
     setRegError('');
-    if (!name.trim()) return setRegError('Name is required.');
-    if (!phone.trim()) return setRegError('Phone number is required.');
-    if (phone.length !== 10) return setRegError('Phone number must be exactly 10 digits.');
+    if (!name.trim()) return setRegError(t('reg.nameRequired'));
+    if (!phone.trim()) return setRegError(t('reg.phoneRequired'));
+    if (phone.length !== 10) return setRegError(t('reg.phoneDigits'));
     if (!locationSource || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return setRegError('Set an accurate location with GPS or confirm your area before joining.');
+      return setRegError(t('reg.locationRequired'));
     }
 
     const finalBloodGroup = bloodGroup === 'Others' ? customBloodGroup.trim() : bloodGroup;
-    if (!finalBloodGroup) return setRegError('Specify your blood group.');
+    if (!finalBloodGroup) return setRegError(t('reg.groupRequired'));
     if (consentRequired(isRegistered) && !callsConsent) {
-      return setRegError('Please agree to receive automated emergency calls to join the network.');
+      return setRegError(t('reg.consentRequired'));
     }
 
     const finalPhone = withCountryCode(currentUser.id); // always the number the donor signed in with
@@ -565,10 +570,11 @@ function DonorExperience({ theme, onToggleTheme }) {
         ...callsConsentField(isRegistered, callsConsent),
       });
       await AsyncStorage.setItem(getProfileKey(), JSON.stringify(profile));
+      adoptIfUnset(appLanguageForCall(profile.language));
       setIsSaving(false); setIsRegistered(true); setIsEditing(false);
     } catch (err) {
       setIsSaving(false);
-      setRegError(`Could not save your profile: ${serverError(err, `the server returned ${err.response?.status}`)}`);
+      setRegError(t('reg.saveFailed', { reason: serverError(err, t('error.serverReturned', { status: err.response?.status })) }));
     }
   };
 
@@ -579,7 +585,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       await api('post', '/api/donor/calls/preference', { opt_out: next });
       setCallsOptOut(next);
     } catch (err) {
-      setRegError(`Could not change your call setting: ${serverError(err, 'please try again')}`);
+      setRegError(t('reg.callsFailed', { reason: serverError(err, t('error.tryAgain')) }));
     }
     setCallsBusy(false);
   };
@@ -590,7 +596,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       const res = await api('post', '/api/donor/availability', { pause_days: days });
       setCallsPausedUntil(res.data?.calls_paused_until || null);
     } catch (err) {
-      setRegError(t('availability.error', { reason: serverError(err, 'please try again') }));
+      setRegError(t('availability.error', { reason: serverError(err, t('error.tryAgain')) }));
     }
     setCallsBusy(false);
   };
@@ -604,20 +610,20 @@ function DonorExperience({ theme, onToggleTheme }) {
       setLat(null); setLng(null); setAddress(''); setLocationSource(null);
       setProfilePic(null); setLastDonatedDate(null); setDonationLog([]); setActiveTrip(null); setRequests([]);
       setIsRegistered(false); setIsEditing(false);
-      Alert.alert('Profile deleted', 'You have been removed from the donor network.');
+      Alert.alert(t('delete.done'), t('delete.doneBody'));
     } catch (err) {
       // Never log the raw error: axios errors carry request headers, including the token.
-      Alert.alert('Could not delete profile', serverError(err, 'The server could not delete your profile. Try again.'));
+      Alert.alert(t('delete.failed'), serverError(err, t('delete.failedBody')));
     }
   };
 
   const confirmClearProfile = () => {
     Alert.alert(
-      'Delete your donor profile?',
-      'Hospitals will no longer be able to reach you in an emergency.',
+      t('delete.title'),
+      t('delete.body'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: clearProfile },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.delete'), style: 'destructive', onPress: clearProfile },
       ],
     );
   };
@@ -648,7 +654,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     } catch (err) {
       if (err.response?.status === 401) return;
       // Keep what is on screen; if nothing is, fall back to the list saved on this phone.
-      if (!(await showSavedRequests())) setRequestsError('Cannot reach HaemNet right now. Pull down to retry.');
+      if (!(await showSavedRequests())) setRequestsError(t('requests.unreachable'));
     }
     // `api` reads the current token from a ref, so its changing identity does not matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -725,15 +731,15 @@ function DonorExperience({ theme, onToggleTheme }) {
         setActiveTrip(trip);
         await AsyncStorage.setItem(getTripKey(), JSON.stringify(trip));
       } else {
-        setRespondMsg('Thanks for letting them know. The hospital will reach other donors.');
+        setRespondMsg(t('requests.declined'));
       }
     } catch (err) {
       const status = err.response?.status;
       if (status === 404 || status === 409) {
         setRequests((list) => list.filter((r) => r.dispatch_id !== req.dispatch_id));
-        setRespondMsg(status === 404 ? 'That request has already been filled or closed.' : 'You already responded to this request.');
+        setRespondMsg(status === 404 ? t('requests.closed') : t('requests.alreadyAnswered'));
       } else {
-        setRespondMsg('Could not send your answer. Check your connection and try again.');
+        setRespondMsg(t('requests.sendFailed'));
       }
     }
     setResponding(null);
@@ -752,8 +758,8 @@ function DonorExperience({ theme, onToggleTheme }) {
       if (useCamera) {
         const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          if (canAskAgain === false) explainBlockedPermission('Camera is turned off', 'Allow camera access for HaemNet Donor in Settings to take a profile photo.');
-          else Alert.alert('Permission needed', 'Camera permission is required to take a photo.');
+          if (canAskAgain === false) explainBlockedPermission(t, t('photo.cameraOffTitle'), t('photo.cameraOffBody'));
+          else Alert.alert(t('permission.neededTitle'), t('photo.cameraNeeded'));
           return;
         }
         result = await ImagePicker.launchCameraAsync({
@@ -762,8 +768,8 @@ function DonorExperience({ theme, onToggleTheme }) {
       } else {
         const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          if (canAskAgain === false) explainBlockedPermission('Photos are turned off', 'Allow photo access for HaemNet Donor in Settings to choose a profile photo.');
-          else Alert.alert('Permission needed', 'Gallery permission is required to pick a photo.');
+          if (canAskAgain === false) explainBlockedPermission(t, t('photo.photosOffTitle'), t('photo.photosOffBody'));
+          else Alert.alert(t('permission.neededTitle'), t('photo.galleryNeeded'));
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
@@ -774,15 +780,15 @@ function DonorExperience({ theme, onToggleTheme }) {
         setProfilePic(result.assets[0].uri);
       }
     } catch {
-      Alert.alert('Error', 'Failed to pick image');
+      Alert.alert(t('common.error'), t('photo.failed'));
     }
   };
 
   const promptImagePicker = () => {
-    Alert.alert('Profile photo', 'Choose an option', [
-      { text: 'Take photo', onPress: () => pickImage(true) },
-      { text: 'Choose from gallery', onPress: () => pickImage(false) },
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('photo.title'), t('photo.choose'), [
+      { text: t('photo.take'), onPress: () => pickImage(true) },
+      { text: t('photo.gallery'), onPress: () => pickImage(false) },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -794,9 +800,9 @@ function DonorExperience({ theme, onToggleTheme }) {
       const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setLocationError(canAskAgain === false
-          ? 'Location is turned off for HaemNet Donor. Allow it in Settings, or type your area below.'
-          : 'Location permission denied. Type your area below instead.');
-        if (canAskAgain === false) explainBlockedPermission('Location is turned off', 'Allow location for HaemNet Donor in Settings so hospitals within 10 km can find you.');
+          ? t('loc.blocked')
+          : t('loc.denied'));
+        if (canAskAgain === false) explainBlockedPermission(t, t('loc.offTitle'), t('loc.offBody'));
         setLocationLoading(false);
         return;
       }
@@ -809,7 +815,7 @@ function DonorExperience({ theme, onToggleTheme }) {
       setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
       setLocationSource('gps');
     } catch (err) {
-      setLocationError(`Could not get location: ${err.message}. Type your area instead.`);
+      setLocationError(t('loc.failed', { reason: err.message }));
     }
     setLocationLoading(false);
   };
@@ -824,24 +830,24 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const confirmArea = async () => {
     const query = address.trim();
-    if (query.length < 6) return setLocationError('Enter a full area and city so we can locate it accurately.');
+    if (query.length < 6) return setLocationError(t('loc.tooShort'));
     setLocationLoading(true);
     setLocationError('');
     try {
       // Android geocoding requires foreground location permission, even when
       // the donor types the address. Never fall back to a different city.
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') throw new Error('Allow location access to confirm your area or use GPS.');
+      if (status !== 'granted') throw new Error(t('loc.needPermission'));
       const matches = await Location.geocodeAsync(query);
       const point = matches?.[0];
       if (!point || !Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
-        throw new Error('We could not locate that area. Add the city and postcode, or use GPS.');
+        throw new Error(t('loc.notFound'));
       }
       setLat(point.latitude);
       setLng(point.longitude);
       setLocationSource('manual');
     } catch (err) {
-      setLocationError(err.message || 'Could not find that area. Use GPS instead.');
+      setLocationError(err.message || t('loc.findFailed'));
     } finally {
       setLocationLoading(false);
     }
@@ -868,7 +874,7 @@ function DonorExperience({ theme, onToggleTheme }) {
     if (!lastDonatedDate) return '';
     const eligibleDate = new Date(lastDonatedDate.getTime());
     eligibleDate.setDate(eligibleDate.getDate() + COOLDOWN_DAYS);
-    return eligibleDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return t.date(eligibleDate);
   };
 
   // ─── RENDERERS ───
@@ -886,69 +892,71 @@ function DonorExperience({ theme, onToggleTheme }) {
 
         {connection === 'offline' ? <Notice tone="amber">{t('offline.banner')}</Notice> : null}
 
+        <LanguageSwitch style={{ marginBottom: 22 }} />
+
         <View style={s.authHero}>
-          <Text style={s.authHeroEyebrow}>THE DONOR NETWORK</Text>
-          <Text style={s.authHeroTitle}>Be there when someone needs you.</Text>
-          <Text style={s.authHeroBody}>Nearby hospitals can reach the right blood donor in minutes. Joining takes your number and a password.</Text>
+          <Text style={s.authHeroEyebrow}>{t('auth.eyebrow')}</Text>
+          <Text style={s.authHeroTitle}>{t('auth.heroTitle')}</Text>
+          <Text style={s.authHeroBody}>{t('auth.heroBody')}</Text>
           <View style={s.heroSteps}>
-            <Text style={s.heroStep}>01  Sign up</Text>
-            <Text style={s.heroStep}>02  Join</Text>
-            <Text style={s.heroStep}>03  Help</Text>
+            <Text style={s.heroStep}>{t('auth.step1')}</Text>
+            <Text style={s.heroStep}>{t('auth.step2')}</Text>
+            <Text style={s.heroStep}>{t('auth.step3')}</Text>
           </View>
         </View>
 
-        <Text style={s.h1}>{authMode === 'login' ? 'Sign in' : 'Create your account'}</Text>
+        <Text style={s.h1}>{authMode === 'login' ? t('auth.signInTitle') : t('auth.createTitle')}</Text>
         <Text style={s.lede}>
           {authMode === 'login'
-            ? 'Use the mobile number and password you joined with.'
-            : 'Use the mobile number hospitals should call, and choose a password.'}
+            ? t('auth.signInLede')
+            : t('auth.createLede')}
         </Text>
 
         {authNotice ? <Notice tone="amber">{authNotice}</Notice> : null}
 
-        <Field label="Mobile number">
+        <Field label={t('auth.mobile')}>
           <View style={s.phoneRow}>
             <Text style={s.phonePrefix}>+91</Text>
             <TextInput value={loginId} onChangeText={handleLoginIdChange} placeholder="98765 43210"
               placeholderTextColor={color.faint} keyboardType="phone-pad" maxLength={10}
               autoComplete="tel" textContentType="telephoneNumber"
-              style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Mobile number" />
+              style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel={t('auth.mobile')} />
           </View>
         </Field>
-        <Field label="Password" hint={authMode === 'register' ? `At least ${MIN_PASSWORD} characters.` : null}>
+        <Field label={t('auth.password')} hint={authMode === 'register' ? t('auth.passwordHint', { min: MIN_PASSWORD }) : null}>
           <View style={s.phoneRow}>
             <TextInput value={password} onChangeText={(v) => { setPassword(v.slice(0, 72)); if (authError) setAuthError(''); }}
-              placeholder={authMode === 'register' ? 'Choose a password' : 'Your password'} placeholderTextColor={color.faint}
+              placeholder={authMode === 'register' ? t('auth.choosePassword') : t('auth.yourPassword')} placeholderTextColor={color.faint}
               secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false}
               autoComplete={authMode === 'register' ? 'password-new' : 'password'}
               textContentType={authMode === 'register' ? 'newPassword' : 'password'}
               onSubmitEditing={authMode === 'login' ? submitAuth : undefined}
-              style={s.inputBare} accessibilityLabel="Password" />
+              style={s.inputBare} accessibilityLabel={t('auth.password')} />
             <TouchableOpacity onPress={() => setShowPassword((v) => !v)} accessibilityRole="button"
-              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} style={{ paddingHorizontal: 14 }}>
-              <Text style={s.switchLink}>{showPassword ? 'Hide' : 'Show'}</Text>
+              accessibilityLabel={showPassword ? t('auth.hidePassword') : t('auth.showPassword')} style={{ paddingHorizontal: 14 }}>
+              <Text style={s.switchLink}>{showPassword ? t('auth.hide') : t('auth.show')}</Text>
             </TouchableOpacity>
           </View>
         </Field>
         {authMode === 'register' ? (
-          <Field label="Confirm password">
+          <Field label={t('auth.confirmPassword')}>
             <TextInput value={confirmPassword} onChangeText={(v) => { setConfirmPassword(v.slice(0, 72)); if (authError) setAuthError(''); }}
-              placeholder="Type it again" placeholderTextColor={color.faint}
+              placeholder={t('auth.typeAgain')} placeholderTextColor={color.faint}
               secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false}
               autoComplete="password-new" textContentType="newPassword" onSubmitEditing={submitAuth}
-              style={s.input} accessibilityLabel="Confirm password" />
+              style={s.input} accessibilityLabel={t('auth.confirmPassword')} />
           </Field>
         ) : null}
         {authMode === 'register' && otpRequired ? (
-          <Field label="Verification code" hint="We text a code to this number to confirm it is yours.">
+          <Field label={t('auth.code')} hint={t('auth.codeHint')}>
             <View style={s.phoneRow}>
               <TextInput value={otpCode} onChangeText={(v) => { setOtpCode(digitsOnly(v)); if (authError) setAuthError(''); }}
-                placeholder="6-digit code" placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
+                placeholder={t('auth.codePlaceholder')} placeholderTextColor={color.faint} keyboardType="number-pad" maxLength={6}
                 autoComplete="sms-otp" textContentType="oneTimeCode"
-                style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel="Verification code" />
+                style={[s.inputBare, { fontFamily: mono }]} accessibilityLabel={t('auth.code')} />
               <TouchableOpacity onPress={sendCode} disabled={otpBusy || resendIn > 0} accessibilityRole="button"
-                accessibilityLabel="Send verification code" style={{ paddingHorizontal: 14, opacity: otpBusy || resendIn > 0 ? 0.5 : 1 }}>
-                <Text style={s.switchLink}>{otpBusy ? 'Sending...' : resendIn > 0 ? `Resend in ${resendIn}s` : otpSentAt ? 'Resend' : 'Send code'}</Text>
+                accessibilityLabel={t('auth.sendCodeLabel')} style={{ paddingHorizontal: 14, opacity: otpBusy || resendIn > 0 ? 0.5 : 1 }}>
+                <Text style={s.switchLink}>{otpBusy ? t('auth.sending') : resendIn > 0 ? t('auth.resendIn', { seconds: resendIn }) : otpSentAt ? t('auth.resend') : t('auth.sendCode')}</Text>
               </TouchableOpacity>
             </View>
           </Field>
@@ -957,25 +965,25 @@ function DonorExperience({ theme, onToggleTheme }) {
         {authError ? <Notice tone="red">{authError}</Notice> : null}
 
         <PrimaryButton onPress={submitAuth} busy={authLoading} style={{ marginTop: 8 }}>
-          {authMode === 'login' ? 'Sign in' : 'Create account'}
+          {authMode === 'login' ? t('auth.signInButton') : t('auth.createButton')}
         </PrimaryButton>
 
         <View style={[s.row, { justifyContent: 'center', marginTop: 18 }]}>
-          <Text style={s.switchText}>{authMode === 'login' ? 'New to HaemNet? ' : 'Already joined? '}</Text>
+          <Text style={s.switchText}>{authMode === 'login' ? t('auth.newHere') : t('auth.alreadyJoined')}</Text>
           <TouchableOpacity onPress={() => switchAuthMode(authMode === 'login' ? 'register' : 'login')} accessibilityRole="button">
-            <Text style={s.switchLink}>{authMode === 'login' ? 'Create an account' : 'Sign in'}</Text>
+            <Text style={s.switchLink}>{authMode === 'login' ? t('auth.createLink') : t('auth.signInLink')}</Text>
           </TouchableOpacity>
         </View>
         {authMode === 'login' ? (
           <Text style={[s.switchText, { textAlign: 'center', marginTop: 10, fontSize: 13 }]}>
-            Forgot your password? Ask the HaemNet team to reset it, then create your account again with the same number.
+            {t('auth.forgot')}
           </Text>
         ) : null}
 
         <View style={s.authFacts}>
-          <Fact title="Only when it matters" body="You are contacted only when your group is needed within 10 km." />
-          <Fact title="Your health first" body="The 56-day recovery window is tracked for you. No calls while you recover." />
-          <Fact title="In your language" body="The AI caller speaks English, Hindi or Tamil." last />
+          <Fact title={t('auth.fact1Title')} body={t('auth.fact1Body')} />
+          <Fact title={t('auth.fact2Title')} body={t('auth.fact2Body')} />
+          <Fact title={t('auth.fact3Title')} body={t('auth.fact3Body')} last />
         </View>
       </ScrollView>
     );
@@ -983,27 +991,27 @@ function DonorExperience({ theme, onToggleTheme }) {
 
   const renderLocationPicker = () => (
     <View style={{ marginTop: 18 }}>
-      <Text style={s.label}>Your location</Text>
+      <Text style={s.label}>{t('loc.label')}</Text>
 
       {locationSource ? (
         <View style={s.locationConfirmed}>
           <View style={[s.row, { justifyContent: 'space-between', gap: 10 }]}>
             <View style={{ flex: 1 }}>
-              <Text style={s.locationTag}>{locationSource === 'gps' ? 'GPS location set' : 'Area set'}</Text>
-              <Text style={s.locationAddr} numberOfLines={2}>{address || 'Location set'}</Text>
+              <Text style={s.locationTag}>{locationSource === 'gps' ? t('loc.gpsSet') : t('loc.areaSet')}</Text>
+              <Text style={s.locationAddr} numberOfLines={2}>{address || t('loc.set')}</Text>
             </View>
             <TouchableOpacity onPress={clearLocation} style={s.smallBtn} accessibilityRole="button">
-              <Text style={s.smallBtnText}>Change</Text>
+              <Text style={s.smallBtnText}>{t('common.change')}</Text>
             </TouchableOpacity>
           </View>
 
           {Number.isFinite(lat) && Number.isFinite(lng) && (
             <TouchableOpacity onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`)}
-              style={s.locationPreview} accessibilityRole="button" accessibilityLabel="View location in Maps">
+              style={s.locationPreview} accessibilityRole="button" accessibilityLabel={t('loc.viewInMaps')}>
               <Text style={s.locationPreviewPin}>⌖</Text>
               <View style={{ flex: 1 }}>
-                <Text style={s.locationPreviewTitle}>Location pinned</Text>
-                <Text style={s.locationPreviewCoords}>{lat.toFixed(5)}, {lng.toFixed(5)} · View in Maps ↗</Text>
+                <Text style={s.locationPreviewTitle}>{t('loc.pinned')}</Text>
+                <Text style={s.locationPreviewCoords}>{lat.toFixed(5)}, {lng.toFixed(5)} · {t('loc.viewMapsShort')}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -1014,14 +1022,14 @@ function DonorExperience({ theme, onToggleTheme }) {
             {locationLoading ? (
               <View style={s.row}>
                 <ActivityIndicator size="small" color={color.greenText} />
-                <Text style={[s.gpsBtnText, { marginLeft: 10 }]}>Detecting location…</Text>
+                <Text style={[s.gpsBtnText, { marginLeft: 10 }]}>{t('loc.detecting')}</Text>
               </View>
             ) : (
               <View style={s.row}>
                 <View style={s.gpsDot}><View style={s.gpsDotInner} /></View>
                 <View style={{ marginLeft: 12 }}>
-                  <Text style={s.gpsBtnText}>Use my current location</Text>
-                  <Text style={s.gpsBtnSub}>Most accurate for matching</Text>
+                  <Text style={s.gpsBtnText}>{t('loc.useCurrent')}</Text>
+                  <Text style={s.gpsBtnSub}>{t('loc.mostAccurate')}</Text>
                 </View>
               </View>
             )}
@@ -1031,7 +1039,7 @@ function DonorExperience({ theme, onToggleTheme }) {
 
           <View style={s.orRow}>
             <View style={s.orLine} />
-            <Text style={s.orText}>or type your area</Text>
+            <Text style={s.orText}>{t('loc.orType')}</Text>
             <View style={s.orLine} />
           </View>
 
@@ -1046,7 +1054,7 @@ function DonorExperience({ theme, onToggleTheme }) {
             numberOfLines={2}
           />
           <SecondaryButton onPress={confirmArea} busy={locationLoading} style={{ marginTop: 10 }}>
-            {locationLoading ? 'Finding area…' : 'Confirm this area'}
+            {locationLoading ? t('loc.finding') : t('loc.confirm')}
           </SecondaryButton>
         </View>
       )}
@@ -1073,7 +1081,7 @@ function DonorExperience({ theme, onToggleTheme }) {
         <View style={[s.row, { gap: 8 }]}>
           <ThemeSwitch theme={theme} onPress={onToggleTheme} />
           <TouchableOpacity onPress={() => handleLogout()} style={s.smallBtn} accessibilityRole="button">
-            <Text style={s.smallBtnText}>Sign out</Text>
+            <Text style={s.smallBtnText}>{t('common.signOut')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1094,59 +1102,59 @@ function DonorExperience({ theme, onToggleTheme }) {
         </View>
       ) : !isRegistered || isEditing ? (
         <View style={s.card}>
-          <Text style={s.overline}>YOUR DONOR PROFILE</Text>
-          <Text style={s.cardTitle}>{isEditing ? 'Edit your donor profile' : 'Join the donor network'}</Text>
-          <Text style={s.cardDesc}>Hospitals near you see only your blood group and distance until you accept a request.</Text>
+          <Text style={s.overline}>{t('reg.overline')}</Text>
+          <Text style={s.cardTitle}>{isEditing ? t('reg.editTitle') : t('reg.joinTitle')}</Text>
+          <Text style={s.cardDesc}>{t('reg.privacyNote')}</Text>
 
           <View style={{ alignItems: 'center', marginBottom: 22 }}>
-            <TouchableOpacity onPress={promptImagePicker} style={s.avatarLg} accessibilityRole="button" accessibilityLabel="Add profile photo">
+            <TouchableOpacity onPress={promptImagePicker} style={s.avatarLg} accessibilityRole="button" accessibilityLabel={t('reg.addPhoto')}>
               {profilePic ? (
                 <Image source={{ uri: profilePic }} style={s.avatarLgImage} />
               ) : (
                 <Text style={s.avatarLgInitial}>{firstName ? firstName[0].toUpperCase() : '+'}</Text>
               )}
             </TouchableOpacity>
-            <Text style={s.avatarHint}>{profilePic ? 'Change photo' : 'Add photo (optional)'}</Text>
+            <Text style={s.avatarHint}>{profilePic ? t('reg.changePhoto') : t('reg.addPhotoOptional')}</Text>
           </View>
 
-          <Field label="Full name">
+          <Field label={t('reg.fullName')}>
             <TextInput value={name} onChangeText={handleNameChange} placeholder="Ramesh Patel" placeholderTextColor={color.faint} style={s.input} />
           </Field>
 
-          <Field label="Phone number" hint="The number you signed in with. Hospitals' AI caller rings this number.">
+          <Field label={t('reg.phone')} hint={t('reg.phoneHint')}>
             <View style={[s.phoneRow, { backgroundColor: color.surface2 }]}>
               <Text style={s.phonePrefix}>+91</Text>
               <TextInput value={phone} editable={false} style={[s.inputBare, { fontFamily: mono, color: color.text2 }]}
-                accessibilityLabel="Verified phone number" />
+                accessibilityLabel={t('reg.verifiedPhone')} />
             </View>
           </Field>
 
-          <Text style={s.label}>Blood group</Text>
+          <Text style={s.label}>{t('reg.bloodGroup')}</Text>
           <View style={s.chipGrid}>
             {BLOOD_GROUPS.map((g) => {
               const active = bloodGroup === g;
               return (
                 <TouchableOpacity key={g} onPress={() => setBloodGroup(g)} accessibilityRole="button" accessibilityState={{ selected: active }}
                   style={[s.groupChip, g === 'Others' && { width: '48%' }, active && s.groupChipActive]}>
-                  <Text style={[s.groupChipText, active && s.groupChipTextActive]}>{g === 'Others' ? 'Other / rare' : bg(g)}</Text>
+                  <Text style={[s.groupChipText, active && s.groupChipTextActive]}>{g === 'Others' ? t('reg.otherGroup') : bg(g)}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
           {bloodGroup === 'Others' && (
-            <TextInput value={customBloodGroup} onChangeText={setCustomBloodGroup} placeholder="e.g. Bombay (hh)"
+            <TextInput value={customBloodGroup} onChangeText={setCustomBloodGroup} placeholder={t('reg.otherGroupPlaceholder')}
               placeholderTextColor={color.faint} style={[s.input, { marginTop: 10 }]} />
           )}
 
-          <Text style={[s.label, { marginTop: 18 }]}>AI call language</Text>
+          <Text style={[s.label, { marginTop: 18 }]}>{t('reg.callLanguage')}</Text>
           <View style={s.segmented}>
             {LANGUAGES.map((lang) => {
               const active = language === lang;
               return (
                 <TouchableOpacity key={lang} onPress={() => setLanguage(lang)} accessibilityRole="button" accessibilityState={{ selected: active }}
                   style={[s.segment, active && s.segmentActive]}>
-                  <Text style={[s.segmentText, active && s.segmentTextActive]}>{lang}</Text>
+                  <Text style={[s.segmentText, active && s.segmentTextActive]}>{t(`language.${lang}`)}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -1157,14 +1165,13 @@ function DonorExperience({ theme, onToggleTheme }) {
           {consentRequired(isRegistered) ? (
             <TouchableOpacity onPress={() => { setCallsConsent((v) => !v); if (regError) setRegError(''); }}
               accessibilityRole="checkbox" accessibilityState={{ checked: callsConsent }}
-              accessibilityLabel="I agree to receive automated emergency calls" style={[s.row, { gap: 12, marginTop: 18, alignItems: 'flex-start' }]}>
+              accessibilityLabel={t('reg.consentLabel')} style={[s.row, { gap: 12, marginTop: 18, alignItems: 'flex-start' }]}>
               <View style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: callsConsent ? color.green : color.faint,
                 backgroundColor: callsConsent ? color.green : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {callsConsent ? <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>✓</Text> : null}
               </View>
               <Text style={[s.hint, { flex: 1 }]}>
-                I agree that HaemNet and hospitals may call me with an automated voice call when someone nearby needs my blood
-                group. I can pause these calls at any time in the app.
+                {t('reg.consent')}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -1179,25 +1186,25 @@ function DonorExperience({ theme, onToggleTheme }) {
 
           <View style={[s.row, { marginTop: 22, gap: 10 }]}>
             {isEditing && (
-              <SecondaryButton onPress={() => { setIsEditing(false); setRegError(''); }} style={{ flex: 1 }}>Cancel</SecondaryButton>
+              <SecondaryButton onPress={() => { setIsEditing(false); setRegError(''); }} style={{ flex: 1 }}>{t('common.cancel')}</SecondaryButton>
             )}
             <PrimaryButton onPress={handleRegister} busy={isSaving} style={{ flex: 2 }}>
-              {isEditing ? 'Save changes' : 'Join the network'}
+              {isEditing ? t('reg.save') : t('reg.join')}
             </PrimaryButton>
           </View>
         </View>
       ) : (
         <View>
           <View style={s.welcomeBanner}>
-            <Text style={s.welcomeEyebrow}>HAEMNET DONOR · {bg(displayGroup)}</Text>
-            <Text style={s.welcomeTitle}>Your readiness matters.</Text>
-            <Text style={s.welcomeBody}>When a nearby hospital needs your blood group, the request appears here and we call your number.</Text>
+            <Text style={s.welcomeEyebrow}>{t('dash.welcomeEyebrow', { group: bg(displayGroup) })}</Text>
+            <Text style={s.welcomeTitle}>{t('dash.welcomeTitle')}</Text>
+            <Text style={s.welcomeBody}>{t('dash.welcomeBody')}</Text>
           </View>
-          <Text style={s.greeting}>Hi {firstName || 'there'}</Text>
+          <Text style={s.greeting}>{firstName ? t('dash.hi', { name: firstName }) : t('dash.hiNoName')}</Text>
           <Text style={s.greetingSub}>
             {requests.length
-              ? `${requests.length === 1 ? 'A hospital needs' : `${requests.length} hospitals need`} your help right now.`
-              : activeTrip ? 'Thank you for saying yes.' : eligible ? 'You are ready to donate if a hospital nearby needs you.' : 'You are recovering. We will not call you until you are ready.'}
+              ? (requests.length === 1 ? t('dash.oneNeeds') : t('dash.manyNeed', { count: requests.length }))
+              : activeTrip ? t('dash.thanksYes') : eligible ? t('dash.ready') : t('dash.recoveringLine')}
           </Text>
 
           {requests.map((req) => (
@@ -1218,16 +1225,16 @@ function DonorExperience({ theme, onToggleTheme }) {
           {/* Readiness */}
           <View style={[s.card, { marginTop: 16 }]}>
             <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <Text style={s.overline}>Donation readiness</Text>
-              <StatusPill tone={eligible ? 'green' : 'amber'}>{eligible ? 'Eligible' : 'Recovering'}</StatusPill>
+              <Text style={s.overline}>{t('dash.readiness')}</Text>
+              <StatusPill tone={eligible ? 'green' : 'amber'}>{eligible ? t('dash.eligible') : t('dash.recovering')}</StatusPill>
             </View>
 
             <View style={[s.row, { alignItems: 'flex-end', marginTop: 14, gap: 10 }]}>
               <Text style={[s.bigNum, { color: eligible ? color.greenText : color.text }]}>
-                {eligible ? 'Ready' : daysRemaining}
+                {eligible ? t('dash.readyBig') : daysRemaining}
               </Text>
               <Text style={s.bigNumSub}>
-                {eligible ? (lastDonatedDate ? `${daysElapsed} days since your last donation` : 'No recent donation on record') : `day${daysRemaining === 1 ? '' : 's'} until you can donate again`}
+                {eligible ? (lastDonatedDate ? t('dash.daysSince', { days: daysElapsed }) : t('dash.noDonation')) : (daysRemaining === 1 ? t('dash.daysUntilOne') : t('dash.daysUntil'))}
               </Text>
             </View>
 
@@ -1235,18 +1242,18 @@ function DonorExperience({ theme, onToggleTheme }) {
               <View style={[s.meterFill, { width: `${progressPercent}%`, backgroundColor: eligible ? color.green : color.amber }]} />
             </View>
             <View style={[s.row, { justifyContent: 'space-between', marginTop: 8 }]}>
-              <Text style={s.meterLabel}>{lastDonatedDate ? `Day ${Math.min(daysElapsed, COOLDOWN_DAYS)} of ${COOLDOWN_DAYS}` : `${COOLDOWN_DAYS}-day recovery window`}</Text>
-              <Text style={s.meterLabel}>{!eligible ? `Eligible ${getNextEligibleDateText()}` : `${Math.round(progressPercent)}%`}</Text>
+              <Text style={s.meterLabel}>{lastDonatedDate ? t('dash.dayOf', { day: Math.min(daysElapsed, COOLDOWN_DAYS), total: COOLDOWN_DAYS }) : t('dash.window', { days: COOLDOWN_DAYS })}</Text>
+              <Text style={s.meterLabel}>{!eligible ? t('dash.eligibleOn', { date: getNextEligibleDateText() }) : `${Math.round(progressPercent)}%`}</Text>
             </View>
           </View>
 
           {/* Impact */}
           <View style={[s.card, s.row, { marginTop: 16, paddingVertical: 18 }]}>
-            <Stat value={donationLog.length} label={donationLog.length === 1 ? 'Donation' : 'Donations'} />
+            <Stat value={donationLog.length} label={donationLog.length === 1 ? t('dash.donationOne') : t('dash.donations')} />
             <View style={s.vDivider} />
-            <Stat value={language} label="Call language" />
+            <Stat value={t(`language.${language}`)} label={t('dash.callLanguage')} />
             <View style={s.vDivider} />
-            <Stat value={bg(displayGroup) || '—'} label="Your group" tone="red" />
+            <Stat value={bg(displayGroup) || '—'} label={t('dash.yourGroup')} tone="red" />
           </View>
 
           {/* Profile */}
@@ -1265,16 +1272,16 @@ function DonorExperience({ theme, onToggleTheme }) {
             </View>
 
             <View style={s.metaList}>
-              <MetaRow label="Location" value={address || 'Not set'} />
-              <MetaRow label="Call language" value={language} />
-              <MetaRow label="Matching radius" value="10 km" />
-              <MetaRow label="Automated calls" value={{ on: 'On', off: 'Paused', paused: 'On a break' }[callsStatus({ optedOut: callsOptOut, pausedUntil: callsPausedUntil })]} />
-              <MetaRow label="Request alerts" value={ALERT_LABELS[alertsState] || 'Off'} last />
+              <MetaRow label={t('dash.location')} value={address || t('common.notSet')} />
+              <MetaRow label={t('dash.callLanguage')} value={t(`language.${language}`)} />
+              <MetaRow label={t('dash.radius')} value={t('dash.radiusValue')} />
+              <MetaRow label={t('dash.calls')} value={t({ on: 'dash.callsOn', off: 'dash.callsOff', paused: 'dash.callsBreak' }[callsStatus({ optedOut: callsOptOut, pausedUntil: callsPausedUntil })])} />
+              <MetaRow label={t('dash.alerts')} value={t(`alerts.${alertsState}`)} last />
             </View>
 
             {alertsState === 'off' || alertsState === 'blocked' ? (
               <SecondaryButton onPress={turnOnAlerts} busy={alertsBusy} style={{ marginTop: 14 }}>
-                {alertsState === 'blocked' ? 'Allow alerts in Settings' : 'Turn on request alerts'}
+                {alertsState === 'blocked' ? t('alerts.allowInSettings') : t('alerts.turnOn')}
               </SecondaryButton>
             ) : null}
 
@@ -1306,13 +1313,13 @@ function DonorExperience({ theme, onToggleTheme }) {
             })() : null}
 
             <SecondaryButton onPress={toggleCalls} busy={callsBusy} style={{ marginTop: 14 }}>
-              {callsOptOut ? 'Resume automated calls' : 'Pause automated calls'}
+              {callsOptOut ? t('dash.resumeCalls') : t('dash.pauseCalls')}
             </SecondaryButton>
 
             <View style={[s.row, { gap: 10, marginTop: 14 }]}>
-              <SecondaryButton onPress={() => setIsEditing(true)} style={{ flex: 1 }}>Edit profile</SecondaryButton>
+              <SecondaryButton onPress={() => setIsEditing(true)} style={{ flex: 1 }}>{t('dash.editProfile')}</SecondaryButton>
               <TouchableOpacity onPress={confirmClearProfile} style={s.dangerBtn} accessibilityRole="button">
-                <Text style={s.dangerBtnText}>Delete</Text>
+                <Text style={s.dangerBtnText}>{t('common.delete')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1324,16 +1331,18 @@ function DonorExperience({ theme, onToggleTheme }) {
                 <Text style={s.legalLink}>{t('legal.terms')}</Text>
               </TouchableOpacity>
             </View>
+
+            <LanguageSwitch style={{ marginTop: 18 }} />
           </View>
 
           {/* History */}
           <View style={[s.card, { marginTop: 16, paddingHorizontal: 0, paddingBottom: 6 }]}>
-            <Text style={[s.overline, { paddingHorizontal: 18, marginBottom: 6 }]}>Donation history</Text>
+            <Text style={[s.overline, { paddingHorizontal: 18, marginBottom: 6 }]}>{t('dash.history')}</Text>
             {donationLog.length === 0 ? (
-              <Text style={s.emptyText}>No donations recorded yet. When a hospital logs your donation it appears here.</Text>
+              <Text style={s.emptyText}>{t('dash.historyEmpty')}</Text>
             ) : (
               donationLog.map((log, i) => {
-                const formattedDate = new Date(log.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                const formattedDate = t.date(log.date, { year: 'numeric', month: 'short', day: 'numeric' });
                 return (
                   <View key={log.id} style={[s.logItem, i < donationLog.length - 1 && s.logItemBorder]}>
                     <View style={s.logDot} />
@@ -1341,7 +1350,7 @@ function DonorExperience({ theme, onToggleTheme }) {
                       <Text style={s.logHospital} numberOfLines={1}>{log.hospital}</Text>
                       <Text style={s.logDate}>{formattedDate}</Text>
                     </View>
-                    <StatusPill tone="green">Donated</StatusPill>
+                    <StatusPill tone="green">{t('dash.donated')}</StatusPill>
                   </View>
                 );
               })
@@ -1359,19 +1368,20 @@ function RequestCard({
   req, busy, highlighted, checking, answers, onAnswer, recoveringDays, onStartCheck, onStopCheck, onAccept, onDecline,
 }) {
   const { color, s } = useContext(ThemeContext);
+  const { t } = useContext(I18nContext);
   const critical = req.urgency === 'critical';
-  const ago = minutesAgo(req.created_at);
+  const ago = minutesAgo(req.created_at, t);
   return (
     <View style={[s.requestCard, shadow, highlighted && { borderColor: color.red, borderWidth: 2 }]}>
       <View style={s.requestBand}>
         <View style={s.liveDot} />
-        <Text style={s.requestBandText}>{critical ? 'Critical request' : 'Urgent request'}{ago ? ` · ${ago}` : ''}</Text>
+        <Text style={s.requestBandText}>{critical ? t('requests.critical') : t('requests.urgent')}{ago ? ` · ${ago}` : ''}</Text>
       </View>
       <View style={{ padding: 18 }}>
         <View style={[s.row, { alignItems: 'flex-start', gap: 14 }]}>
           <View style={s.requestGroup}>
             <Text style={s.requestGroupText}>{bg(req.blood_group)}</Text>
-            <Text style={s.requestUnits}>{req.units} unit{req.units === 1 ? '' : 's'}</Text>
+            <Text style={s.requestUnits}>{req.units === 1 ? t('requests.unitOne') : t('requests.units', { count: req.units })}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.requestHospital}>{req.hospital_name}</Text>
@@ -1381,12 +1391,12 @@ function RequestCard({
 
         <View style={s.requestStats}>
           <View style={{ flex: 1 }}>
-            <Text style={s.statLabel}>Distance</Text>
-            <Text style={s.statValue}>{req.distance_km != null ? `${Number(req.distance_km).toFixed(1)} km` : '—'}</Text>
+            <Text style={s.statLabel}>{t('requests.distance')}</Text>
+            <Text style={s.statValue}>{req.distance_km != null ? t('requests.km', { value: Number(req.distance_km).toFixed(1) }) : '—'}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.statLabel}>Est. travel</Text>
-            <Text style={s.statValue}>{req.eta_minutes != null ? `${req.eta_minutes} min` : '—'}</Text>
+            <Text style={s.statLabel}>{t('requests.travel')}</Text>
+            <Text style={s.statValue}>{req.eta_minutes != null ? t('requests.minutes', { value: req.eta_minutes }) : '—'}</Text>
           </View>
         </View>
 
@@ -1396,10 +1406,10 @@ function RequestCard({
         ) : (
           <>
             <TouchableOpacity onPress={onStartCheck} disabled={busy} style={[s.acceptBtn, busy && { opacity: 0.7 }]} accessibilityRole="button">
-              {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>I can donate</Text>}
+              {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.acceptBtnText}>{t('requests.canDonate')}</Text>}
             </TouchableOpacity>
             <TouchableOpacity onPress={onDecline} disabled={busy} style={s.declineBtn} accessibilityRole="button">
-              <Text style={s.declineBtnText}>{"I can't make it"}</Text>
+              <Text style={s.declineBtnText}>{t('requests.cantMakeIt')}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -1481,22 +1491,23 @@ function HealthCheck({ answers, onAnswer, recoveringDays, busy, onConfirm, onDec
 
 function TripCard({ trip, onDirections, onDone }) {
   const { color, s } = useContext(ThemeContext);
+  const { t } = useContext(I18nContext);
   return (
     <View style={[s.tripCard, shadow]}>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
-        <Text style={[s.overline, { color: color.greenText }]}>{"You're confirmed"}</Text>
-        <StatusPill tone="green">En route</StatusPill>
+        <Text style={[s.overline, { color: color.greenText }]}>{t('trip.confirmed')}</Text>
+        <StatusPill tone="green">{t('trip.enRoute')}</StatusPill>
       </View>
       <Text style={s.tripHospital}>{trip.hospital_name}</Text>
       {trip.address ? <Text style={s.requestAddr}>{trip.address}</Text> : null}
       <Text style={s.tripNote}>
-        The blood bank can see you are on your way{trip.eta_minutes != null ? ` (about ${trip.eta_minutes} min)` : ''}. Bring a photo ID and eat something light before you donate.
+        {trip.eta_minutes != null ? t('trip.noteEta', { minutes: trip.eta_minutes }) : t('trip.note')}
       </Text>
       <TouchableOpacity onPress={onDirections} style={s.tripBtn} accessibilityRole="button">
-        <Text style={s.tripBtnText}>Get directions</Text>
+        <Text style={s.tripBtnText}>{t('trip.directions')}</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={onDone} style={{ alignSelf: 'center', marginTop: 12 }} accessibilityRole="button">
-        <Text style={s.tripDismiss}>Hide this card</Text>
+        <Text style={s.tripDismiss}>{t('trip.hide')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1516,12 +1527,35 @@ function DropMark({ size = 24 }) {
 
 function ThemeSwitch({ theme, onPress }) {
   const { s } = useContext(ThemeContext);
-  const next = theme === 'dark' ? 'light' : 'dark';
+  const { t } = useContext(I18nContext);
   return (
     <TouchableOpacity onPress={onPress} style={s.themeButton} accessibilityRole="button"
-      accessibilityLabel={`Switch to ${next} theme`}>
-      <Text style={s.themeButtonText}>{theme === 'dark' ? '☀ Light' : '☾ Dark'}</Text>
+      accessibilityLabel={theme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}>
+      <Text style={s.themeButtonText}>{theme === 'dark' ? t('theme.toLight') : t('theme.toDark')}</Text>
     </TouchableOpacity>
+  );
+}
+
+// English, हिन्दी, தமிழ், each written in its own script so a donor can find theirs.
+function LanguageSwitch({ style }) {
+  const { s } = useContext(ThemeContext);
+  const { t, language, setLanguage } = useContext(I18nContext);
+  return (
+    <View style={style}>
+      <Text style={s.label}>{t('language.label')}</Text>
+      <View style={s.segmented} accessibilityRole="radiogroup" accessibilityLabel={t('language.label')}>
+        {APP_LANGUAGES.map((option) => {
+          const active = language === option.code;
+          return (
+            <TouchableOpacity key={option.code} onPress={() => setLanguage(option.code)}
+              accessibilityRole="radio" accessibilityState={{ selected: active }} accessibilityLabel={option.label}
+              style={[s.segment, active && s.segmentActive]}>
+              <Text style={[s.segmentText, active && s.segmentTextActive]}>{option.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 

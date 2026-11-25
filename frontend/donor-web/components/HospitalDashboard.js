@@ -25,7 +25,8 @@ const NAV = [
 
 const TITLES = { command: 'Command Center', map: 'Dispatch Map', intel: 'Network Intelligence', team: 'Team' };
 
-export default function HospitalDashboard() {
+// initialMode 'register' opens the sign-up form first (the /register route, linked from the website).
+export default function HospitalDashboard({ initialMode = 'login' }) {
   useEffect(loadWebFonts, []);
   const store = useDispatchStore();
   const { width } = useWindowDimensions();
@@ -42,7 +43,7 @@ export default function HospitalDashboard() {
       </View>
     );
   }
-  if (!store.profile) return <LoginScreen store={store} theme={theme} onToggleTheme={toggleTheme} />;
+  if (!store.profile) return <LoginScreen store={store} theme={theme} onToggleTheme={toggleTheme} initialMode={initialMode} />;
 
   if (store.profile.status && store.profile.status !== 'approved') return <PendingReview store={store} />;
 

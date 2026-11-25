@@ -19,6 +19,8 @@ Fill in the contact table before launch. Severity: **S1** donors cannot be reach
 
 **Calls are not going out.** Check Twilio credentials and balance, then `TWILIO_*` env values. A hospital stuck at `403 hospital_pending` is not approved, not a telephony fault. If `429 Daily request limit` appears, raise `MAX_DISPATCHES_PER_HOSPITAL_DAY` for a real emergency.
 
+**Donors say they were called twice, or retries are not happening.** Retries come from `CALL_MAX_RETRIES` and `CALL_RETRY_DELAY_SECONDS`. They are held in memory, so a restart inside the delay drops them. Set `CALL_MAX_RETRIES=0` to stop retrying while you investigate.
+
 **Donors answer but the answer is wrong or missing.** Switch `VOICE_INTENT_MODE=legacy` (keyword mode) and redeploy. Never mark a donor accepted by hand without a call recording from the donor.
 
 **Sarvam is down.** The pipeline must not record acceptance on error. Tell hospitals to use the in-app or phone fallback and set `VOICE_INTENT_MODE=legacy` if keyword mode still works.

@@ -57,6 +57,7 @@ All are listed in `backend/.env.example` and, as secrets, in `render.yaml`.
 | `CONTACT_TO` | Inbox that receives contact form messages |
 | `DONOR_OTP_REQUIRED` | `true` makes donor sign-up need a verified phone. Turn on only after the donor app supports the code flow |
 | `MAX_DONORS_PER_DISPATCH`, `MAX_DISPATCHES_PER_HOSPITAL_DAY`, `TWILIO_CALLS_PER_SECOND` | Cost and rate guards |
+| `CALL_MAX_RETRIES`, `CALL_RETRY_DELAY_SECONDS` | Retry busy or unanswered calls (default 1 retry after 180 seconds; 0 turns retries off) |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS`, `MONGODB_MAX_POOL_SIZE` | Database timeouts and pool size |
 | `WEB_CONCURRENCY` | Uvicorn workers per container (above 1 needs `REDIS_URL`) |
 | `LOG_FORMAT=json` | One JSON object per log line |

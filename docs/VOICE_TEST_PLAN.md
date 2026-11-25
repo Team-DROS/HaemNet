@@ -12,7 +12,7 @@ Run with test donor phones (never real donors) on staging. Record every result; 
 | 6 | Conditional | "Yes if you pay for travel" | not accepted | | | |
 | 7 | Mixed language | "Haan, I will come" | accepted after confirmation | | | |
 | 8 | Hang up mid call | end call after the question | not accepted | | | |
-| 9 | Busy / no answer | reject the call | no_answer, retry rule applies | | | |
+| 9 | Busy / no answer | reject the call | no_answer, then one retry after the delay (`CALL_RETRY_DELAY_SECONDS`); no second retry | | | |
 | 10 | Voicemail | let it go to voicemail | not accepted | | | |
 | 11 | Speech cut off | keep talking past the limit | not classified as yes | | | |
 | 12 | Sarvam error | block Sarvam on staging | failure state, never accepted | | | |

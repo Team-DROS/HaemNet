@@ -92,8 +92,8 @@ async def get_twiml(dispatch_id: str = Query(default=""), donor_id: str = Query(
 <Response>
     <Connect>
         <Stream url="{xml_safe_url}">
-            <Parameter name="dispatch_id" value="{dispatch_id}" />
-            <Parameter name="donor_id" value="{donor_id}" />
+            <Parameter name="dispatch_id" value="{html.escape(dispatch_id)}" />
+            <Parameter name="donor_id" value="{html.escape(donor_id)}" />
         </Stream>
     </Connect>
 </Response>"""

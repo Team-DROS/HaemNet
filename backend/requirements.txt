@@ -14,7 +14,7 @@ langchain-core==0.3.10
 python-multipart==0.0.31
 twilio==9.3.2
 PyJWT==2.15.0
-bcrypt==4.1.3
+bcrypt==5.0.0
 sentry-sdk==2.20.0
 tenacity==8.2.3
 # audioop was removed from the standard library in Python 3.13

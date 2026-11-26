@@ -1,0 +1,5 @@
+# The dashboard is a sign-in tool. Keep the staff panel and email-link pages out of search results.
+# (Everything else stays crawlable: search engines need the /_expo/ scripts to render the sign-in page.)
+User-agent: *
+Disallow: /admin
+Disallow: /verify-email

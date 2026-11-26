@@ -50,6 +50,7 @@
       btn.disabled = false;
     }).catch(function () {
       status.textContent = "Could not reach the server. Please email us directly.";
+      resetVerification();
       btn.disabled = false;
     });
   });

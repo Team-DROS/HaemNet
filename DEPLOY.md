@@ -56,7 +56,8 @@ All are listed in `backend/.env.example` and, as secrets, in `render.yaml`.
 | --- | --- |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` | Admin panel sign-in (off until both are set). Make the hash with `python -c "import bcrypt;print(bcrypt.hashpw(b'PASSWORD', bcrypt.gensalt()).decode())"` |
 | `DASHBOARD_URL` | Public dashboard address, used in verification emails |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Verification and decision emails. Without `SMTP_HOST` no email is sent |
+| `BREVO_API_KEY`, `SMTP_FROM` | Brevo HTTPS email delivery; use a verified sender. Takes priority over SMTP when configured |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Alternative SMTP delivery when no Brevo API key is set; standard SMTP ports are blocked on Render Free |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_PREFIX` | Private bucket for licence documents (S3 or Cloudflare R2). **Required on Render**: local disk is wiped on every deploy |
 | `REDIS_URL` | Shares rate limits, call quotas, OTP codes and live dashboard updates between instances. Needed for more than one instance or worker |
 | `TURNSTILE_SECRET` | Cloudflare Turnstile check on hospital sign-up and the contact form (off when empty) |
@@ -164,6 +165,32 @@ from this repository with root directory `frontend/website`, build command
 
 The dashboard needs its own build variables as above, plus `EXPO_PUBLIC_SENTRY_DSN`
 and `EXPO_PUBLIC_TURNSTILE_SITE_KEY` if you use them.
+
+## Brevo email on Render Free
+
+The backend uses Brevo HTTPS when `BREVO_API_KEY` and `SMTP_FROM` are set.
+Set `CONTACT_TO` to the receiving inbox. Configure these privately in Render:
+
+~~~dotenv
+BREVO_API_KEY=<private API key with transactional email sending permission>
+SMTP_FROM=haemnetai@gmail.com
+CONTACT_TO=haemnetai@gmail.com
+~~~
+
+Verify the sender and transactional sending status in Brevo first. Keep the API key
+out of the frontend, repository, logs, and screenshots. Gmail credentials are not
+needed for this path. Without a Brevo API key, the existing SMTP transport remains
+available on hosts that allow it. No automatic SMTP fallback follows a Brevo error,
+to avoid uncertain or duplicate delivery.
+
+Deploy the API commit containing the integration and refresh the website before
+testing. Turnstile tokens expire and are single-use; after an unsuccessful attempt
+the form requests a fresh challenge. Success requires both server acceptance and
+receipt in the intended inbox. Provider acceptance does not guarantee inbox delivery.
+
+See [the setup record](docs/SETUP_STATUS_2026-11-26.md) for the observed deployment
+state and pending work. Run `node --test frontend/website/tests/contact.test.cjs`
+for the contact form's mocked retry regression tests.
 
 ## First go-live checklist
 

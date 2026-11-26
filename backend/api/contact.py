@@ -38,7 +38,7 @@ async def contact(payload: ContactMessage, request: Request):
     if not hp.valid_email(payload.email.strip()):
         raise HTTPException(status_code=422, detail="Enter a valid email address")
     await require_human(payload.turnstile_token, ip)
-    if not (settings.contact_to and settings.smtp_configured):
+    if not (settings.contact_to and settings.email_configured):
         raise HTTPException(status_code=503, detail="The contact form is not available. Please email us directly.")
     body = f"From: {_clean(payload.name)} <{_clean(payload.email)}>\n\n{payload.message}\n"
     sent = await send_email(settings.contact_to, f"HaemNet contact: {_clean(payload.name)[:60]}", body)

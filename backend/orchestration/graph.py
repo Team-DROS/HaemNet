@@ -267,12 +267,14 @@ def build_dispatch_graph() -> CompiledStateGraph:
         query_donors → initiate_calls → [conditional] → route_donor → END
                                                       → END
     """
-    graph = StateGraph(state_schema=dict)
+    # langgraph 0.6 types its state as TypedDict or a model; a plain dict still
+    # works at runtime (one root channel), so only the type check is silenced.
+    graph = StateGraph(state_schema=dict)  # type: ignore[type-var]
 
     # Register nodes
-    graph.add_node("query_donors", query_donors_node)
-    graph.add_node("initiate_calls", initiate_calls_node)
-    graph.add_node("route_donor", route_donor_node)
+    graph.add_node("query_donors", query_donors_node)  # type: ignore[type-var]
+    graph.add_node("initiate_calls", initiate_calls_node)  # type: ignore[type-var]
+    graph.add_node("route_donor", route_donor_node)  # type: ignore[type-var]
 
     # Define edges
     graph.set_entry_point("query_donors")

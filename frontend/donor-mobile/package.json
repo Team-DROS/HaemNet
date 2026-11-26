@@ -8,7 +8,7 @@
     "@sentry/react-native": "~7.2.0",
     "axios": "^1.21.1",
     "babel-preset-expo": "~54.0.10",
-    "expo": "~54.0.37",
+    "expo": "~54.0.38",
     "expo-constants": "~18.0.14",
     "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",

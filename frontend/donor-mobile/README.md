@@ -13,8 +13,8 @@ phone conversations independently; the app is a second, faster way to answer.
 | Version | 1.2.0 (versionCode managed by EAS, see Versioning) |
 | Supported Android | **Android 7.0 (API 24) and newer.** Android 6 and older cannot install it. |
 | Expo SDK / React Native | 54 / 0.81.5 |
-| Expo account / project | The team Expo account (signed up with the team Gmail) / `donor-mobile` |
-| EAS project ID | Set by `eas init` on the team account (`extra.eas.projectId` in `app.json`) |
+| Expo account / project | `haemnetais-team` (organisation owned by the team account) / `donor-mobile` ([project page](https://expo.dev/accounts/haemnetais-team/projects/donor-mobile)) |
+| EAS project ID | `94b47c7d-1958-4896-a84a-193527c8b4b3` |
 | Production API | `https://haemnet-api.onrender.com` |
 
 The project lives on the team Expo account, not a personal one. All three team members

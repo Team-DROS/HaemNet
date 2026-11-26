@@ -13,7 +13,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "@sentry/react": "8.55.0",
+    "@sentry/react": "8.55.2",
     "expo": "~54.0.37",
     "expo-constants": "~18.0.14",
     "expo-linking": "~8.0.12",
@@ -28,7 +28,7 @@
     "react-native-web": "^0.21.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0",
+    "@babel/core": "^7.29.13",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

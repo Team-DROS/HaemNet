@@ -1,6 +1,7 @@
 """Outgoing email for hospital verification and review decisions.
 
-Uses SMTP when SMTP_HOST and SMTP_FROM are set. Otherwise nothing is sent and
+Uses Brevo HTTPS when BREVO_API_KEY and SMTP_FROM are set, otherwise SMTP.
+Without a configured provider nothing is sent and
 a warning says so. Message bodies are never logged because they contain
 single-use links.
 """
@@ -11,6 +12,8 @@ import asyncio
 import logging
 import smtplib
 from email.message import EmailMessage
+
+import httpx
 
 from backend.config import settings
 
@@ -32,11 +35,28 @@ def _send_sync(to: str, subject: str, body: str) -> None:
 
 async def send_email(to: str, subject: str, body: str) -> bool:
     """Send one email. Returns False (never raises) when it could not be sent."""
-    if not settings.smtp_configured:
-        logger.warning("Email not sent (SMTP is not configured): %s", subject)
+    if not settings.email_configured:
+        logger.warning("Email not sent (no email provider configured): %s", subject)
         return False
     try:
-        await asyncio.to_thread(_send_sync, to, subject, body)
+        if settings.brevo_api_key:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(
+                    "https://api.brevo.com/v3/smtp/email",
+                    headers={"api-key": settings.brevo_api_key, "accept": "application/json"},
+                    json={
+                        "sender": {"name": "HaemNet", "email": settings.smtp_from},
+                        "to": [{"email": to}],
+                        "subject": subject,
+                        "textContent": body,
+                    },
+                )
+                if response.status_code != 201:
+                    # Do not log provider responses: they can echo private message content.
+                    logger.error("Brevo email not accepted (HTTP %s)", response.status_code)
+                    return False
+        else:
+            await asyncio.to_thread(_send_sync, to, subject, body)
         return True
     except Exception as exc:  # network or auth failure must not break sign-up
         logger.error("Email send failed (%s): %s", subject, type(exc).__name__)

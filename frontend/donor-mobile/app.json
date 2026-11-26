@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "HaemNet Donor",
-    "owner": "umasuthan",
     "slug": "donor-mobile",
     "version": "1.2.0",
     "orientation": "portrait",
@@ -18,7 +17,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.pranko007.donormobile",
+      "package": "in.haemnet.donor",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -67,10 +66,7 @@
       ]
     ],
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "20aa94d4-5db2-49b8-b6f4-fa87e226806b"
-      }
+      "router": {}
     }
   }
 }

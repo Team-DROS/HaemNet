@@ -90,7 +90,7 @@ jobs:
           } | tee dist/BUILD-INFO.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: haemnet-donor-test-apk
           path: frontend/donor-mobile/dist/

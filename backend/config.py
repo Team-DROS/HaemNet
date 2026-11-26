@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = ""
     s3_prefix: str = "hospital-documents/"
     max_upload_mb: int = 5
+    # Brevo HTTPS API works where outbound SMTP is blocked.
+    brevo_api_key: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -186,6 +188,10 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
+
+    @property
+    def email_configured(self) -> bool:
+        return bool((self.brevo_api_key and self.smtp_from) or self.smtp_configured)
 
     @property
     def admin_configured(self) -> bool:

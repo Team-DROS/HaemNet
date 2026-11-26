@@ -37,6 +37,7 @@ router = APIRouter()
 
 AUTH_TIMEOUT_SECONDS = 10
 CLOSE_UNAUTHORIZED = 4401  # application close code: missing or bad token
+SEND_TIMEOUT_SECONDS = 5  # a dashboard socket slower than this is treated as dead
 
 OwnerResolver = Callable[[str], Awaitable[Optional[str]]]
 
@@ -118,12 +119,15 @@ class DashboardConnectionManager:
                 ws for ws, only in self._connections.get(owner, {}).items() if only is None or only == dispatch_id
             ]
 
-        dead = []
-        for ws in targets:
-            try:
-                await ws.send_text(payload)
-            except Exception:
-                dead.append(ws)
+        # Send to every socket at once, each with a time limit. Sequential
+        # sends let one tab on a poor connection delay everyone else, and the
+        # Redis subscriber awaits this for every event on the instance, so a
+        # stalled socket held up all hospitals' live feeds.
+        results = await asyncio.gather(
+            *(asyncio.wait_for(ws.send_text(payload), timeout=SEND_TIMEOUT_SECONDS) for ws in targets),
+            return_exceptions=True,
+        )
+        dead = [ws for ws, result in zip(targets, results, strict=True) if isinstance(result, BaseException)]
         if dead:
             async with self._lock:
                 conns = self._connections.get(owner, {})

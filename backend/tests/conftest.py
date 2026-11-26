@@ -105,6 +105,23 @@ class FakeStore:
         return out
 
 
+def matched_donor(lat=13.06, lng=80.25, name="Asha", blood_group="O-"):
+    """A real DonorNode, as find_eligible_donors returns, for faking donor matching."""
+    from uuid import uuid4
+
+    from backend.schemas.models import DonorNode
+
+    donor_id = uuid4()
+    return DonorNode(
+        id=donor_id,
+        name=name,
+        phone=f"+9190{donor_id.int % 10**8:08d}",
+        blood_group=blood_group,
+        language="tamil",
+        location={"lat": lat, "lng": lng},
+    )
+
+
 def donor(donor_id, phone, status="ringing", distance_km=2.4, name=None):
     return {
         "donor_id": donor_id,

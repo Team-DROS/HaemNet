@@ -77,27 +77,12 @@ class DispatchState(BaseModel):
 # ── Graph Nodes ───────────────────────────────────────────────────
 
 
-async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Query the database for eligible donors and populate the state.
-    """
-
-    donors: List[DonorNode] = []
-    for group in request_groups(state["blood_group"]):
-        donors.extend(
-            await find_eligible_donors(
-                blood_group=group,
-                lat=state["lat"],
-                lng=state["lng"],
-            )
-        )
-
-    donors = cap_donors(donors, state["lat"], state["lng"])
-
-    donor_states = {}
+def donor_call_states(donors: List[DonorNode], lat: float, lng: float) -> Dict[str, Dict[str, Any]]:
+    """Initial call state for each matched donor, with distance from the hospital."""
+    states: Dict[str, Dict[str, Any]] = {}
     for d in donors:
-        distance = haversine_km(state["lat"], state["lng"], d.location.lat, d.location.lng)
-        donor_states[str(d.id)] = DonorCallState(
+        distance = haversine_km(lat, lng, d.location.lat, d.location.lng)
+        states[str(d.id)] = DonorCallState(
             donor_id=str(d.id),
             name=d.name,
             phone=d.phone,
@@ -106,9 +91,36 @@ async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
             status=CallStatus.RINGING,
             distance_km=round(distance, 2),
         ).model_dump()
+    return states
 
+
+async def find_request_donors(blood_group: str, lat: float, lng: float) -> List[DonorNode]:
+    """
+    Eligible donors for a request, closest first and capped.
+
+    Every compatible group is queried concurrently: "All positive" is four
+    geospatial lookups, which used to run one after another.
+    """
+    per_group = await asyncio.gather(
+        *(find_eligible_donors(blood_group=group, lat=lat, lng=lng) for group in request_groups(blood_group))
+    )
+    return cap_donors([donor for group in per_group for donor in group], lat, lng)
+
+
+async def query_donors_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Populate the state with the donors to call.
+
+    The API plans the dispatch first and passes the donors it matched, so the
+    hospital is told exactly who will be called. Querying again here doubled
+    the database load and could call a different set of donors.
+    """
+    if state.get("donors"):
+        return state
+
+    donors = await find_request_donors(state["blood_group"], state["lat"], state["lng"])
     logger.info("Matched %d eligible donors for dispatch %s", len(donors), state.get("dispatch_id"))
-    return {**state, "donors": donor_states}
+    return {**state, "donors": donor_call_states(donors, state["lat"], state["lng"])}
 
 
 async def initiate_calls_node(state: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,7 +1,6 @@
 """Behaviour under concurrent load: limits must hold, hospitals must stay isolated."""
 
 import asyncio
-from types import SimpleNamespace
 
 import fakeredis
 import fakeredis.aioredis
@@ -14,6 +13,7 @@ from backend.config import settings
 from backend.main import app
 from backend.services import dispatching as planning
 from backend.services import rate_limit, redis_client
+from backend.tests.conftest import matched_donor
 
 
 def asgi_client():
@@ -81,7 +81,7 @@ async def test_fifty_hospitals_dispatch_at_once_without_mixing_anything_up(monke
 
     async def fake_find(**kwargs):
         await asyncio.sleep(0.01)
-        return [SimpleNamespace(location=SimpleNamespace(lat=13.06, lng=80.25)) for _ in range(3)]
+        return [matched_donor(13.06, 80.25) for _ in range(3)]
 
     async def fake_run(dispatch_id, state):
         ran.append((state["hospital_id"], dispatch_id))
@@ -121,7 +121,7 @@ async def test_one_hospital_hammering_dispatch_is_stopped_by_the_daily_quota(mon
 
     async def fake_find(**kwargs):
         await asyncio.sleep(0.01)
-        return [SimpleNamespace(location=SimpleNamespace(lat=13.06, lng=80.25))]
+        return [matched_donor(13.06, 80.25)]
 
     async def fake_run(dispatch_id, state):
         pass
@@ -152,7 +152,7 @@ async def test_failed_or_empty_requests_give_their_daily_slot_back(monkeypatch):
         kind = next(outcomes)
         if kind == "boom":
             raise RuntimeError("database down")
-        return [] if kind == "none" else [SimpleNamespace(location=SimpleNamespace(lat=13.06, lng=80.25))]
+        return [] if kind == "none" else [matched_donor(13.06, 80.25)]
 
     async def fake_run(dispatch_id, state):
         pass

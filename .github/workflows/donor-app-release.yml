@@ -50,7 +50,7 @@ jobs:
       SUBMIT: ${{ github.event_name == 'push' && 'production' || inputs.submit || 'none' }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the release settings
         env:

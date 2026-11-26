@@ -9,19 +9,19 @@ phone conversations independently; the app is a second, faster way to answer.
 | | |
 | --- | --- |
 | App name | HaemNet Donor |
-| Android package | `com.pranko007.donormobile` |
+| Android package | `in.haemnet.donor` (permanent after the first Play upload) |
 | Version | 1.2.0 (versionCode managed by EAS, see Versioning) |
 | Supported Android | **Android 7.0 (API 24) and newer.** Android 6 and older cannot install it. |
 | Expo SDK / React Native | 54 / 0.81.5 |
-| Expo account / project | `umasuthan` / `donor-mobile` ([project page](https://expo.dev/accounts/umasuthan/projects/donor-mobile)) |
-| EAS project ID | `20aa94d4-5db2-49b8-b6f4-fa87e226806b` |
+| Expo account / project | `haemnetais-team` (organisation owned by the team account) / `donor-mobile` ([project page](https://expo.dev/accounts/haemnetais-team/projects/donor-mobile)) |
+| EAS project ID | `94b47c7d-1958-4896-a84a-193527c8b4b3` |
 | Production API | `https://haemnet-api.onrender.com` |
 
-The existing release workflow uses the Expo project above and the personal fork
-`umasuthanpalaniappan/HaemNet`. Confirm which repository the build actually
-uses, and sync the fork after changes land in Team-DROS `main`. Project access
-is managed by its owner; a local JavaScript preview does not require creating
-another Expo project.
+The project lives on the team Expo account, not a personal one. All three team members
+sign in to it (or are added as members of its organisation), and CI uses a robot user's
+`EXPO_TOKEN`. The earlier personal project (`umasuthan/donor-mobile`, package
+`com.pranko007.donormobile`) is retired: APKs built from it cannot update to this app
+and must be uninstalled first.
 
 ## Sign-up, phone verification and call consent
 
@@ -96,7 +96,7 @@ No backend secret is ever embedded in the app.
 | Staging APK | Actions > Donor app release > profile `staging` | EAS release keystore | Talks to `haemnet-api-staging`. Use it for [MOBILE_TEST_PLAN.md](../../docs/MOBILE_TEST_PLAN.md) before every release. |
 | Production AAB | `eas build --platform android --profile production` | EAS release keystore (upload key) | Google Play upload only. An AAB cannot be installed directly. |
 
-Build commands (run from `frontend/donor-mobile`, logged in with `eas login` as `umasuthan`):
+Build commands (run from `frontend/donor-mobile`, logged in with `eas login` as the team Expo account):
 
 ```bash
 npm install -g eas-cli
@@ -114,8 +114,8 @@ eas build --platform android --profile production   # AAB for Google Play
 - Losing the keystore means Play can no longer accept updates for this app
   (unless Play App Signing is enabled). Download a backup only through
   `eas credentials` and keep it in a password manager.
-- A CI build through EAS needs an `EXPO_TOKEN` GitHub secret on the fork. The
-  owner creates the token at expo.dev and adds it under
+- A CI build through EAS needs an `EXPO_TOKEN` GitHub secret. A team
+  admin creates it for a robot user at expo.dev and adds it under
   Settings > Secrets and variables > Actions. Never put it in workflow YAML.
 
 ## Installing directly on a phone
@@ -135,8 +135,8 @@ This message is Android's generic installer error. Get the real reason with adb:
 adb devices                                   # phone must show as "device" (enable USB debugging)
 adb shell getprop ro.build.version.sdk        # must be 24 or higher
 adb install -r HaemNet-Donor-v1.2.0-preview.apk
-adb shell pm list packages | grep donormobile # is an older copy installed?
-adb shell dumpsys package com.pranko007.donormobile | grep -E "versionCode|versionName|signatures"
+adb shell pm list packages | grep -E 'haemnet|donormobile' # is an older copy installed?
+adb shell dumpsys package in.haemnet.donor | grep -E "versionCode|versionName|signatures"
 ```
 
 | adb result | Meaning | Fix |
